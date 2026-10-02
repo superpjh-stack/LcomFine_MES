@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>엘컴화인 MES 설계도</title>
+<!--
+  엘컴화인 MES 설계도 (독립 HTML)
+  ─────────────────────────────────────────────────────────────
+  - 외부 파일, 스크립트, 글꼴을 쓰지 않는다. 이 파일 하나만 있으면 어디서든 열린다.
+  - 그림은 전부 인라인 SVG다. 색과 글꼴은 아래 <style>의 토큰과 클래스로만 정한다.
+  - 내용 기준: 「엘컴화인 MES 구축 기획서」와 FP산정서 (2026-10, 별도 신규 프로젝트, 2안 전체개발 기본).
+  - 양식: 착수보고·기획 PPT와 같은 무장식 보고서형 (흰 바탕, 한 가지 글꼴, 강조색 하나).
+-->
+<style>
+  /* 레이아웃 개념: 한 단으로 내려 읽는 보고서. 그림은 본문 폭을 가득 쓰고, 설명은 그림 아래 표로 받는다. */
+
+  /* ── 토큰 (밝은 화면) ── */
+  :root {
+    --bg: #FFFFFF;          /* 바탕 */
+    --fg: #1A1A1A;          /* 본문 글자 */
+    --muted: #707070;       /* 보조 글자 */
+    --line: #D9D9D9;        /* 표 행 구분선 */
+    --stroke: #4D4D4D;      /* 그림의 상자·화살표 선 */
+    --tint: #F2F2F2;        /* 기존 자산 상자 바탕 */
+    --accent: #B0124F;      /* 강조색 (신규 MES, 핵심 한 곳) */
+    --accent-tint: #FAEBF1; /* 강조 상자 바탕 */
+    --font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    color-scheme: light;
+  }
+  /* ── 토큰 (어두운 화면): 값만 바꾼다. 컴포넌트 규칙에는 색을 직접 쓰지 않는다. ── */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161616; --fg: #EDEDED; --muted: #A6A6A6; --line: #3A3A3A;
+      --stroke: #A0A0A0; --tint: #262626; --accent: #F0679B; --accent-tint: #33131F;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161616; --fg: #EDEDED; --muted: #A6A6A6; --line: #3A3A3A;
+    --stroke: #A0A0A0; --tint: #262626; --accent: #F0679B; --accent-tint: #33131F;
+    color-scheme: dark;
+  }
+
+  /* ── 기본 ── */
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font); font-size: 15px; line-height: 1.65;
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding-inline: 24px; padding-block: 48px 72px; }
+
+  /* ── 머리말 ── */
+  .eyebrow { color: var(--accent); font-weight: 700; font-size: 14px; margin: 0 0 8px; }
+  h1 { font-size: 34px; line-height: 1.25; margin: 0 0 10px; text-wrap: balance; }
+  .lede { color: var(--muted); font-size: 17px; margin: 0 0 20px; max-width: 46em; }
+  .meta { color: var(--muted); font-size: 13px; margin: 0; }
+
+  /* ── 목차: 번호는 실제 장 순서다 ── */
+  .toc { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 16px 0; margin: 28px 0 0;
+         border-top: 1px solid var(--fg); border-bottom: 1px solid var(--line); list-style: none; }
+  .toc a { color: var(--fg); text-decoration: none; font-weight: 700; font-size: 14px; }
+  .toc a span { color: var(--accent); margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .toc a:hover, .toc a:focus-visible { text-decoration: underline; }
+
+  /* ── 장 ── */
+  section { margin-top: 64px; }
+  .sec-label { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+  h2 { font-size: 24px; line-height: 1.35; margin: 0 0 12px; text-wrap: balance; }
+  h3 { font-size: 15px; margin: 28px 0 8px; color: var(--muted); }
+  p { margin: 0 0 12px; max-width: 46em; }
+  .key { font-weight: 700; color: var(--accent); margin-top: 16px; }
+
+  /* ── 그림 ── */
+  figure { margin: 20px 0 0; }
+  .scroll { overflow-x: auto; }               /* 좁은 화면에서는 그림만 가로로 민다 */
+  .scroll svg { display: block; width: 100%; min-width: 880px; height: auto; font-family: var(--font); }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; max-width: 60em; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--muted); font-size: 12.5px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .legend i { display: inline-block; width: 22px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 1.2px solid var(--stroke); }
+  .legend .lg-main { background: var(--accent-tint); border-color: var(--accent); }
+  .legend .lg-old { background: var(--tint); }
+  .legend .lg-dash { border-style: dashed; border-width: 1.2px 0 0; height: 0; vertical-align: 3px; }
+
+  /* ── SVG 공용 클래스 (그림 안에는 style을 두지 않고 여기서만 정한다) ── */
+  .bx      { fill: var(--bg); stroke: var(--stroke); stroke-width: 1.2; }                 /* 일반 상자 */
+  .bx-main { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.8; }        /* 신규 MES */
+  .bx-old  { fill: var(--tint); stroke: var(--stroke); stroke-width: 1.2; }               /* 기존 자산 */
+  .bx-grp  { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }  /* 묶음 표시 */
+  .store   { fill: var(--bg); stroke: var(--stroke); stroke-width: 1.2; }                 /* DFD 저장소 (오른쪽이 열린 상자) */
+  .ln      { fill: none; stroke: var(--stroke); stroke-width: 1.2; }                      /* 연결선 */
+  .ln-d    { stroke-dasharray: 5 4; }                                                     /* 1안에서만, 또는 미정 */
+  .ln-a    { stroke: var(--accent); stroke-width: 1.6; }                                  /* 강조선 */
+  .ah      { fill: var(--stroke); }                                                       /* 화살촉 */
+  .ah-a    { fill: var(--accent); }
+  .t       { fill: var(--fg); font-size: 12.5px; }
+  .t-b     { fill: var(--fg); font-size: 12.5px; font-weight: 700; }
+  .t-h     { fill: var(--fg); font-size: 15px; font-weight: 700; }
+  .t-s     { fill: var(--muted); font-size: 11.5px; }
+  .t-a     { fill: var(--accent); font-size: 11.5px; font-weight: 700; }
+
+  /* ── 표: 가로선만 쓴다 ── */
+  .tbl-wrap { overflow-x: auto; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 700; padding: 8px 12px 8px 0;
+       border-bottom: 1px solid var(--fg); white-space: nowrap; }
+  td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-weight: 700; white-space: nowrap; }
+  td.w { color: var(--accent); font-weight: 700; }   /* 입력 권한 */
+  td.n { color: var(--muted); }                      /* 권한 없음 */
+
+  /* ── IA 구성도: 뿌리 → 묶음 4개 → 대메뉴 → 중메뉴 ── */
+  .ia { margin-top: 24px; }
+  .ia-root { width: max-content; max-width: 100%; margin: 0 auto; padding: 10px 28px; text-align: center;
+             border: 1.8px solid var(--accent); background: var(--accent-tint); font-weight: 700; position: relative; }
+  .ia-root small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+  .ia-root::after { content: ""; position: absolute; left: 50%; bottom: -19px; height: 18px; border-left: 1.2px solid var(--stroke); }
+  .ia-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 20px;
+               margin-top: 18px; border-top: 1.2px solid var(--stroke); }
+  .ia-group { padding-top: 18px; position: relative; min-width: 0; }
+  .ia-group::before { content: ""; position: absolute; left: 12px; top: 0; height: 18px; border-left: 1.2px solid var(--stroke); }
+  .ia-gname { font-size: 13px; color: var(--muted); font-weight: 700; margin: 0 0 10px; }
+  .ia-menu { border: 1.2px solid var(--stroke); padding: 10px 12px; margin-bottom: 10px; }
+  .ia-menu h4 { margin: 0 0 6px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+  .ia-menu h4 span { color: var(--muted); font-weight: 400; font-size: 12px; white-space: nowrap; }
+  .ia-menu ul { margin: 0; padding: 0 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+  .ia-menu.legacy h4 { color: var(--accent); }   /* 1안이면 기존 MES에서 받는 메뉴 */
+
+  /* ── 확인 목록 ── */
+  .checks { margin: 16px 0 0; padding: 0; list-style: none; max-width: 52em; }
+  .checks li { padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .checks b { display: inline-block; min-width: 9.5em; }
+
+  footer { margin-top: 72px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  /* ── 좁은 화면 ── */
+  @media (max-width: 900px) { .ia-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 520px) {
+    .page { padding-inline: 16px; padding-block: 32px 56px; }
+    h1 { font-size: 27px; } h2 { font-size: 20px; }
+    .ia-groups { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* ── 인쇄: 장마다 새 쪽, 그림은 줄여서 한 쪽에 ── */
+  @media print {
+    .toc { display: none; }
+    section { break-inside: avoid-page; margin-top: 36px; }
+    .scroll svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═════════ 머리말 ═════════ -->
+  <header>
+    <p class="eyebrow">설계 자료 · 초안</p>
+    <h1>엘컴화인 MES 설계도</h1>
+    <p class="lede">데이터가 누구에게서 들어와 어디에 쌓이고 어떻게 이어지는지, 시스템이 어떤 층으로 서는지, 화면이 어떤 메뉴로 나뉘는지를 그림 다섯 장과 표 두 개로 정리했다.</p>
+    <p class="meta">2026. 10 · 엘컴화인 MES 구축 프로젝트 기획(안) 기준 · 2안(전체개발)을 기본으로 그렸고, 1안(기존 유지 + 연계개발)에서 달라지는 곳은 점선으로 표시했다.</p>
+  </header>
+
+  <nav aria-label="목차">
+    <ol class="toc">
+      <li><a href="#context"><span>1</span>시스템 경계</a></li>
+      <li><a href="#dfd"><span>2</span>데이터흐름도</a></li>
+      <li><a href="#lineage"><span>3</span>Job-Lot-Roll 계보</a></li>
+      <li><a href="#arch"><span>4</span>아키텍처 구성도</a></li>
+      <li><a href="#ia"><span>5</span>IA 구성도</a></li>
+      <li><a href="#access"><span>6</span>역할과 채널</a></li>
+      <li><a href="#open"><span>7</span>확인 필요</a></li>
+    </ol>
+  </nav>
+
+  <!-- ═════════ 1. 시스템 경계 (DFD Level 0) ═════════ -->
+  <section id="context">
+    <p class="sec-label">1 · 시스템 경계 (DFD Level 0)</p>
+    <h2>MES는 사람 넷, 시스템 둘, 장치 하나와 데이터를 주고받는다</h2>
+    <p>가운데 상자가 이 프로젝트에서 만드는 범위다. 설비 PLC 실시간 수집, 비전 검사 연동, AI 분석은 범위 밖이라 그림에 없다.</p>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 960 424" role="img" aria-label="엘컴화인 MES와 주고받는 상대: 생산관리자, 현장 작업자, 품질 담당, 자재·출하 담당, ERP, 기존 설치형 MES, 라벨 프린터">
+          <defs>
+            <marker id="c-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+          </defs>
+
+          <!-- 가운데: 신규 MES -->
+          <rect class="bx-main" x="400" y="40" width="160" height="352"/>
+          <text class="t-h" x="480" y="206" text-anchor="middle">엘컴화인 MES</text>
+          <text class="t-s" x="480" y="228" text-anchor="middle">신규 웹 시스템</text>
+          <text class="t-s" x="480" y="246" text-anchor="middle">11개 모듈</text>
+
+          <!-- 왼쪽: 사람 넷. 윗줄 화살표 = MES로 들어가는 데이터, 아랫줄 = MES에서 나오는 데이터 -->
+          <rect class="bx" x="24" y="40" width="170" height="64"/>
+          <text class="t-b" x="109" y="68" text-anchor="middle">생산관리자</text>
+          <text class="t-s" x="109" y="86" text-anchor="middle">기준 · 지시 · 현황</text>
+          <path class="ln" d="M194 62H400" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="54" text-anchor="middle">기준정보, 인쇄 기준, 작업지시</text>
+          <path class="ln" d="M400 84H194" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="100" text-anchor="middle">실적 현황, LOT 추적 결과</text>
+
+          <rect class="bx" x="24" y="136" width="170" height="64"/>
+          <text class="t-b" x="109" y="164" text-anchor="middle">현장 작업자</text>
+          <text class="t-s" x="109" y="182" text-anchor="middle">POP · 스마트패드</text>
+          <path class="ln" d="M194 158H400" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="150" text-anchor="middle">시작·종료, 정지·폐기, 롤 스캔</text>
+          <path class="ln" d="M400 180H194" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="196" text-anchor="middle">작업지시, 롤 라벨</text>
+
+          <rect class="bx" x="24" y="232" width="170" height="64"/>
+          <text class="t-b" x="109" y="260" text-anchor="middle">품질 담당</text>
+          <text class="t-s" x="109" y="278" text-anchor="middle">입고검사 · 검사 · 조색</text>
+          <path class="ln" d="M194 254H400" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="246" text-anchor="middle">입고검사·검사 결과, 조색 기록</text>
+          <path class="ln" d="M400 276H194" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="292" text-anchor="middle">검사 이력, 불량 집계</text>
+
+          <rect class="bx" x="24" y="328" width="170" height="64"/>
+          <text class="t-b" x="109" y="356" text-anchor="middle">자재 · 출하 담당</text>
+          <text class="t-s" x="109" y="374" text-anchor="middle">입고 · 출하</text>
+          <path class="ln" d="M194 350H400" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="342" text-anchor="middle">입고 등록, 출하 등록·승인</text>
+          <path class="ln" d="M400 372H194" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="297" y="388" text-anchor="middle">원재료 LOT 라벨, COA</text>
+
+          <!-- 오른쪽: ERP (연계 미정이라 점선) -->
+          <rect class="bx-old" x="766" y="88" width="170" height="64"/>
+          <text class="t-b" x="851" y="116" text-anchor="middle">ERP</text>
+          <text class="t-s" x="851" y="134" text-anchor="middle">연계 범위 확인 필요</text>
+          <path class="ln ln-d" d="M560 120H766" marker-start="url(#c-ah)" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="663" y="112" text-anchor="middle">연계 방식·범위 미정</text>
+
+          <!-- 오른쪽: 기존 설치형 MES. 실선 = 2안, 점선 = 1안 -->
+          <rect class="bx-old" x="766" y="232" width="170" height="96"/>
+          <text class="t-b" x="851" y="262" text-anchor="middle">기존 설치형 MES</text>
+          <text class="t-s" x="851" y="282" text-anchor="middle">2안: 이관 후 종료</text>
+          <text class="t-s" x="851" y="300" text-anchor="middle">1안: 원장으로 유지</text>
+          <path class="ln" d="M766 262H560" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="663" y="254" text-anchor="middle">2안: 1회 이관</text>
+          <path class="ln ln-d" d="M766 298H560" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="663" y="314" text-anchor="middle">1안: 주기 수신 (읽기 전용)</text>
+          <text class="t-s" x="663" y="330" text-anchor="middle">기준정보, 작업지시, 과거 이력</text>
+
+          <!-- 오른쪽: 라벨 프린터 -->
+          <rect class="bx" x="766" y="344" width="170" height="48"/>
+          <text class="t-b" x="851" y="373" text-anchor="middle">라벨 프린터</text>
+          <path class="ln" d="M560 368H766" marker-end="url(#c-ah)"/>
+          <text class="t-s" x="663" y="360" text-anchor="middle">LOT · 롤 라벨</text>
+        </svg>
+      </div>
+      <figcaption>왼쪽 네 역할은 화살표 윗줄의 데이터를 넣고 아랫줄의 데이터를 받는다. 기존 MES와의 관계는 안에 따라 달라진다. 2안이면 한 번 옮기고 끝내며, 1안이면 계속 읽어 온다.</figcaption>
+      <ul class="legend">
+        <li><i class="lg-main"></i>신규 MES</li>
+        <li><i class="lg-old"></i>기존 자산</li>
+        <li><i class="lg-dash"></i>1안에서만 쓰거나 아직 정해지지 않은 흐름</li>
+      </ul>
+    </figure>
+  </section>
+
+  <!-- ═════════ 2. 데이터흐름도 (DFD Level 1) ═════════ -->
+  <section id="dfd">
+    <p class="sec-label">2 · 데이터흐름도 (DFD Level 1)</p>
+    <h2>프로세스 여덟 개가 저장소 여덟 개에 쓰고, 조회 두 개가 모두 읽는다</h2>
+    <p>프로세스끼리는 직접 주고받지 않는다. 각자 자기 저장소에 쓰고, 다음 공정은 Job-Lot-Roll 키로 앞 저장소를 참조한다. 그래서 어느 공정에서 시작해도 앞뒤를 따라갈 수 있다.</p>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1094 470" role="img" aria-label="입력 주체에서 프로세스 P1부터 P8, 저장소 D1부터 D8을 거쳐 LOT 추적과 실적 현황 조회로 이어지는 데이터 흐름">
+          <defs>
+            <marker id="d-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+          </defs>
+
+          <!-- 1행: 입력 주체. 같은 사람이 맡는 프로세스는 상자를 이어 붙였다 -->
+          <rect class="bx" x="24" y="24" width="254" height="32"/><text class="t-b" x="151" y="45" text-anchor="middle">생산관리자</text>
+          <rect class="bx" x="288" y="24" width="122" height="32"/><text class="t-b" x="349" y="45" text-anchor="middle">자재 담당</text>
+          <rect class="bx" x="420" y="24" width="386" height="32"/><text class="t-b" x="613" y="45" text-anchor="middle">현장 작업자</text>
+          <rect class="bx" x="816" y="24" width="122" height="32"/><text class="t-b" x="877" y="45" text-anchor="middle">품질 담당</text>
+          <rect class="bx" x="948" y="24" width="122" height="32"/><text class="t-b" x="1009" y="45" text-anchor="middle">출하 담당</text>
+
+          <!-- 2행: 들어가는 데이터 (글자) → 화살표 → 프로세스 → 화살표 → 저장소 → 조회 선 -->
+          <!-- 열 중심 x: 85, 217, 349, 481, 613, 745, 877, 1009 -->
+
+          <!-- P1 -->
+          <text class="t-s" x="85" y="76" text-anchor="middle">품목·고객·공정</text><text class="t-s" x="85" y="91" text-anchor="middle">판사양·잉크조성</text>
+          <path class="ln" d="M85 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="24" y="126" width="122" height="72"/>
+          <text class="t-b" x="85" y="148" text-anchor="middle">P1 기준정보</text><text class="t-b" x="85" y="165" text-anchor="middle">인쇄 기준</text><text class="t-s" x="85" y="186" text-anchor="middle">참조 없음</text>
+          <path class="ln" d="M85 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M146 238H24V282H146"/><text class="t-b" x="85" y="265" text-anchor="middle">D1 기준정보</text>
+          <path class="ln" d="M85 282V310"/>
+
+          <!-- P2 -->
+          <text class="t-s" x="217" y="76" text-anchor="middle">Job 등록</text><text class="t-s" x="217" y="91" text-anchor="middle">Job-Lot-Roll 매핑</text>
+          <path class="ln" d="M217 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="156" y="126" width="122" height="72"/>
+          <text class="t-b" x="217" y="148" text-anchor="middle">P2 작업지시</text><text class="t-b" x="217" y="165" text-anchor="middle">Job 매핑</text><text class="t-s" x="217" y="186" text-anchor="middle">참조 D1</text>
+          <path class="ln" d="M217 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M278 238H156V282H278"/><text class="t-b" x="217" y="265" text-anchor="middle">D2 작업지시</text>
+          <path class="ln" d="M217 282V310"/>
+
+          <!-- P3 -->
+          <text class="t-s" x="349" y="76" text-anchor="middle">입고·입고검사</text><text class="t-s" x="349" y="91" text-anchor="middle">원재료 LOT 스캔</text>
+          <path class="ln" d="M349 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="288" y="126" width="122" height="72"/>
+          <text class="t-b" x="349" y="148" text-anchor="middle">P3 자재 입고</text><text class="t-b" x="349" y="165" text-anchor="middle">입고검사</text><text class="t-s" x="349" y="186" text-anchor="middle">참조 D1</text>
+          <path class="ln" d="M349 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M410 238H288V282H410"/><text class="t-b" x="349" y="265" text-anchor="middle">D3 원재료 LOT</text>
+          <path class="ln" d="M349 282V310"/>
+
+          <!-- P4 -->
+          <text class="t-s" x="481" y="76" text-anchor="middle">색상값</text><text class="t-s" x="481" y="91" text-anchor="middle">배합비</text>
+          <path class="ln" d="M481 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="420" y="126" width="122" height="72"/>
+          <text class="t-b" x="481" y="148" text-anchor="middle">P4 조색 기록</text><text class="t-b" x="481" y="165" text-anchor="middle">배합·색상</text><text class="t-s" x="481" y="186" text-anchor="middle">참조 D2</text>
+          <path class="ln" d="M481 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M542 238H420V282H542"/><text class="t-b" x="481" y="265" text-anchor="middle">D4 조색 기록</text>
+          <path class="ln" d="M481 282V310"/>
+
+          <!-- P5: 생산 실적(D5)과 인쇄 롤(D6) 두 곳에 쓴다 → D6으로 가는 사선 화살표가 하나 더 있다 -->
+          <text class="t-s" x="613" y="76" text-anchor="middle">시작·종료·정지</text><text class="t-s" x="613" y="91" text-anchor="middle">폐기·자재 투입</text>
+          <path class="ln" d="M613 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="552" y="126" width="122" height="72"/>
+          <text class="t-b" x="613" y="148" text-anchor="middle">P5 생산 실적</text><text class="t-b" x="613" y="165" text-anchor="middle">인쇄</text><text class="t-s" x="613" y="186" text-anchor="middle">참조 D2·D3</text>
+          <path class="ln" d="M613 198V238" marker-end="url(#d-ah)"/>
+          <path class="ln" d="M654 198L706 238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M674 238H552V282H674"/><text class="t-b" x="613" y="265" text-anchor="middle">D5 생산 실적</text>
+          <path class="ln" d="M613 282V310"/>
+
+          <!-- P6 -->
+          <text class="t-s" x="745" y="76" text-anchor="middle">가공 실적</text><text class="t-s" x="745" y="91" text-anchor="middle">슬리팅·splice</text>
+          <path class="ln" d="M745 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="684" y="126" width="122" height="72"/>
+          <text class="t-b" x="745" y="148" text-anchor="middle">P6 후가공</text><text class="t-b" x="745" y="165" text-anchor="middle">슬리팅</text><text class="t-s" x="745" y="186" text-anchor="middle">참조 D2·D6</text>
+          <path class="ln" d="M745 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M806 238H684V282H806"/><text class="t-b" x="745" y="265" text-anchor="middle">D6 Roll·계보</text>
+          <path class="ln" d="M745 282V310"/>
+
+          <!-- P7 -->
+          <text class="t-s" x="877" y="76" text-anchor="middle">ΔE·불량 유형</text><text class="t-s" x="877" y="91" text-anchor="middle">불량 롤 번호</text>
+          <path class="ln" d="M877 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="816" y="126" width="122" height="72"/>
+          <text class="t-b" x="877" y="148" text-anchor="middle">P7 품질 검사</text><text class="t-b" x="877" y="165" text-anchor="middle">불량 기록</text><text class="t-s" x="877" y="186" text-anchor="middle">참조 D6</text>
+          <path class="ln" d="M877 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M938 238H816V282H938"/><text class="t-b" x="877" y="265" text-anchor="middle">D7 품질 검사</text>
+          <path class="ln" d="M877 282V310"/>
+
+          <!-- P8 -->
+          <text class="t-s" x="1009" y="76" text-anchor="middle">출하 등록·승인</text><text class="t-s" x="1009" y="91" text-anchor="middle">롤 스캔</text>
+          <path class="ln" d="M1009 98V126" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="948" y="126" width="122" height="72"/>
+          <text class="t-b" x="1009" y="148" text-anchor="middle">P8 출하</text><text class="t-b" x="1009" y="165" text-anchor="middle">출하 승인</text><text class="t-s" x="1009" y="186" text-anchor="middle">참조 D6·D7</text>
+          <path class="ln" d="M1009 198V238" marker-end="url(#d-ah)"/>
+          <path class="store" d="M1070 238H948V282H1070"/><text class="t-b" x="1009" y="265" text-anchor="middle">D8 출하</text>
+          <path class="ln" d="M1009 282V310"/>
+
+          <!-- 조회 선: 모든 저장소를 Job-Lot-Roll 키로 묶어 읽는다 -->
+          <path class="ln ln-a" d="M85 310H1009"/>
+          <text class="t-a" x="1070" y="328" text-anchor="end">Job-Lot-Roll 키로 조회</text>
+
+          <!-- P9, P10: 쓰지 않고 읽기만 하는 프로세스 -->
+          <path class="ln" d="M347 310V342" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="227" y="342" width="240" height="56"/>
+          <text class="t-b" x="347" y="366" text-anchor="middle">P9 LOT 추적</text><text class="t-s" x="347" y="384" text-anchor="middle">정방향 · 역방향 조회</text>
+          <path class="ln" d="M347 398V426" marker-end="url(#d-ah)"/>
+          <text class="t-s" x="347" y="446" text-anchor="middle">추적 결과: 생산관리자, 품질 담당</text>
+
+          <path class="ln" d="M747 310V342" marker-end="url(#d-ah)"/>
+          <rect class="bx" x="627" y="342" width="240" height="56"/>
+          <text class="t-b" x="747" y="366" text-anchor="middle">P10 실적 현황</text><text class="t-s" x="747" y="384" text-anchor="middle">생산 · 품질 · 납기 집계</text>
+          <path class="ln" d="M747 398V426" marker-end="url(#d-ah)"/>
+          <text class="t-s" x="747" y="446" text-anchor="middle">현황: 생산관리자, 현황판, 모바일</text>
+        </svg>
+      </div>
+      <figcaption>위에서 아래로 읽는다. 사람이 넣은 데이터가 프로세스를 거쳐 저장소(오른쪽이 열린 상자)에 쌓인다. 인쇄(P5)는 생산 실적과 인쇄 롤을 함께 만들기 때문에 D5와 D6 두 곳에 쓴다. 1안에서는 P1의 기준정보와 P2의 Job 등록을 기존 MES가 맡고, 신규 MES는 D1과 D2를 주기적으로 받아 온다.</figcaption>
+    </figure>
+
+    <h3>프로세스별 입력과 출력</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>프로세스</th><th>입력 주체</th><th>입력</th><th>쓰는 저장소</th><th>참조</th><th>출력물</th></tr></thead>
+        <tbody>
+          <tr><td>P1 기준정보 · 인쇄 기준</td><td>생산관리자</td><td>품목, 고객, 공정, 설비, 불량코드, 판사양, 아니록스, 잉크조성</td><td>D1</td><td>없음</td><td>없음</td></tr>
+          <tr><td>P2 작업지시</td><td>생산관리자</td><td>Job 등록, Job-Lot-Roll 매핑</td><td>D2</td><td>D1</td><td>작업지시서</td></tr>
+          <tr><td>P3 자재 입고</td><td>자재 담당, 품질 담당</td><td>입고 등록, 입고검사 결과</td><td>D3</td><td>D1</td><td>원재료 LOT 라벨</td></tr>
+          <tr><td>P4 조색 기록</td><td>현장 작업자</td><td>색상값, 배합비</td><td>D4</td><td>D2</td><td>없음</td></tr>
+          <tr><td>P5 생산 실적 (인쇄)</td><td>현장 작업자</td><td>작업 시작·종료, 정지, 폐기, 자재 투입 스캔</td><td>D5, D6</td><td>D2, D3</td><td>인쇄 롤 라벨</td></tr>
+          <tr><td>P6 후가공 · 슬리팅</td><td>현장 작업자</td><td>가공 실적, 슬리팅 분할, splice</td><td>D6</td><td>D2, D6</td><td>롤 라벨</td></tr>
+          <tr><td>P7 품질 검사</td><td>품질 담당</td><td>ΔE, 불량 유형·위치, 불량 롤 번호</td><td>D7</td><td>D6</td><td>불량 유형별 집계</td></tr>
+          <tr><td>P8 출하</td><td>출하 담당</td><td>출하 등록, 출하 승인, 롤 스캔</td><td>D8</td><td>D6, D7</td><td>COA</td></tr>
+          <tr><td>P9 LOT 추적</td><td>생산관리자, 품질 담당</td><td>LOT 번호 또는 롤 번호</td><td>없음</td><td>D3, D5, D6, D7, D8</td><td>정방향·역방향 추적 결과</td></tr>
+          <tr><td>P10 실적 현황</td><td>생산관리자</td><td>기간, 품목</td><td>없음</td><td>D2, D5, D7, D8</td><td>생산·품질·납기 집계, 현황판</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═════════ 3. Job-Lot-Roll 계보 ═════════ -->
+  <section id="lineage">
+    <p class="sec-label">3 · Job-Lot-Roll 계보</p>
+    <h2>롤이 합쳐지고 나뉘어도 부모와 자식의 관계만 남기면 끝까지 이어진다</h2>
+    <p>D6 Roll·계보 저장소가 담는 내용이다. 롤 하나가 만들어질 때마다 어떤 롤이나 원재료 LOT에서 나왔는지를 한 줄씩 기록한다. 추적은 이 기록을 따라가는 조회일 뿐이다.</p>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 960 330" role="img" aria-label="원재료 LOT에서 인쇄 롤, 후가공 롤, 슬리팅 롤을 거쳐 출하 LOT으로 이어지는 계보 예시">
+          <defs>
+            <marker id="l-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+            <marker id="l-ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0 0L10 5L0 10z"/></marker>
+          </defs>
+
+          <!-- 열 머리: 공정과 테이블 이름 -->
+          <text class="t-b" x="89" y="28" text-anchor="middle">입고</text><text class="t-s" x="89" y="44" text-anchor="middle">material_lot</text>
+          <text class="t-b" x="279" y="28" text-anchor="middle">인쇄</text><text class="t-s" x="279" y="44" text-anchor="middle">roll</text>
+          <text class="t-b" x="469" y="28" text-anchor="middle">후가공</text><text class="t-s" x="469" y="44" text-anchor="middle">roll</text>
+          <text class="t-b" x="659" y="28" text-anchor="middle">슬리팅</text><text class="t-s" x="659" y="44" text-anchor="middle">roll</text>
+          <text class="t-b" x="859" y="28" text-anchor="middle">출하</text><text class="t-s" x="859" y="44" text-anchor="middle">shipment</text>
+
+          <!-- 원재료 LOT -->
+          <rect class="bx" x="24" y="84" width="130" height="44"/><text class="t" x="89" y="110" text-anchor="middle">원재료 LOT ①</text>
+          <rect class="bx" x="24" y="164" width="130" height="44"/><text class="t" x="89" y="190" text-anchor="middle">원재료 LOT ②</text>
+
+          <!-- 인쇄 롤 두 개는 같은 Job에 속한다 -->
+          <rect class="bx-grp" x="204" y="70" width="150" height="152"/>
+          <text class="t-s" x="279" y="238" text-anchor="middle">같은 Job (작업지시)</text>
+          <rect class="bx" x="214" y="84" width="130" height="44"/><text class="t" x="279" y="110" text-anchor="middle">인쇄 Roll ①</text>
+          <rect class="bx" x="214" y="164" width="130" height="44"/><text class="t" x="279" y="190" text-anchor="middle">인쇄 Roll ②</text>
+
+          <!-- 후가공 롤: 두 롤을 이어 붙임 (N:1) -->
+          <rect class="bx" x="404" y="124" width="130" height="44"/><text class="t" x="469" y="150" text-anchor="middle">후가공 Roll</text>
+
+          <!-- 슬리팅 롤: 한 롤을 셋으로 나눔 (1:N) -->
+          <rect class="bx" x="594" y="64" width="130" height="44"/><text class="t" x="659" y="90" text-anchor="middle">슬리팅 Roll ①</text>
+          <rect class="bx" x="594" y="124" width="130" height="44"/><text class="t" x="659" y="150" text-anchor="middle">슬리팅 Roll ②</text>
+          <rect class="bx" x="594" y="184" width="130" height="44"/><text class="t" x="659" y="210" text-anchor="middle">슬리팅 Roll ③</text>
+          <text class="t-s" x="734" y="210">재고</text>
+
+          <!-- 출하 LOT -->
+          <rect class="bx" x="784" y="88" width="150" height="56"/>
+          <text class="t-b" x="859" y="112" text-anchor="middle">출하 LOT</text><text class="t-s" x="859" y="130" text-anchor="middle">COA 발행</text>
+
+          <!-- 계보 선: 부모 → 자식 -->
+          <path class="ln" d="M154 106H214" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M154 114L214 178" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M154 186H214" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M344 106L404 138" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M344 186L404 154" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M534 140L594 88" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M534 146H594" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M534 152L594 204" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M724 86L784 108" marker-end="url(#l-ah)"/>
+          <path class="ln" d="M724 146L784 124" marker-end="url(#l-ah)"/>
+
+          <!-- 관계 이름: 열 사이 틈 아래 -->
+          <text class="t-s" x="184" y="258" text-anchor="middle">자재 투입</text>
+          <text class="t-s" x="374" y="258" text-anchor="middle">splice N:1</text>
+          <text class="t-s" x="564" y="258" text-anchor="middle">슬리팅 1:N</text>
+          <text class="t-s" x="754" y="258" text-anchor="middle">출하</text>
+
+          <!-- 추적 방향 -->
+          <path class="ln" d="M24 290H934" marker-end="url(#l-ah)"/>
+          <text class="t-s" x="24" y="282">정방향 추적: 원재료 LOT에서 출하 롤까지</text>
+          <path class="ln ln-a" d="M934 316H24" marker-end="url(#l-ah-a)"/>
+          <text class="t-a" x="934" y="308" text-anchor="end">역방향 추적: 출하 롤에서 원재료 LOT까지</text>
+        </svg>
+      </div>
+      <figcaption>예시다. 원재료 LOT ①은 인쇄 롤 두 개에 들어갔고, 두 인쇄 롤은 후가공에서 하나로 이어졌다가 슬리팅에서 셋으로 나뉘었다. 화살표 하나가 roll_genealogy 테이블의 한 줄이다. 클레임이 들어오면 출하 롤에서 화살표를 거꾸로 따라간다.</figcaption>
+    </figure>
+    <p class="key">완료 기준: 실제 생산 LOT으로 출하 롤 하나에서 원재료 LOT까지 거슬러 올라갈 수 있어야 한다.</p>
+  </section>
+
+  <!-- ═════════ 4. 아키텍처 구성도 ═════════ -->
+  <section id="arch">
+    <p class="sec-label">4 · 아키텍처 구성도</p>
+    <h2>웹 애플리케이션 하나와 DB 하나로 구성하고, 바깥과는 세 곳에서만 닿는다</h2>
+    <p>화면은 네 가지 채널로 열리지만 뒤에서는 같은 애플리케이션과 같은 DB를 쓴다. 바깥과 닿는 곳은 라벨 프린터, ERP, 기존 MES뿐이다.</p>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 960 480" role="img" aria-label="사용자 채널 네 가지, 신규 MES 웹 애플리케이션, MES DB의 세 층과 외부 시스템 세 가지">
+          <defs>
+            <marker id="a-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+          </defs>
+
+          <!-- 1층: 사용자 채널 -->
+          <text class="t-s" x="24" y="22">사용자 채널</text>
+          <rect class="bx" x="24" y="34" width="164" height="58"/><text class="t-b" x="106" y="59" text-anchor="middle">관리자 Web</text><text class="t-s" x="106" y="77" text-anchor="middle">PC 브라우저</text>
+          <rect class="bx" x="200" y="34" width="164" height="58"/><text class="t-b" x="282" y="59" text-anchor="middle">현장 POP · 스마트패드</text><text class="t-s" x="282" y="77" text-anchor="middle">바코드 스캐너 연결</text>
+          <rect class="bx" x="376" y="34" width="164" height="58"/><text class="t-b" x="458" y="59" text-anchor="middle">모바일</text><text class="t-s" x="458" y="77" text-anchor="middle">조회 중심</text>
+          <rect class="bx" x="552" y="34" width="164" height="58"/><text class="t-b" x="634" y="59" text-anchor="middle">현황판</text><text class="t-s" x="634" y="77" text-anchor="middle">현장 대형 화면</text>
+          <path class="ln" d="M106 92V128" marker-end="url(#a-ah)"/>
+          <path class="ln" d="M282 92V128" marker-end="url(#a-ah)"/>
+          <path class="ln" d="M458 92V128" marker-end="url(#a-ah)"/>
+          <path class="ln" d="M634 92V128" marker-end="url(#a-ah)"/>
+          <text class="t-s" x="644" y="114">HTTPS</text>
+
+          <!-- 2층: 애플리케이션 -->
+          <rect class="bx-main" x="24" y="128" width="692" height="226"/>
+          <text class="t-h" x="40" y="153">신규 MES 웹 애플리케이션</text>
+          <rect class="bx" x="40" y="164" width="660" height="36"/>
+          <text class="t" x="56" y="187">공통: 로그인 · 역할별 권한, 접근 로그</text>
+
+          <rect class="bx" x="40" y="212" width="156" height="126"/>
+          <text class="t-b" x="52" y="234">기준 · 지시 · 실적</text>
+          <text class="t-s" x="52" y="254">기준정보</text><text class="t-s" x="52" y="272">인쇄 기준</text><text class="t-s" x="52" y="290">작업지시</text><text class="t-s" x="52" y="308">생산 실적 (POP)</text>
+
+          <rect class="bx" x="208" y="212" width="156" height="126"/>
+          <text class="t-b" x="220" y="234">입고 · 조색 · 품질</text>
+          <text class="t-s" x="220" y="254">자재 · 입고</text><text class="t-s" x="220" y="272">조색 기록</text><text class="t-s" x="220" y="290">품질 검사 기록</text>
+
+          <rect class="bx" x="376" y="212" width="156" height="126"/>
+          <text class="t-b" x="388" y="234">이력 · 출하 · 집계</text>
+          <text class="t-s" x="388" y="254">후가공 · 슬리팅 롤 이력</text><text class="t-s" x="388" y="272">출하</text><text class="t-s" x="388" y="290">LOT 추적</text><text class="t-s" x="388" y="308">실적 현황</text>
+
+          <rect class="bx" x="544" y="212" width="156" height="126"/>
+          <text class="t-b" x="556" y="234">연계 · 출력</text>
+          <text class="t-s" x="556" y="254">데이터 이관 · 연계</text><text class="t-s" x="556" y="272">라벨 · COA 출력</text><text class="t-s" x="556" y="290">ERP 연계</text>
+
+          <!-- 3층: 데이터 -->
+          <text class="t-s" x="24" y="384">데이터</text>
+          <path class="ln" d="M200 354V392" marker-start="url(#a-ah)" marker-end="url(#a-ah)"/>
+          <text class="t-s" x="210" y="378">저장 · 조회</text>
+          <rect class="bx" x="40" y="392" width="320" height="64"/>
+          <text class="t-b" x="200" y="419" text-anchor="middle">MES DB</text><text class="t-s" x="200" y="438" text-anchor="middle">RDBMS · 저장소 D1~D8 · Job-Lot-Roll 키</text>
+          <path class="ln" d="M360 424H396" marker-end="url(#a-ah)"/>
+          <rect class="bx" x="396" y="392" width="304" height="64"/>
+          <text class="t-b" x="548" y="419" text-anchor="middle">백업 저장소</text><text class="t-s" x="548" y="438" text-anchor="middle">정기 백업 · 복구</text>
+
+          <!-- 오른쪽: 바깥과 닿는 세 곳 -->
+          <text class="t-s" x="772" y="128">외부 시스템 · 장치</text>
+          <rect class="bx" x="772" y="140" width="164" height="58"/><text class="t-b" x="854" y="165" text-anchor="middle">라벨 프린터</text><text class="t-s" x="854" y="183" text-anchor="middle">LOT · 롤 라벨</text>
+          <path class="ln" d="M716 169H772" marker-end="url(#a-ah)"/>
+
+          <rect class="bx-old" x="772" y="226" width="164" height="58"/><text class="t-b" x="854" y="251" text-anchor="middle">ERP</text><text class="t-s" x="854" y="269" text-anchor="middle">연계 방식 확인 필요</text>
+          <path class="ln ln-d" d="M716 255H772" marker-start="url(#a-ah)" marker-end="url(#a-ah)"/>
+
+          <rect class="bx-old" x="772" y="312" width="164" height="76"/><text class="t-b" x="854" y="337" text-anchor="middle">기존 설치형 MES</text><text class="t-s" x="854" y="355" text-anchor="middle">2안: 1회 이관</text><text class="t-s" x="854" y="372" text-anchor="middle">1안: 읽기 전용 연계</text>
+          <path class="ln" d="M772 340H716" marker-end="url(#a-ah)"/>
+        </svg>
+      </div>
+      <figcaption>논리 구성이다. 기술 스택과 운영 환경(사내 서버 또는 클라우드)은 아직 정하지 않았고 설계 단계에서 확정한다. 서버 대수, 망 분리, 방화벽 위치를 담는 물리 구성도는 운영 환경이 정해진 뒤에 그린다.</figcaption>
+      <ul class="legend">
+        <li><i class="lg-main"></i>신규 MES</li>
+        <li><i class="lg-old"></i>기존 자산</li>
+        <li><i class="lg-dash"></i>아직 정해지지 않은 연계</li>
+      </ul>
+    </figure>
+
+    <h3>구성 요소</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>구성 요소</th><th>구성</th><th>역할</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr><td>사용자 채널</td><td>관리자 Web, 현장 POP·스마트패드, 모바일, 현황판</td><td>실적 입력, 조회, 승인</td><td>신규</td></tr>
+          <tr><td>웹 애플리케이션</td><td>11개 모듈, 공통 기능, 연계·출력</td><td>업무 처리, Job-Lot-Roll 키 부여</td><td>신규</td></tr>
+          <tr><td>MES DB</td><td>RDBMS</td><td>기준정보, 실적, 이력 저장</td><td>신규</td></tr>
+          <tr><td>백업 저장소</td><td>정기 백업</td><td>생산·품질·LOT 데이터 복구</td><td>신규</td></tr>
+          <tr><td>현장 장치</td><td>바코드 스캐너, 라벨 프린터</td><td>원재료 LOT과 롤 식별</td><td>보유 여부 확인 필요</td></tr>
+          <tr><td>ERP</td><td>연계 방식 확인 필요</td><td>연계 범위는 분석 단계에서 확정</td><td>기존</td></tr>
+          <tr><td>기존 설치형 MES</td><td>기준정보·작업지시 원장</td><td>2안이면 이관 후 종료, 1안이면 읽기 전용 연계</td><td>기존</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═════════ 5. IA 구성도 ═════════ -->
+  <section id="ia">
+    <p class="sec-label">5 · IA 구성도 (메뉴 구조)</p>
+    <h2>대메뉴 12개를 일하는 순서대로 네 묶음으로 나눈다</h2>
+    <p>오른쪽 숫자는 FP산정서의 기능 수다(2안 기준, 합계 94개). 강조색 이름 두 개는 1안이면 기존 MES에서 받아 조회만 하는 메뉴다.</p>
+
+    <div class="ia" role="img" aria-label="엘컴화인 MES 메뉴 구조: 기준·지시, 현장 실행, 품질·출하, 조회·관리 네 묶음 아래 대메뉴 12개">
+      <div class="ia-root">엘컴화인 MES<small>대메뉴 12 · 중메뉴 32</small></div>
+      <div class="ia-groups">
+
+        <div class="ia-group">
+          <p class="ia-gname">기준 · 지시</p>
+          <div class="ia-menu legacy"><h4>기준정보 관리 <span>20</span></h4><ul><li>품목 관리</li><li>고객 관리</li><li>공정 관리</li><li>설비 관리</li><li>불량코드 관리</li></ul></div>
+          <div class="ia-menu"><h4>인쇄 기준 관리 <span>12</span></h4><ul><li>판사양 관리</li><li>아니록스 관리</li><li>잉크조성 관리</li></ul></div>
+          <div class="ia-menu legacy"><h4>작업지시 관리 <span>7</span></h4><ul><li>작업지시</li><li>Job-Lot-Roll 매핑</li></ul></div>
+        </div>
+
+        <div class="ia-group">
+          <p class="ia-gname">현장 실행</p>
+          <div class="ia-menu"><h4>생산 실적 (POP) <span>8</span></h4><ul><li>작업 실적</li><li>정지 · 폐기</li><li>롤 라벨</li></ul></div>
+          <div class="ia-menu"><h4>자재 · 입고 <span>8</span></h4><ul><li>입고</li><li>입고검사</li><li>원재료 LOT</li><li>자재 투입</li></ul></div>
+          <div class="ia-menu"><h4>조색 기록 <span>5</span></h4><ul><li>조색 기록</li></ul></div>
+          <div class="ia-menu"><h4>후가공 · 슬리팅 롤 이력 <span>7</span></h4><ul><li>후가공</li><li>슬리팅</li><li>롤 이력</li></ul></div>
+        </div>
+
+        <div class="ia-group">
+          <p class="ia-gname">품질 · 출하</p>
+          <div class="ia-menu"><h4>품질 검사 기록 <span>6</span></h4><ul><li>검사 결과</li><li>불량 집계</li></ul></div>
+          <div class="ia-menu"><h4>출하 <span>7</span></h4><ul><li>출하</li><li>출하 승인</li><li>COA</li></ul></div>
+        </div>
+
+        <div class="ia-group">
+          <p class="ia-gname">조회 · 관리</p>
+          <div class="ia-menu"><h4>LOT 추적 <span>3</span></h4><ul><li>추적 (정방향, 역방향, LOT 검색)</li></ul></div>
+          <div class="ia-menu"><h4>실적 현황 <span>4</span></h4><ul><li>집계 (생산, 품질, 납기)</li><li>현황판</li></ul></div>
+          <div class="ia-menu"><h4>시스템 관리 <span>7</span></h4><ul><li>사용자</li><li>권한</li><li>로그</li></ul></div>
+        </div>
+
+      </div>
+    </div>
+    <p style="margin-top:14px; color: var(--muted); font-size: 13px;">데이터 이관(2안, 6개 기능)과 기준정보·작업지시 수신(1안, 3개 기능)은 화면 메뉴가 아니라 배치 작업이라 이 그림에 넣지 않았다.</p>
+  </section>
+
+  <!-- ═════════ 6. 역할과 채널 ═════════ -->
+  <section id="access">
+    <p class="sec-label">6 · 역할과 채널</p>
+    <h2>입력은 그 일을 하는 역할에만 열고, 나머지는 조회로 둔다</h2>
+    <p>기획서의 계정 구분(관리자, 생산, 품질, 현장)을 대메뉴에 대입한 제안안이다. 실제 권한은 요구사항 분석에서 현업과 함께 확정한다.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>대메뉴</th><th>관리자</th><th>생산</th><th>품질</th><th>현장</th><th>주로 쓰는 채널</th></tr></thead>
+        <tbody>
+          <tr><td>기준정보 관리</td><td class="w">입력</td><td>조회</td><td>조회</td><td class="n">없음</td><td>관리자 Web</td></tr>
+          <tr><td>인쇄 기준 관리</td><td class="w">입력</td><td class="w">입력</td><td>조회</td><td>조회</td><td>관리자 Web</td></tr>
+          <tr><td>작업지시 관리</td><td class="w">입력</td><td class="w">입력</td><td>조회</td><td>조회</td><td>관리자 Web</td></tr>
+          <tr><td>생산 실적 (POP)</td><td>조회</td><td class="w">입력</td><td>조회</td><td class="w">입력</td><td>현장 POP</td></tr>
+          <tr><td>자재 · 입고</td><td>조회</td><td class="w">입력</td><td class="w">입력 (입고검사)</td><td class="w">입력</td><td>현장 POP, 관리자 Web</td></tr>
+          <tr><td>조색 기록</td><td>조회</td><td>조회</td><td class="w">입력</td><td class="w">입력</td><td>현장 POP</td></tr>
+          <tr><td>후가공 · 슬리팅 롤 이력</td><td>조회</td><td class="w">입력</td><td>조회</td><td class="w">입력</td><td>현장 POP</td></tr>
+          <tr><td>품질 검사 기록</td><td>조회</td><td>조회</td><td class="w">입력</td><td>조회</td><td>관리자 Web, 현장 POP</td></tr>
+          <tr><td>출하</td><td class="w">입력 (승인)</td><td class="w">입력</td><td>조회</td><td class="w">입력</td><td>현장 POP, 관리자 Web</td></tr>
+          <tr><td>LOT 추적</td><td>조회</td><td>조회</td><td>조회</td><td class="n">없음</td><td>관리자 Web, 모바일</td></tr>
+          <tr><td>실적 현황</td><td>조회</td><td>조회</td><td>조회</td><td>조회</td><td>관리자 Web, 현황판, 모바일</td></tr>
+          <tr><td>시스템 관리</td><td class="w">입력</td><td class="n">없음</td><td class="n">없음</td><td class="n">없음</td><td>관리자 Web</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═════════ 7. 확인 필요 ═════════ -->
+  <section id="open">
+    <p class="sec-label">7 · 확인 필요</p>
+    <h2>아래가 정해지면 그림에서 점선과 "확인 필요"가 사라진다</h2>
+    <ul class="checks">
+      <li><b>1안 / 2안 판정</b>기존 MES의 실제 사용 메뉴와 데이터 접근 경로. 그림 1, 4의 기존 MES 연결선이 실선 하나로 정리된다.</li>
+      <li><b>ERP 연계</b>연계할 데이터와 방식. 그림 1, 4의 ERP 연결선과 "ERP 연계" 기능 범위가 정해진다.</li>
+      <li><b>운영 환경</b>사내 서버인지 클라우드인지. 정해지면 물리 구성도를 추가한다.</li>
+      <li><b>현장 장치</b>바코드 스캐너와 라벨 프린터의 보유 여부와 규격, 롤 바코드 사용 여부.</li>
+      <li><b>채번 규칙</b>작업지시 번호와 LOT 번호의 현재 규칙. Job-Lot-Roll 키 설계의 전제다.</li>
+      <li><b>역할 구분</b>관리자, 생산, 품질, 현장 네 역할로 충분한지, 자재와 출하를 따로 둘지.</li>
+      <li><b>범위 경계</b>LOT 추적과 실적 현황을 이 프로젝트에 둘지. 설비 자동 수집과 AI 분석은 범위 밖으로 두었다.</li>
+    </ul>
+  </section>
+
+  <footer>
+    엘컴화인 MES 구축 프로젝트 · 설계 자료 초안 · 모듈 구성, 역할 권한, 저장소 구분은 요구사항 확정 전의 제안안이다.
+  </footer>
+</div>
+</body>
+</html>

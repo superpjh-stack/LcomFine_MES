@@ -1,0 +1,32 @@
+{# 공통 로그인 화면 (아키텍트). `?device=pop|mobile|board` 로 열면 그 채널로 세션이 고정된다 (D-19). #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 · {{ system_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
+</head>
+<body class="login-body ch-{{ login_device or 'web' }}">
+<div class="login-wrap">
+  <div class="login-card">
+    <h1>{{ system_name }}</h1>
+    <p class="sub">Job-Lot-Roll 계보 · {{ nav.DEVICE_CHANNEL[login_device or 'web'] }}</p>
+    {% if message %}<p class="err">{{ message }}</p>{% endif %}
+    <form method="post" action="/login" id="login-form">
+      <input type="hidden" name="next" value="{{ next or '' }}">
+      <input type="hidden" name="device" value="{{ login_device or 'web' }}">
+      <label>아이디<input type="text" name="login_id" autocomplete="username" required autofocus value="{{ login_id or '' }}"></label>
+      <label>비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
+      <div class="login-actions">
+        <button class="btn btn-primary" type="submit">로그인</button>
+      </div>
+    </form>
+    <ul class="notes">
+      <li>자동 로그아웃 {{ settings.session_idle_label }}</li>
+      <li>비밀번호 초기화는 관리자가 시스템 관리 &gt; 사용자에서 한다.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

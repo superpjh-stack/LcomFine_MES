@@ -1,0 +1,112 @@
+{# 공통 레이아웃 — 헤더 / 좌측 메뉴(묶음 4 > 대메뉴 12 > 중메뉴 32, 권한 없음은 숨김) / 본문 / 우측 계약 패널.
+   채널(D-19): body 에 ch-web · ch-pop · ch-mobile · ch-board 가 붙는다. POP 은 터치용 확대, 현황판은 자동 새로고침.
+   개발자는 {% block search %} {% block grid %} {% block actions %} 를 채우거나 {% block body %} 를 통째로 바꾼다. #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if device == 'board' %}<meta http-equiv="refresh" content="{{ settings.board_refresh_seconds }}">{% endif %}
+<title>{{ screen_name or system_name }} · {{ system_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
+{% block head %}{% endblock %}
+</head>
+<body class="ch-{{ device }}" data-device="{{ device }}" data-grid-page-size="{{ grid_page_size }}">
+<header class="hdr">
+  <div class="hdr-l">
+    <a class="brand" href="/">{{ system_name }}</a>
+    {% if screen_name %}
+    <span class="crumb">{% if menu_name and menu_name != '공통' %}{{ menu_name }} &gt; {% endif %}<strong>{{ screen_name }}</strong>{% if screen and not screen.common %} <code>{{ screen_id }}</code>{% endif %}</span>
+    {% endif %}
+  </div>
+  <div class="hdr-r">
+    <span class="meta">{{ '마지막 갱신' if device == 'board' else '현재 일시' }} <b id="refreshed-at">{{ now }}</b></span>
+    <span class="meta">채널 <b>{{ channel }}</b></span>
+    {% if user %}
+    <span class="meta user">{{ user.user_name }} <em>{{ user.role_name }}</em></span>
+    <form method="post" action="/logout" class="inline"><button class="btn btn-ghost">로그아웃</button></form>
+    {% else %}
+    <a class="btn btn-ghost" href="/login">로그인</a>
+    {% endif %}
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="side" aria-label="메뉴">
+    {% for node in menus %}
+    <div class="menu-section">
+      <p class="menu-gname">{{ node.group }}</p>
+      {% for m in node.menus %}
+      <div class="menu-group{% if m.code == active_menu %} on{% endif %}">
+        <div class="menu-head">{{ m.name }}<span class="cnt">{{ m.screens|length }}</span></div>
+        <ul>
+          {% for s in m.screens %}
+          <li><a href="{{ s.path }}"{% if s.screen_id == screen_id %} class="cur"{% endif %}>{{ s.name }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    {% if not menus %}
+    <div class="menu-group"><div class="menu-head">메뉴</div><ul><li><a href="/login">로그인이 필요합니다</a></li></ul></div>
+    {% endif %}
+  </nav>
+
+  <main class="main">
+    {% block body %}
+    <section class="panel search">
+      <h2>조회 조건</h2>
+      <form class="search-form" method="get" id="screen-search">
+        {% block search %}{% endblock %}
+      </form>
+    </section>
+
+    <section class="panel grid-panel">
+      {% block grid %}{% endblock %}
+    </section>
+
+    <section class="actions">
+      {% block actions %}
+      <button type="submit" form="screen-search" class="btn btn-primary">조회</button>
+      {% endblock %}
+    </section>
+    {% endblock %}
+  </main>
+
+  <aside class="desc">
+    <h2>계약</h2>
+    {% if functions %}
+    <div class="desc-block">
+      <h3>이 화면의 기능 <small>contracts/function-list.md</small></h3>
+      <ul>
+        {% for it in functions %}
+        <li{% if not it.allowed %} class="off" title="이 역할은 할 수 없는 기능"{% endif %}><code>{{ it.fn.id }}</code> {{ it.fn.name }} <small>{{ it.fn.kind }}</small></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="desc-block">
+      <h3>주로 쓰는 채널</h3>
+      <ul>{% for c in screen.channels %}<li>{{ c }}</li>{% endfor %}</ul>
+    </div>
+    {% else %}
+    <p class="empty">이 화면에 묶인 기능 줄이 없다</p>
+    {% endif %}
+  </aside>
+</div>
+
+{% if flash %}
+<script type="application/json" id="flash-data">{{ flash | tojson }}</script>
+{% endif %}
+<div class="popup-layer" id="popup-layer" hidden>
+  <div class="popup" role="dialog" aria-modal="true">
+    <h3 id="popup-title">알림</h3>
+    <div id="popup-body"></div>
+    <div class="popup-actions"><button type="button" class="btn" data-popup-close>확인</button></div>
+  </div>
+</div>
+
+<footer class="ftr">{{ system_name }} · 자동 로그아웃 {{ settings.session_idle_label }}</footer>
+<script src="/static/app.js?v={{ asset_v }}"></script>
+</body>
+</html>

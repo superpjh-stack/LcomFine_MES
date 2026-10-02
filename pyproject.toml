@@ -1,0 +1,31 @@
+[project]
+name = "lcomfine-mes"
+version = "0.1.0"
+description = "엘컴화인 MES — Job-Lot-Roll 계보 (FastAPI + Jinja2 + psycopg)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
+    "python-multipart>=0.0.20",
+    "itsdangerous>=2.2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "httpx>=0.28"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
+markers = [
+    "fn(function_id): 이 테스트가 검증하는 기능 ID (contracts/function-list.md) — G-02 추적",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lcomfine"]

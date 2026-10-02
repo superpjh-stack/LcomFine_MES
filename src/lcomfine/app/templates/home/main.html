@@ -1,0 +1,23 @@
+{# 메인 — 묶음 4 > 대메뉴 > 중메뉴 바로가기. 권한 `없음` 인 대메뉴는 나오지 않는다. (개발1 이 이어받아 채운다) #}
+{% extends "base.html" %}
+{% block body %}
+<section class="panel">
+  <h2>{{ user.user_name }} <small>{{ user.role_name }} · {{ channel }}</small></h2>
+  {% if not menus %}
+  <p class="empty">열 수 있는 메뉴가 없다 — 권한 표(시스템 관리 &gt; 권한)를 확인한다.</p>
+  {% endif %}
+</section>
+{% for node in menus %}
+<section class="panel">
+  <h2>{{ node.group }}</h2>
+  <div class="cards">
+    {% for m in node.menus %}
+    <div class="card">
+      <h3>{{ m.name }} <small>{{ levels[m.code] }}</small></h3>
+      <ul>{% for s in m.screens %}<li><a href="{{ s.path }}">{{ s.name }}</a></li>{% endfor %}</ul>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
