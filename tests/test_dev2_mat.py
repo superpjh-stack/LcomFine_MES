@@ -49,6 +49,9 @@ def test_receipt_creates_one_material_lot_waiting_for_inspection(w):
     ({"item_code": "RM", "received_qty": "0"}, "입고 수량"),
     ({"item_code": "RM", "received_qty": "-3"}, "입고 수량"),
     ({"item_code": "RM", "received_qty": "열 개"}, "입고 수량"),
+    ({"item_code": "RM", "received_qty": "1e15"}, "입고 수량"),                # 컬럼 범위 밖 (numeric(14,3)) — DEF-QA1-002
+    ({"item_code": "RM", "received_qty": "100000000000"}, "입고 수량"),
+    ({"item_code": "RM", "received_qty": "0.0004"}, "입고 수량"),              # 담기면 0
 ])
 def test_receipt_validation_is_422(w, data, name):
     data = {k: {"FG": w.item_code, "RM": w.raw_code}.get(v, v) for k, v in data.items()}
@@ -204,6 +207,9 @@ def test_input_scan_rejects_bad_lots_and_does_not_block_next_scan(w):
     assert err(c.post(INP, data={"work_id": "999999999", "lot_no": good}))["message"] == "없는 작업 실적입니다"
     assert err(c.post(INP, data={"lot_no": good}))["fields"][0]["name"] == "작업 실적"
     assert err(c.post(INP, data={"work_id": str(work_id), "lot_no": w.good_lot(), "input_qty": "0"}))["fields"][0]["name"] == "투입량"
+    body = err(c.post(INP, data={"work_id": str(work_id), "lot_no": w.good_lot(), "input_qty": "1e15"}))   # 컬럼 범위 밖 — DEF-QA1-002
+    assert body["message"] == "투입량이(가) 너무 큽니다" and body["fields"][0]["name"] == "투입량"
+    assert count("select count(*) as n from material_input where work_result_id = %s", (work_id,)) == 1
     finish(work_id)                                                                         # 끝난 작업에는 투입 불가
     assert "진행 중인 작업에만" in err(scan(w.good_lot()))["message"]
     assert count("select count(*) as n from material_input where work_result_id = %s", (work_id,)) == 1

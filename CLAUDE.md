@@ -32,8 +32,9 @@
 
 ## 명령
 
-`make setup` · `db-schema` · `db-seed` · `db-reset` · `contracts`(렌더본 다시 찍기) · `run` · `test` · `check-routes` · `check-trace` · `check-schema` · **`gate`**(G-01~G-22 판정표) · `gate-full`(시드 재실행 포함) · `backup` · `restore-check`(자리만 있음).
-시드와 스키마 재생성은 한 번에 하나만 돈다(`db-schema` 는 데이터를 전부 지운다).
+`make setup` · `db-schema` · `db-seed` · `db-reset` · `contracts`(렌더본 다시 찍기) · `run` · `test` · `check-routes` · `check-trace` · `check-schema` · `check-data` · `check-security` · **`gate`**(G-01~G-22 판정표) · **`gate-full`**(시드 재실행 포함 — 종료 판정은 이것으로) · `backup`(pg_dump → `backups/`) · `restore-check`(임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로).
+시드와 스키마 재생성은 한 번에 하나만 돈다(`db-schema` 는 데이터를 전부 지운다 — 데이터가 있는 DB 의 스키마 변경은 `ALTER` 로 반영하고 `schema.sql` 과 맞춘다).
+Docker: `docker compose up -d --build`(앱 + PostgreSQL 17 · 비밀 3개는 `.env` — D-31).
 
 ## 규모 (설계도에서 센 값 — `make check-trace`)
 
@@ -50,9 +51,11 @@
 - 패키지 `lcomfine` (`src/lcomfine/{app,db}`). 라우터는 `app/routers/<모듈>.py` 에 `router = APIRouter()` — `main.py` 가 자동 include 한다. **개발자는 `main.py` 를 만지지 않는다.**
 - 경로: `nav.path_of("BAS-01")`. 화면 GET 을 등록하면 그 경로의 placeholder 가 빠진다. 기능의 메서드·경로는 `function-list.md` 의 `API` 열과 글자 그대로.
 - 권한: 화면 `rbac.require_screen("BAS-01")` · 기능 `rbac.require_fn("F-BAS-01")`. **쓰기 엔드포인트에 `require_fn` 이 빠지면 조회 역할의 쓰기가 통과한다.** 권한 표는 DB 데이터다 — 역할·칸을 코드에 박지 않는다.
+- 세션: 사용자의 역할·상태는 쿠키가 아니라 **요청마다 DB 에서** 읽는다(`rbac.current_user`). 중지·잠금·로그아웃한 세션은 다음 요청부터 401, 역할 변경은 다음 요청부터 반영(D-26).
 - DB: `conn.q / q1 / x / tx`. 함께 성공해야 하는 것은 `tx()` 하나에.
 - 계보: `roll_genealogy` 에 쓰는 곳은 `lineage` 뿐. 번호를 만드는 곳은 `numbering` 뿐. 집계 SQL 은 `stats` 뿐. 라벨·바코드는 `printing` 뿐.
-- 오류: `http.validation_error`(422) · `http.not_found`(404) · `http.undecided("D-nn")`(501). 쓰기 성공은 `http.saved(request, msg)`, 그 직후 `audit.log_change(...)`.
+- 오류: `http.validation_error`(422) · `http.not_found`(404) · `http.undecided("D-nn")`(501). 쓰기 성공은 `http.saved(request, msg)`, 그 직후 `audit.log_change(...)`. 입력값 오류는 500 이 아니다 — DB 가 담을 수 없는 값(NUL · 자릿수 초과)도 422 이고, 사람이 읽을 문장은 라우터가 먼저 검사해서 준다.
+- 스캔 화면: 스캔칸은 `ui.scan_box`(화면에 `data-scan` 하나). 스캔 진입 GET 에서 없는 번호는 **그 화면을 422 로 다시 그린다**(스캔칸 유지). 알림 중의 스캔·닫은 뒤의 포커스는 `static/app.js` 가 한다 — 템플릿에 스크립트를 넣지 않는다.
 - 렌더: `templating.render(request, tpl, ctx, screen_id=...)` — 메뉴 · 계약 패널 · 채널 레이아웃 · 조회 로그 자동. 공용 매크로 `templates/home/_macros.html`.
 - 테스트: 기능마다 하나 이상, `@pytest.mark.fn("F-BAS-01")` 표식.
 

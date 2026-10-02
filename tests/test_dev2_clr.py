@@ -54,6 +54,16 @@ def test_create_validation_is_422(w):
     assert err(c.post(REC, data={"job_no": w.job_no, "color_name": "x", "color_l": "밝음"}))["fields"][0]["name"] == "색상값 L"
     assert err(c.post(REC, data={"job_no": w.job_no, "color_name": "x", "seq_no": "0"}))["fields"][0]["name"] == "차수"
     assert err(c.post(REC, data={"job_no": w.job_no, "color_name": "x", "ink_code": "없는잉크"}))["fields"][0]["name"] == "기준 잉크조성"
+    before = count("select count(*) as n from color_record where job_id = %s", (w.job_id,))
+    for data, name in (({"color_l": "1000000"}, "색상값 L"), ({"color_a": "-100000"}, "색상값 a"),         # 컬럼 범위 밖 — DEF-QA1-002
+                       ({"color_b": "99999.995"}, "색상값 b"), ({"seq_no": "99999999999"}, "차수")):
+        body = err(c.post(REC, data={"job_no": w.job_no, "color_name": "넘침 (예시)", **data}))
+        assert body["fields"][0]["name"] == name and "너무 큽니다" in body["message"], (data, body)
+    assert count("select count(*) as n from color_record where job_id = %s", (w.job_id,)) == before
+    edge = _new(w, color_name="상한 (예시)", color_l="99999.99", color_a="-99999.99", color_b="1.234", seq_no="2147483647")
+    row = one("select color_l::text as l, color_a::text as a, color_b::text as b, seq_no from color_record where color_record_id = %s", (edge["id"],))
+    assert row == {"l": "99999.99", "a": "-99999.99", "b": "1.23", "seq_no": 2147483647}                 # 상한까지는 담긴다 · 소수는 반올림
+    assert err(client("qc").get(REC, params={"edit": "99999999999999999999"}))["fields"][0]["name"] == "조색 기록"
     made = _new(w, color_name="중복 (예시)", seq_no="3")
     assert made["seq_no"] == 3
     assert "이미 있는 차수" in err(c.post(REC, data={"job_no": w.job_no, "color_name": "중복 (예시)", "seq_no": "3"}))["message"]
@@ -74,6 +84,8 @@ def test_mix_is_replaced_as_a_whole_and_must_sum_to_100(w):
                                 ([], [], "배합비 합"),                                # 빈 배합
                                 (["가", ""], ["50", "50"], "2행 성분"),
                                 (["가", "나"], ["100", "0"], "2행 비율"),
+                                (["가"], ["1e15"], "1행 비율"),                        # 컬럼 범위 밖 (numeric(6,3))
+                                (["가", "나", "다"], ["33.3333", "33.3333", "33.3334"], "배합비 합"),   # 담기는 값(소수 3자리)의 합은 99.999
                                 (["가"], ["백"], "1행 비율")):
         assert err(c.post(f"{REC}/{rid}/mix", data={"component_name": names, "ratio_pct": ratios}))["fields"][0]["name"] == name
     assert _mix(rid) == [("가", 33.3), ("나", 33.3), ("다", 33.4)]                 # 실패하면 그대로
@@ -91,6 +103,9 @@ def test_update_color_values_but_not_job(w):
     assert row["job_id"] == w.job_id and row["seq_no"] == 1 and row["updated_by"] == "qc" and row["updated_at"] is not None
     assert change_logs("F-CLR-03", f"color_record:{w.job_no}/수정 전 (예시)/1") == 1
     assert err(c.post(f"{REC}/{rid}", data={"color_l": "1"}))["fields"][0]["name"] == "색 이름"
+    body = err(c.post(f"{REC}/{rid}", data={"color_name": "수정 후 (예시)", "color_l": "1000000"}))       # 컬럼 범위 밖 — DEF-QA1-002
+    assert body["message"] == "색상값 L이(가) 너무 큽니다" and body["fields"][0]["name"] == "색상값 L"
+    assert float(one("select color_l from color_record where color_record_id = %s", (rid,))["color_l"]) == 11.5
     other = _new(w, color_name="다른 색 (예시)")["id"]
     assert "같은 차수" in err(c.post(f"{REC}/{other}", data={"color_name": "수정 후 (예시)"}))["message"]
     err(c.post(f"{REC}/999999999", data={"color_name": "x"}), 404)

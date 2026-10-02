@@ -2,6 +2,7 @@
    출하 LOT 을 열면(`?no=`) 스캔칸이 롤 번호를 받는다 — 바코드 한 번 = 계보 `출하` 한 줄(lineage.ship_roll). 오류가 나도 다음 스캔을 막지 않는다. #}
 {% extends "base.html" %}
 {% import "home/_macros.html" as ui %}
+{% import "qua/_scan.html" as scan %}
 {% set can_scan = opened and opened.status == '등록' and user.can('F-SHP-02') %}
 
 {% block head %}
@@ -11,9 +12,11 @@
   td.wrap{white-space:normal}
   .opened{margin-bottom:12px}
 </style>
+{{ scan.styles() }}
 {% endblock %}
 
 {% block body %}
+{{ scan.result(flash, scan_error) }}
 <section class="panel">
   {% if can_scan %}
   <h2>출하 롤 스캔 <small>출하 LOT <code>{{ opened.shipment_no }}</code> — 바코드 한 번 = 한 건</small></h2>

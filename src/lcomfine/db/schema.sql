@@ -568,8 +568,26 @@ create table sys_user (
     created_by     text not null,                                    -- 등록자 login_id
     updated_at     timestamptz,                                      -- 수정 일시
     updated_by     text,                                             -- 수정자 login_id
+    session_epoch  integer not null default 0,                       -- 세션 판 번호 — 상태·비밀번호가 바뀌면 트리거가 +1. 로그인 때의 값과 다른 세션은 무효 (D-26)
+    revoked_sessions jsonb not null default '{}'::jsonb,             -- 로그아웃한 세션 ID → 로그아웃 시각(epoch 초). 쿠키 수명이 지난 것은 다음 로그아웃 때 지운다 (D-26)
     constraint sys_user_status_chk check (status in ('정상', '잠금', '중지'))
 );
+
+-- 세션 무효화 (D-26): 계정의 상태나 비밀번호가 바뀌면 그 계정의 살아 있는 세션을 전부 끊는다.
+-- 누가 어디서 고치든(사용자 화면 · 시드 · SQL) 같은 규칙이 적용되도록 DB 가 판 번호를 올린다. 역할·이름 변경은 올리지 않는다(요청마다 DB 에서 다시 읽는다).
+create function sys_user_session_guard() returns trigger
+language plpgsql as $$
+begin
+    if new.status is distinct from old.status or new.password_hash is distinct from old.password_hash then
+        new.session_epoch := old.session_epoch + 1;
+    end if;
+    return new;
+end;
+$$;
+
+create trigger sys_user_session_epoch_trg
+    before update on sys_user
+    for each row execute function sys_user_session_guard();
 
 -- @table sys_permission | SYS | 권한 표 — 역할 × 대메뉴 한 칸이 한 행 (4 × 12 = 48). 코드가 아니라 데이터다 (G-17 · D-14)
 create table sys_permission (

@@ -26,8 +26,8 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, numbering, printing, rbac, templating
 from ..util import audit, http
-from .pop import (LIST_LIMIT, back_to, bad, date_of, decimal_of, int_of, label_page, open_works, scan_failure,
-                  text_of, work_of)
+from .pop import (INT8_MAX, LIST_LIMIT, back_to, bad, date_of, decimal_of, int_of, label_page, open_works,
+                  scan_failure, text_of, work_of)
 
 router = APIRouter()
 
@@ -227,7 +227,7 @@ def lot_label(request: Request, lot_no: str, user: rbac.User = rbac.require_fn("
 @router.get(nav.path_of("MAT-04"), response_class=HTMLResponse)          # F-MAT-08 자재 투입 조회
 def input_list(request: Request, work_id: str = "", user: rbac.User = rbac.require_fn("F-MAT-08")):
     """실적별 투입 LOT 목록과 투입량. `?work_id=` 로 작업 실적을 고르면 그 실적에 스캔한다."""
-    wid = int_of(work_id, "작업 실적")
+    wid = int_of(work_id, "작업 실적", maximum=INT8_MAX)
     work = None
     if wid is not None:
         work = work_of(wid)
@@ -254,7 +254,7 @@ def input_list(request: Request, work_id: str = "", user: rbac.User = rbac.requi
 def input_scan(request: Request, work_id: str = Form(""), lot_no: str = Form(""), input_qty: str = Form(""),
                qty_unit: str = Form(""), user: rbac.User = rbac.require_fn("F-MAT-07")):
     """진행 중 실적에 원재료 LOT 바코드 한 번 = 한 건. 합격 LOT 만. 계보 행은 작업 종료 때 만들어진다(D-13)."""
-    wid = int_of(work_id, "작업 실적", required=True)
+    wid = int_of(work_id, "작업 실적", required=True, maximum=INT8_MAX)
     no = text_of(lot_no, "LOT 번호", required=True)
     qty = decimal_of(input_qty, "투입량", positive=True)
     lot = find_lot(no)

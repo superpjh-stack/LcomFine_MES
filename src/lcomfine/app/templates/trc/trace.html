@@ -46,10 +46,20 @@
   .hit:last-child{border-bottom:none}
   .hit .job{font-size:12px;color:var(--muted)}
   .trace-panel{min-width:0;overflow-wrap:anywhere}
+  .scan-result{border-left:6px solid var(--warn)}
+  .scan-result p{margin:0}
+  .scan-result .notes{margin:6px 0 0}
 </style>
 {% endblock %}
 
 {% block body %}
+{% if scan_error %}
+{# 없는 번호 · 그 방향으로 갈 수 없는 번호 — 오류 화면으로 보내지 않고 이 화면에 사유를 보인다. 입력칸은 비워 다음 번호를 받는다 (D-201) #}
+<section class="panel trace-panel scan-result" role="alert" id="scan-result">
+  <p class="err big">{{ scan_error.message }}</p>
+  {% if scan_error.fields %}<ul class="notes">{% for f in scan_error.fields %}<li>{{ f.name }} — {{ f.reason }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
 <section class="panel trace-panel">
   <h2>LOT 추적 <small>원재료 LOT · 롤 · 출하 LOT 번호</small></h2>
   <form class="trace-form" method="get" action="{{ screen.path }}" autocomplete="off">

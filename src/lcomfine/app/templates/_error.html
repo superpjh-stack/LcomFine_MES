@@ -1,13 +1,15 @@
-{# 공통 오류 화면 — goal.md §2.5 오류 계약. DB 가 끊겨도 그려져야 하므로 base.html 을 쓰지 않는다. #}
+{# 공통 오류 화면 — goal.md §2.5 오류 계약. DB 가 끊겨도 그려져야 하므로 base.html 을 쓰지 않는다.
+   현황판 채널(ch-board)에서는 오류 화면에서도 자동 새로고침이 이어진다 — 일시적인 503·재기동 뒤에 스스로 돌아온다 (D-27). #}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ status }} {{ message }} · {{ system_name }}</title>
+{% if device == 'board' and board_refresh_seconds %}<noscript><meta http-equiv="refresh" content="{{ board_refresh_seconds }}"></noscript>{% endif %}
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
-<body class="login-body ch-{{ device or 'web' }}">
+<body class="login-body ch-{{ device or 'web' }}"{% if device == 'board' and board_refresh_seconds %} data-refresh-seconds="{{ board_refresh_seconds }}"{% endif %}>
 <div class="login-wrap{% if guide %} wide{% endif %}">
   <div class="login-card err-card">
     {% if guide %}
@@ -44,5 +46,6 @@
   </div>
   {% endif %}
 </div>
+{% if device == 'board' and board_refresh_seconds %}<script src="/static/app.js?v={{ asset_v }}"></script>{% endif %}
 </body>
 </html>

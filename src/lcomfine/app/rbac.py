@@ -167,12 +167,64 @@ class User:
                     role_name=data["role_name"])
 
 
-def current_user(request: Request) -> User | None:
-    """세션에서 사용자를 읽는다. 없으면 None (오류를 내지 않는다)."""
+# ── 세션 → 사용자 (D-26) ────────────────────────────────────────────────
+SESSION_ID_KEY = "sid"       # 세션 ID — 로그아웃하면 `sys_user.revoked_sessions` 에 올라간다
+SESSION_EPOCH_KEY = "ep"     # 로그인 때의 `sys_user.session_epoch` — 상태·비밀번호가 바뀌면 DB 값이 올라가 어긋난다
+STATUS_ACTIVE = "정상"
+_STATE_ATTR = "lcomfine_user"
+_UNSET = object()
+
+
+def unverified_user(request: Request) -> User | None:
+    """세션 쿠키에 적힌 사용자 그대로(**DB 확인 없음**). 오류 로그처럼 DB 를 다시 볼 수 없는 자리에서만 쓴다 — 권한 판정에 쓰지 않는다."""
     data = request.session.get("user") if hasattr(request, "session") else None
     if not data or "login_id" not in data:
         return None
     return User.from_session(data)
+
+
+def forget_user(request: Request) -> None:
+    """이 요청에서 확인해 둔 사용자를 버린다 (로그인·로그아웃 직후)."""
+    if hasattr(request, "state"):
+        setattr(request.state, _STATE_ATTR, _UNSET)
+
+
+def _verified_user(request: Request) -> User | None:
+    claimed = unverified_user(request)
+    if claimed is None:
+        return None
+    session_id = request.session.get(SESSION_ID_KEY)
+    row = None
+    if session_id:
+        from ..db import conn  # noqa — 순환 import 회피
+
+        row = conn.q1(
+            """select u.user_name, u.role_code, r.role_name, u.status, u.session_epoch,
+                      (u.revoked_sessions ? %s) as revoked
+                 from sys_user u join sys_role r on r.role_code = u.role_code
+                where u.login_id = %s""",
+            (str(session_id), claimed.login_id))
+    if (row is None or row["status"] != STATUS_ACTIVE or row["revoked"]
+            or row["session_epoch"] != request.session.get(SESSION_EPOCH_KEY)):
+        request.session.clear()   # 중지·잠금 · 로그아웃한 세션 · 상태/비밀번호가 바뀐 뒤의 옛 세션 · 지워진 계정 → 미로그인
+        return None
+    return User(login_id=claimed.login_id, user_name=row["user_name"], role_code=row["role_code"], role_name=row["role_name"])
+
+
+def current_user(request: Request) -> User | None:
+    """이 요청의 사용자. 세션이 없거나 더는 유효하지 않으면 None (오류를 내지 않는다).
+
+    **요청마다 DB 의 계정을 다시 본다** — 중지·잠금된 계정, 로그아웃한 세션은 곧바로 미로그인이 되고(401),
+    역할·이름은 쿠키가 아니라 DB 의 지금 값이다(역할을 바꾸면 다음 요청부터 그 역할의 권한). 한 요청 안에서는 한 번만 조회한다.
+    DB 연결 실패는 삼키지 않는다(503).
+    """
+    if not hasattr(request, "state"):
+        return _verified_user(request)
+    cached = getattr(request.state, _STATE_ATTR, _UNSET)
+    if cached is _UNSET:
+        cached = _verified_user(request)
+        setattr(request.state, _STATE_ATTR, cached)
+    return cached
 
 
 def require_login(request: Request) -> User:

@@ -10,6 +10,8 @@
 - 적재는 업무 코드 기준 upsert — 다시 돌려도 행 수가 같다(G-15).
 - 실행 × 파일마다 `sys_migration_log` 한 줄(읽은 수 · 적재 수 · 오류 수 · 오류 내용). `validate` · `report` 는 아무 테이블에도 쓰지 않는다.
 - 형식이 틀리거나 참조 코드가 없는 행은 **그 행만** 건너뛰고 오류 목록에 남긴다. 오류가 하나라도 있으면 종료코드 1.
+- **화면이 422 로 막는 변경은 배치도 하지 않는다**(D-309 · `_check_rules`): 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 —
+  그 행은 건너뛰고 오류로 리포트(줄 번호·키·사유), 종료코드 1. `validate` 도 같은 행을 미리 알린다.
 - 오류를 삼키지 않는다. 예상하지 못한 예외(DB 연결 실패 등)는 그대로 올라간다.
 """
 
@@ -71,6 +73,71 @@ def _check_refs(res: FileResult, codes_of) -> None:
     res.rows = kept
 
 
+# ── 화면이 막는 변경은 배치도 하지 않는다 (D-309) ───────────────────────
+PRODUCT, CANCELLED = "제품", "취소"
+#: 화면(F-PRT-05·06)이 0 보다 커야 한다고 막는 숫자 열 — 파일 → 열 이름들. (파일 규격 §3 에 `0 초과` 로 올리는 것은 아키텍트 확정 뒤)
+_POSITIVE_ON_SCREEN: dict[str, tuple[str, ...]] = {"anilox": ("line_count", "cell_volume")}
+
+
+def _job_state(query, job_nos: list[str]) -> dict[str, dict]:
+    """파일에 적힌 Job 번호 가운데 DB 에 이미 있는 것 → 상태와 딸린 작업 실적·롤·출하 수."""
+    if not job_nos:
+        return {}
+    return {r["job_no"]: r for r in query(
+        """select j.job_no, j.status,
+                  (select count(*)::int from work_result w where w.job_id = j.job_id) as works,
+                  (select count(*)::int from roll r where r.job_id = j.job_id) as rolls,
+                  (select count(*)::int from shipment s where s.job_id = j.job_id) as shipments
+             from job j where j.job_no = any(%s)""", (job_nos,))}
+
+
+def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = None) -> None:
+    """화면이 422 로 막는 변경을 하려는 행을 오류로 돌린다 — 그 행은 적재하지 않는다(건너뛰고 줄 번호·키·사유를 남긴다).
+
+    `query(sql, params) -> list[dict]` 는 읽기다(적재할 때는 그 트랜잭션의 커서, 검증할 때는 `conn.q`).
+    `item_types` 는 {품목 코드: 구분} — 검증(`validate`)에서 같은 폴더의 item.csv 가 바꿀 값을 미리 본다. 안 주면 DB 의 값.
+
+    job.csv (F-JOB-01~03 · D-103)
+      ① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다. 값이 같은지 견주지 않는다 — 그 Job 의 행은 건드리지 않는다
+      ② 취소된 Job 을 `등록`·`완료` 로 되살리지 않는다(취소는 되돌릴 수 없다)
+      ③ 품목이 `제품` 이 아니면 작업지시할 수 없다
+    anilox.csv (F-PRT-05·06)
+      ④ 선수·셀 용적은 0 보다 커야 한다
+    """
+    name = res.spec.name
+    kept = []
+    if name == "job":
+        state = _job_state(query, [row.values["job_no"] for row in res.rows])
+        if item_types is None:
+            item_types = {r["item_code"]: r["item_type"] for r in query("select item_code, item_type from item", ())}
+        for row in res.rows:
+            v, have = row.values, state.get(row.values["job_no"])
+            used = [f"{label} {have[key]}{unit}" for key, label, unit in
+                    (("works", "작업 실적", "건"), ("rolls", "롤", "개"), ("shipments", "출하", "건")) if have and have[key]]
+            item_type = item_types.get(v["item_code"])
+            if used:
+                reason = f"작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {' · '.join(used)} (F-JOB-02)"
+            elif have and have["status"] == CANCELLED and v["status"] != CANCELLED:
+                reason = f"취소된 Job 은 되살리지 않는다 — status: {v['status']!r} (F-JOB-02 · 취소는 되돌릴 수 없다)"
+            elif item_type is not None and item_type != PRODUCT:
+                reason = f"item_code: {PRODUCT} 품목만 작업지시할 수 있다 — {v['item_code']!r} 는 {item_type} (F-JOB-01)"
+            else:
+                kept.append(row)
+                continue
+            res.fail(row.line, row.key_text(res.spec), reason)
+    elif name in _POSITIVE_ON_SCREEN:
+        for row in res.rows:
+            bad = [f"{c}: 0 보다 커야 한다 — {row.values[c]}" for c in _POSITIVE_ON_SCREEN[name]
+                   if row.values[c] is not None and row.values[c] <= 0]
+            if bad:
+                res.fail(row.line, row.key_text(res.spec), " · ".join(bad))
+            else:
+                kept.append(row)
+    else:
+        return
+    res.rows = kept
+
+
 # ── B-MIG-01 validate ───────────────────────────────────────────────────
 def check_folder(directory: Path) -> list[FileResult]:
     """폴더의 파일 16개를 읽어 파일 유무 · 열 이름 · 필수값 · 형식 · 코드 참조를 검사한다. **쓰지 않는다.**
@@ -80,6 +147,7 @@ def check_folder(directory: Path) -> list[FileResult]:
     results: list[FileResult] = []
     passed: dict[str, set] = {}                 # 파일 이름 → 검사를 통과한 업무 키(첫 열)
     db_cache: dict[str, set[str]] = {}
+    item_types: dict[str, str] | None = None    # 적재 뒤의 {품목 코드: 구분} — DB 의 값에 이 폴더의 item.csv 를 덮은 것
 
     def codes_of(ref: str) -> set:
         if ref not in db_cache:
@@ -94,6 +162,11 @@ def check_folder(directory: Path) -> list[FileResult]:
                 res.fail(0, "", "파일 없음")
         elif not res.file_broken:
             _check_refs(res, codes_of)
+            if spec.name == "job":
+                item_types = {r["item_code"]: r["item_type"] for r in conn.q("select item_code, item_type from item")}
+                item_types.update({row.values["item_code"]: row.values["item_type"]
+                                   for r in results if r.spec.name == "item" for row in r.rows})
+            _check_rules(res, conn.q, item_types=item_types)
         passed[spec.name] = {row.values[spec.key[0]] for row in res.rows}
         results.append(res)
     return results
@@ -170,6 +243,12 @@ def _load_file(command: str, spec: FileSpec, directory: Path, by: str | None) ->
         with conn.tx() as cur:
             ids = {c.ref: _db_codes(cur, c.ref) for c in spec.cols if c.ref}
             _check_refs(res, lambda ref: ids[ref])
+            if spec.name == "job" and res.rows:
+                # 견준 뒤 ~ 쓰기 전에 그 Job 에 작업 실적·롤·출하가 새로 생기지 않게 행을 잠근다
+                # (그 행을 가리키는 insert 가 이 트랜잭션이 끝날 때까지 기다린다)
+                cur.execute("select job_id from job where job_no = any(%s) order by job_id for update",
+                            ([row.values["job_no"] for row in res.rows],))
+            _check_rules(res, lambda sql, params: cur.execute(sql, params).fetchall())
             for row in res.rows:
                 params = [ids[c.ref][row.values[c.name]] if c.ref and row.values[c.name] is not None
                           else row.values[c.name] for c in spec.cols]

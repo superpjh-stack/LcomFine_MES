@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Form, Request
@@ -52,8 +52,21 @@ def text_of(value: str | None, label: str, *, required: bool = False, max_len: i
     return v
 
 
+#: 숫자 컬럼이 담는 범위 — `contracts/db-schema.md` §4 (정수부 자릿수 = numeric(p,s) 의 p−s, 소수 자릿수 = s)
+QTY = (11, 3)           # numeric(14,3) — 입고 수량 · 투입량 · 실적 수량 · 폐기 수량 · 길이 (m)
+WIDTH = (8, 2)          # numeric(10,2) — 폭 (mm)
+LAB = (5, 2)            # numeric(7,2)  — 색상값 L · a · b
+RATIO = (3, 3)          # numeric(6,3)  — 배합비 (%)
+INT4_MAX = 2_147_483_647                 # integer — 차수 · 분할 순번
+INT8_MAX = 9_223_372_036_854_775_807     # bigint  — 내부 키 (작업 실적 · 조색 기록)
+
+
 def decimal_of(value: str | None, label: str, *, required: bool = False, positive: bool = False,
-               non_negative: bool = False) -> Decimal | None:
+               non_negative: bool = False, digits: tuple[int, int] = QTY) -> Decimal | None:
+    """숫자 입력칸 → Decimal. `digits` = (정수부 자릿수, 소수 자릿수) — 그 컬럼이 담지 못하는 값은 422 (어느 칸인지 알린다).
+
+    DB 는 소수 자릿수를 넘는 값을 반올림해 담는다 — 범위와 부호는 그 **담기는 값**으로 판정하고, 반올림이 일어나면 담기는 값을 돌려준다.
+    """
     v = (value or "").strip().replace(",", "")
     if not v:
         if required:
@@ -65,14 +78,23 @@ def decimal_of(value: str | None, label: str, *, required: bool = False, positiv
         raise bad(f"{label}은(는) 숫자여야 합니다", label, v) from None
     if not d.is_finite():
         raise bad(f"{label}은(는) 숫자여야 합니다", label, v)
-    if positive and d <= 0:
-        raise bad(f"{label}은(는) 0 보다 커야 합니다", label, v)
+    int_digits, scale = digits
+    too_big = bad(f"{label}이(가) 너무 큽니다", label, f"정수부 {int_digits}자리 · 소수 {scale}자리까지 — 입력 {v[:40]}")
+    if d and d.adjusted() >= int_digits:                       # |d| ≥ 10^정수부 자릿수
+        raise too_big
+    stored = d.quantize(Decimal(1).scaleb(-scale), rounding=ROUND_HALF_UP) if d and d.adjusted() >= -scale - 1 else Decimal(0)
+    if abs(stored) >= Decimal(10) ** int_digits:               # 반올림으로 자릿수가 넘어가는 값 (예: 99999999999.9995)
+        raise too_big
+    if positive and stored <= 0:
+        raise bad(f"{label}은(는) 0 보다 커야 합니다", label, v[:40])
     if non_negative and d < 0:
-        raise bad(f"{label}은(는) 0 이상이어야 합니다", label, v)
-    return d
+        raise bad(f"{label}은(는) 0 이상이어야 합니다", label, v[:40])
+    return d if d == stored else stored
 
 
-def int_of(value: str | None, label: str, *, required: bool = False, minimum: int | None = None) -> int | None:
+def int_of(value: str | None, label: str, *, required: bool = False, minimum: int | None = None,
+           maximum: int = INT4_MAX) -> int | None:
+    """정수 입력칸 → int. `maximum` 을 넘으면 422 — 기본은 `integer` 컬럼의 상한, 내부 키(bigint)는 `INT8_MAX`."""
     v = (value or "").strip()
     if not v:
         if required:
@@ -81,9 +103,11 @@ def int_of(value: str | None, label: str, *, required: bool = False, minimum: in
     try:
         n = int(v)
     except ValueError:
-        raise bad(f"{label}은(는) 정수여야 합니다", label, v) from None
+        raise bad(f"{label}은(는) 정수여야 합니다", label, v[:40]) from None
     if minimum is not None and n < minimum:
-        raise bad(f"{label}은(는) {minimum} 이상이어야 합니다", label, v)
+        raise bad(f"{label}은(는) {minimum} 이상이어야 합니다", label, v[:40])
+    if abs(n) > maximum:
+        raise bad(f"{label}이(가) 너무 큽니다", label, f"{maximum} 이하 — 입력 {v[:40]}")
     return n
 
 
@@ -261,7 +285,7 @@ def work_finish(request: Request, work_id: str, output_qty: str = Form(""), qty_
     wid = path_id(work_id)
     qty = decimal_of(output_qty, "실적 수량", required=True, non_negative=True)
     length = decimal_of(length_m, "길이", non_negative=True)
-    width = decimal_of(width_mm, "폭", positive=True)
+    width = decimal_of(width_mm, "폭", positive=True, digits=WIDTH)
     with conn.tx() as cur:
         cur.execute("select work_result_id, status, job_id from work_result where work_result_id = %s for update", (wid,))
         w = cur.fetchone()                    # 실적 행을 잠근다 — 같은 실적을 동시에 두 번 종료하지 못한다
@@ -290,7 +314,7 @@ def work_finish(request: Request, work_id: str, output_qty: str = Form(""), qty_
 # ── POP-02 정지 · 폐기 ──────────────────────────────────────────────────
 @router.get(nav.path_of("POP-02"), response_class=HTMLResponse)          # F-POP-07 정지·폐기 조회
 def stop_list(request: Request, work_id: str = "", user: rbac.User = rbac.require_fn("F-POP-07")):
-    wid = int_of(work_id, "작업 실적")
+    wid = int_of(work_id, "작업 실적", maximum=INT8_MAX)
     where, params = ("where w.work_result_id = %s", (wid,)) if wid is not None else ("", ())
     stops = conn.q(f"""
         select s.work_stop_id, s.work_result_id, s.stop_reason, s.stopped_at, s.resumed_at, s.created_by, j.job_no, w.status
@@ -323,7 +347,7 @@ def _work_for_write(cur, work_id: int, label: str = "작업 실적") -> dict:
 @router.post(nav.path_of("POP-02"))                                       # F-POP-04 정지 등록
 def stop_create(request: Request, work_id: str = Form(""), stop_reason: str = Form(""), stopped_at: str = Form(""),
                 user: rbac.User = rbac.require_fn("F-POP-04")):
-    wid = int_of(work_id, "작업 실적", required=True)
+    wid = int_of(work_id, "작업 실적", required=True, maximum=INT8_MAX)
     reason = text_of(stop_reason, "정지 사유", required=True)
     at = None
     if stopped_at.strip():
@@ -353,7 +377,7 @@ def stop_create(request: Request, work_id: str = Form(""), stop_reason: str = Fo
 def scrap_create(request: Request, work_id: str = Form(""), scrap_qty: str = Form(""), qty_unit: str = Form(""),
                  defect_code: str = Form(""), reason: str = Form(""), user: rbac.User = rbac.require_fn("F-POP-06")):
     """폐기 수량·사유만 적는다. 롤·계보를 만들지 않는다."""
-    wid = int_of(work_id, "작업 실적", required=True)
+    wid = int_of(work_id, "작업 실적", required=True, maximum=INT8_MAX)
     qty = decimal_of(scrap_qty, "폐기 수량", required=True, positive=True)
     defect_id = None
     code = text_of(defect_code, "불량코드")

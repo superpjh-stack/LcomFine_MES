@@ -152,3 +152,17 @@ def test_mobile_layout_has_no_wide_table(ex):
         assert 'class="ch-mobile"' in html
         body = _main(html)
         assert "<table" not in body and "trace-panel" in body
+
+
+@pytest.mark.fn("F-TRC-01", "F-TRC-02")
+def test_unknown_number_redraws_the_trace_screen_in_a_browser(ex):
+    """브라우저에서 없는 번호 · 갈 수 없는 방향 — 오류 화면으로 가지 않고 추적 화면을 422 로 다시 그린다: 사유 + 빈 입력칸 (D-201)."""
+    c = client("qc")
+    for path, no, text in [("forward", P + "NOPE", "없는 번호"), ("backward", P + "LOT1", "정방향 추적으로"),
+                           ("forward", P + "SHIP1", "역방향 추적으로")]:
+        r = c.get(f"{TRACE}/{path}", params={"no": no, "device": "mobile"}, headers={"accept": "text/html"})
+        assert r.status_code == 422, (path, no)
+        body = _main(r.text)
+        assert 'id="scan-result"' in body and text in body and no in body, (path, no)
+        assert 'name="no" value="" data-scan' in body                    # 입력칸이 남고 비어 있다 — 다음 번호를 바로 받는다
+        assert "ch-mobile" in r.text and "<table" not in body

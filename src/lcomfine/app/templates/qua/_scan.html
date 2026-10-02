@@ -1,0 +1,32 @@
+{# 스캔 화면 공용 조각 (개발3 — 검사 결과 `qua/inspections.html` · 출하 `shp/shipments.html` 이 import 한다)
+   {% import "qua/_scan.html" as scan %}
+   · scan.styles()                  결과 배너의 모양
+   · scan.result(flash, scan_error) 방금 스캔·처리한 결과를 본문에 큰 글씨로 (POP 은 26px). 알림 팝업이 닫혀도 남는다 —
+                                    스캐너가 다음 번호를 곧바로 쏘아 알림이 닫혀도 앞 스캔의 결과·오류가 화면에서 사라지지 않는다 (D-201 · D-308)
+   스크립트는 없다. 알림이 떠 있는 동안의 스캔 · 알림을 닫은 뒤의 포커스는 공용 `static/app.js` 가 한다(스캔칸은 `ui.scan_box`). #}
+
+{% macro styles() %}
+<style>
+  .scan-result{border-left:6px solid var(--warn)}
+  .scan-result.ok{border-left-color:#1d7a46}
+  .scan-result p{margin:0}
+  .scan-result .ok-msg{color:#1d7a46;font-weight:700;font-size:17px}
+  body.ch-pop .scan-result .ok-msg{font-size:26px}
+  .scan-result .notes{margin:6px 0 0}
+  body.ch-pop .scan-result .notes{font-size:18px}
+</style>
+{% endmacro %}
+
+{% macro result(flash, scan_error=None) %}
+{% if scan_error %}
+<section class="panel scan-result" role="alert" id="scan-result">
+  <p class="err big">{{ scan_error.message }}</p>
+  {% if scan_error.fields %}<ul class="notes">{% for f in scan_error.fields %}<li>{{ f.name }} — {{ f.reason }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% elif flash %}
+<section class="panel scan-result{% if flash.kind != 'warn' %} ok{% endif %}" role="{{ 'alert' if flash.kind == 'warn' else 'status' }}" id="scan-result">
+  <p class="{{ 'err big' if flash.kind == 'warn' else 'ok-msg' }}">{{ flash.message }}</p>
+  {% if flash.fields %}<ul class="notes">{% for f in flash.fields %}<li>{{ f.name }} — {{ f.reason }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+{% endmacro %}

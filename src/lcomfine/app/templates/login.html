@@ -1,4 +1,5 @@
-{# 공통 로그인 화면 (아키텍트). `?device=pop|mobile|board` 로 열면 그 채널로 세션이 고정된다 (D-19). #}
+{# 공통 로그인 화면 (아키텍트). 채널을 골라 로그인하면 그 채널로 세션이 고정된다 (D-19).
+   `?device=pop|mobile|board` 로 열면 그 채널이 미리 골라져 있다 — 단말 바로가기 주소 없이도 화면에서 고를 수 있다. #}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -15,9 +16,14 @@
     {% if message %}<p class="err">{{ message }}</p>{% endif %}
     <form method="post" action="/login" id="login-form">
       <input type="hidden" name="next" value="{{ next or '' }}">
-      <input type="hidden" name="device" value="{{ login_device or 'web' }}">
       <label>아이디<input type="text" name="login_id" autocomplete="username" required autofocus value="{{ login_id or '' }}"></label>
       <label>비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
+      <fieldset class="login-channel">
+        <legend>채널 (화면 크기·배치만 바뀐다 — 권한은 역할로 정해진다)</legend>
+        {% for code, label in nav.DEVICE_CHANNEL.items() %}
+        <label class="radio"><input type="radio" name="device" value="{{ code }}"{% if code == (login_device or 'web') %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+      </fieldset>
       <div class="login-actions">
         <button class="btn btn-primary" type="submit">로그인</button>
       </div>

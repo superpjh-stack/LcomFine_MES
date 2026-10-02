@@ -33,6 +33,7 @@ import design_doc  # noqa: E402
 from lcomfine.app import nav  # noqa: E402
 from lcomfine.app.main import app  # noqa: E402
 from lcomfine.db import conn  # noqa: E402
+from lcomfine.db.seed import USERS as SEED_USERS  # noqa: E402 — 시드 계정 (D-20): admin · prod · qc · field
 
 PLACEHOLDER_MARKS = ('class="tag"', "미구현")
 ADMIN = "admin"
@@ -88,7 +89,9 @@ def main() -> int:
     # ── 3. 권한 없음 = 403 + 메뉴 숨김 (기대값은 설계도 §6) ──
     access = design_doc.access()
     role_code = {r["role_name"]: r["role_code"] for r in conn.q("select role_code, role_name from sys_role")}
-    login_of = {r["role_code"]: r["login_id"] for r in conn.q("select role_code, min(login_id) as login_id from sys_user where status = '정상' group by role_code")}
+    # 역할마다 **시드 계정**으로 로그인한다(D-20). DB 에서 "그 역할의 아무 계정" 을 고르면 다른 사람이 만든 계정
+    # (비밀번호가 시드 비밀번호가 아니다)이 끼었을 때 로그인이 안 되어 거짓 FAIL 이 난다.
+    login_of = {code: login_id for login_id, _name, code in SEED_USERS}
     checked, bad = 0, []
     clients: dict[str, TestClient] = {}
     for row in access["rows"]:

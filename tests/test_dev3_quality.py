@@ -245,3 +245,79 @@ def test_defect_rolls_lists_roll_position_job(w):
     assert r.status_code == 422 and "없는 불량코드" in r.json()["message"]
     r = c.get(f"{DEFECT_STATS}/rolls", params={"date_from": "1990-01-01", "date_to": "1990-01-31"})
     assert r.status_code == 200 and "미수집" in r.text[r.text.index('id="rolls"'):]
+
+
+# ── 웨이브 D (QA 결함 수정) ─────────────────────────────────────────────
+HTML = {"accept": "text/html"}
+
+
+@pytest.mark.fn("F-QUA-04")
+def test_scan_of_unknown_roll_redraws_the_screen_with_the_scan_box(w):
+    """없는 번호 스캔(GET `?no=`) — JSON 은 422, 브라우저는 **같은 화면**을 422 로 다시 그린다: 큰 글씨 사유 + 스캔칸 (D-201 · DEF-QA1-004)."""
+    qc = client("qc")
+    r = qc.get(INSPECTIONS, params={"no": P + "NOPE"})
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
+    r = qc.get(INSPECTIONS, params={"no": P + "NOPE", "device": "pop"}, headers=HTML)
+    assert r.status_code == 422
+    assert "data-scan" in r.text and 'id="scan-result"' in r.text and 'class="err big"' in r.text
+    assert "없는 롤입니다" in r.text and P + "NOPE" in r.text and "ch-pop" in r.text
+    assert 'id="inspection-form"' in r.text                               # 오류 화면이 아니라 검사 결과 화면이다
+    r = qc.get(INSPECTIONS, params={"no": P + "R1"}, headers=HTML)        # 있는 번호는 그대로 200 — 배너가 없다
+    assert r.status_code == 200 and 'id="scan-result"' not in r.text
+
+
+@pytest.mark.fn("F-QUA-01", "F-QUA-04")
+def test_roll_number_is_found_like_the_other_scan_screens(w):
+    """소문자로 들어온 롤 번호 · 앞뒤 공백 — LOT 추적·롤 이력처럼 찾는다 (D-201 · DEF-QA2-003). 롤이 아닌 번호는 422."""
+    qc = client("qc")
+    low = (P + "R1").lower()
+    assert low != P + "R1"
+    r = qc.post(INSPECTIONS, data={"roll_no": f"  {low} ", "result": "합격", "delta_e": "1.0"})
+    assert r.status_code == 200 and r.json()["roll_no"] == P + "R1"
+    assert [x["roll_id"] for x in _rows(P + "R1")] == [w.r1]
+    r = qc.get(INSPECTIONS, params={"no": low}, headers=HTML)
+    assert r.status_code == 200 and f"<code>{P}R1</code>" in r.text
+    assert f'name="roll_no" value="{P}R1"' in r.text                      # 등록칸에는 저장된 번호(대문자)가 채워진다
+    lot = w.material_lot("M1", w.item_a)
+    assert lot
+    r = qc.post(INSPECTIONS, data={"roll_no": P + "M1", "result": "합격"})
+    assert r.status_code == 422 and r.json()["message"] == "롤 번호가 아닙니다"
+
+
+@pytest.mark.fn("F-QUA-01", "F-QUA-02")
+def test_delta_e_out_of_column_range_is_422(w):
+    """ΔE 는 numeric(7,2) — 담기지 않는 값은 500 이 아니라 422 이고 어느 칸인지 알려 준다 (DEF-QA1-002)."""
+    qc = client("qc")
+    for bad in ("99999.999", "99999.995", "100000", "1e15", "1e999", "-0.01", "NaN", "Infinity", "가"):
+        r = qc.post(INSPECTIONS, data={"roll_no": P + "R1", "result": "합격", "delta_e": bad})
+        assert r.status_code == 422, (bad, r.status_code, r.text[:120])
+        assert r.json()["fields"][0]["name"] == "ΔE", bad
+    assert _rows(P + "R1") == []                                          # 아무것도 쓰이지 않았다
+    r = qc.post(INSPECTIONS, data={"roll_no": P + "R1", "result": "합격", "delta_e": "99999.994"})   # 담기는 가장 큰 값
+    assert r.status_code == 200 and _rows(P + "R1")[0]["delta_e"] == Decimal("99999.99")
+    iid = r.json()["inspection_id"]
+    r = qc.post(f"{INSPECTIONS}/{iid}", data={"result": "합격", "delta_e": "99999.999"})
+    assert r.status_code == 422 and _rows(P + "R1")[0]["delta_e"] == Decimal("99999.99")
+    r = qc.post(f"{INSPECTIONS}/{iid}", data={"result": "합격", "delta_e": "1.005"})    # 소수 셋째 자리는 반올림
+    assert r.status_code == 200 and _rows(P + "R1")[0]["delta_e"] == Decimal("1.01")
+
+
+@pytest.mark.fn("F-QUA-02", "F-QUA-03")
+def test_non_numeric_inspection_key_is_404(w):
+    """경로의 검사 키 자리에 숫자가 아닌 글자 · 담기지 않는 큰 수 — 그런 검사는 없다(404). 다른 화면과 같다 (DEF-QA1-007)."""
+    qc = client("qc")
+    for key in ("abc", "1.5", "-1", "²", "9" * 30):
+        for path, data in ((f"{INSPECTIONS}/{key}", {"result": "합격"}), (f"{INSPECTIONS}/{key}/delete", None)):
+            r = qc.post(path, data=data)
+            assert r.status_code == 404, (path, r.status_code, r.text[:100])
+            assert r.json() == {"code": "not_found", "message": "대상을 찾을 수 없습니다"}
+    assert client("field").post(f"{INSPECTIONS}/abc", data={"result": "합격"}).status_code == 403   # 권한이 먼저다
+
+
+@pytest.mark.fn("F-QUA-05")
+def test_item_condition_with_odd_digits_is_422(w):
+    """품목 조건에 `²` 같은 글자 — isdigit() 은 참이지만 숫자가 아니다. 500 이 아니라 422."""
+    qc = client("qc")
+    for bad in ("²", "9" * 30, "abc"):
+        for path in (DEFECT_STATS, DEFECT_STATS + "/rolls", nav.path_of("STA-01")):
+            assert qc.get(path, params={"item_id": bad}).status_code == 422, (path, bad)

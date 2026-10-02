@@ -23,13 +23,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
 from .. import lineage, nav, numbering, printing, rbac, stats, templating
 from ..util import audit, http
-from .qua import FAIL, latest_inspections
+from .qua import FAIL, latest_inspections, scan_failure
 
 router = APIRouter()
 
@@ -59,6 +59,17 @@ def _shipment(shipment_no: str) -> dict:
     if row is None:
         raise http.not_found()
     return row
+
+
+def _scanned_shipment(no: str) -> dict:
+    """사용자가 입력·스캔한 출하 LOT 번호로 한 건. 다른 스캔 화면처럼 `lineage.resolve` 로 찾는다
+    (앞뒤 공백 제거 · 소문자로 들어오면 대문자로도 찾는다, D-201). 없는 번호 · 출하 LOT 이 아닌 번호는 422."""
+    node = lineage.resolve(no)
+    if node is None:
+        raise http.validation_error("없는 출하 LOT 입니다", fields=[{"name": "출하 LOT 번호", "reason": no}])
+    if node.kind != lineage.SHIPMENT:
+        raise http.validation_error("출하 LOT 번호가 아닙니다", fields=[{"name": no, "reason": node.label}])
+    return conn.q1(_SHIPMENT_SQL + " where s.shipment_id = %s", (node.id,))
 
 
 def _rolls(shipment_id: int) -> list[dict]:
@@ -108,22 +119,25 @@ def shipments(request: Request, no: str = "", shipment_no: str = "", job_no: str
               status: str = "", date_from: str = "", date_to: str = "",
               user: rbac.User = rbac.require_fn("F-SHP-04")) -> HTMLResponse:
     d1, d2 = stats.parse_date(date_from, "출하일 시작"), stats.parse_date(date_to, "출하일 끝")
-    opened, rolls = None, []
+    opened, rolls, scan_error = None, [], None
     no = no.strip()
     if no:                                   # 한 건 열기 — 목록에서 고르거나 출하 LOT 번호를 스캔
-        opened = conn.q1(_SHIPMENT_SQL + " where s.shipment_no = %s", (no,))
-        if opened is None:
-            raise http.validation_error("없는 출하 LOT 입니다", fields=[{"name": "출하 LOT 번호", "reason": no}])
-        rolls = _rolls(opened["shipment_id"])
+        try:
+            opened = _scanned_shipment(no)
+        except HTTPException as exc:         # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
+            scan_error = scan_failure(request, exc)
+        else:
+            rolls = _rolls(opened["shipment_id"])
     rows = _search(shipment_no, job_no, customer, status, d1, d2)
     customers = conn.q("select customer_code, customer_name from customer where use_yn = 'Y' order by customer_code")
     return templating.render(request, "shp/shipments.html", {
         "rows": rows, "limit": LIST_LIMIT, "opened": opened, "rolls": rolls, "summary": _summary(rolls),
+        "scan_error": scan_error,
         "statuses": STATUSES, "customers": customers, "today": date.today(),
         "number_rule": numbering.rule(numbering.SHIPMENT),
         "q": {"shipment_no": shipment_no, "job_no": job_no, "customer": customer, "status": status,
               "date_from": date_from, "date_to": date_to},
-    }, screen_id="SHP-01")
+    }, screen_id="SHP-01", status_code=422 if scan_error else 200)
 
 
 @router.post(nav.path_of("SHP-01"))                                                  # F-SHP-01 출하 등록

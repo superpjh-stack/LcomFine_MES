@@ -17,13 +17,13 @@ Job 키는 롤에서 복사한다(D-16). 출하 승인된 롤의 검사는 등�
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
-from .. import nav, rbac, stats, templating
+from .. import lineage, nav, rbac, stats, templating
 from ..util import audit, http
 
 router = APIRouter()
@@ -31,6 +31,8 @@ router = APIRouter()
 PASS, FAIL = "합격", "불합격"
 RESULTS: tuple[str, ...] = (PASS, FAIL)
 LIST_LIMIT = 500
+#: `inspection.delta_e` 는 numeric(7,2) — 소수 둘째 자리로 맞춘 값이 이 값 이상이면 컬럼에 담기지 않는다
+DELTA_E_SCALE, DELTA_E_LIMIT = Decimal("0.01"), Decimal("100000")
 
 #: 롤 하나의 최신 검사 — 그 롤의 판정이다. `{roll}` 자리에 롤 키 식을 넣는다 (출하·COA 도 이 식을 쓴다)
 LATEST_OF_ROLL = """(select m.inspection_id from inspection m where m.roll_id = {roll}
@@ -63,17 +65,48 @@ def approved_shipment_of(roll_id: int) -> str | None:
     return row["shipment_no"] if row else None
 
 
+# ── 스캔 진입 (D-201) ───────────────────────────────────────────────────
+def scan_failure(request: Request, exc: Exception) -> dict:
+    """GET 스캔 진입(`?no=`)에서 번호를 못 찾았을 때 — JSON 은 422 를 그대로 올리고, 브라우저는 **같은 화면**을 422 로
+    다시 그린다(오류 문장이 크게 보이고 스캔칸이 남아 포커스를 잡는다 — 다음 스캔을 막지 않는다). 돌려주는 값은 화면에 넘길 오류.
+    출하 화면(`shp.py`)도 이것을 쓴다."""
+    if not http.wants_html(request):
+        raise exc
+    detail = getattr(exc, "detail", None) or {}
+    return {"message": detail.get("message", ""), "fields": detail.get("fields") or []}
+
+
+def scanned_roll(roll_no: str) -> lineage.Node:
+    """사용자가 입력·스캔한 롤 번호 → 롤 노드. 다른 스캔 화면처럼 `lineage.resolve` 로 찾는다
+    (앞뒤 공백 제거 · 소문자로 들어오면 대문자로도 찾는다, D-201). 없는 번호 · 롤이 아닌 번호는 422."""
+    node = lineage.resolve(roll_no)
+    if node is None:
+        raise http.validation_error("없는 롤입니다", fields=[{"name": "롤 번호", "reason": roll_no}])
+    if node.kind != lineage.ROLL:
+        raise http.validation_error("롤 번호가 아닙니다", fields=[{"name": roll_no, "reason": node.label}])
+    return node
+
+
 # ── 입력값 ──────────────────────────────────────────────────────────────
 def _delta_e(text: str | None) -> Decimal | None:
+    """ΔE — 비우면 None. 숫자가 아니거나 음수거나 컬럼(numeric(7,2))에 담기지 않는 값은 422(어느 칸인지 알려 준다).
+    소수 셋째 자리부터는 DB 가 하듯 반올림해 둘째 자리로 맞춘다(99999.999 → 100000.00 은 범위 밖)."""
     text = (text or "").strip()
     if not text:
         return None
     try:
-        value = Decimal(text)
+        value = Decimal(text.replace(",", ""))
     except InvalidOperation:
         raise http.validation_error("ΔE 는 숫자로 입력해 주세요", fields=[{"name": "ΔE", "reason": text}]) from None
-    if not value.is_finite() or value < 0 or value >= Decimal("100000"):
+    if not value.is_finite():
+        raise http.validation_error("ΔE 는 숫자로 입력해 주세요", fields=[{"name": "ΔE", "reason": text}])
+    if value < 0:
         raise http.validation_error("ΔE 는 0 이상의 숫자입니다", fields=[{"name": "ΔE", "reason": text}])
+    if value >= DELTA_E_LIMIT:                       # 자릿수가 아주 큰 값(1e999)은 맞추기 전에 걸러 낸다
+        raise http.validation_error("ΔE 값이 너무 큽니다", fields=[{"name": "ΔE", "reason": f"{text} — 100000 미만이어야 합니다"}])
+    value = value.quantize(DELTA_E_SCALE, rounding=ROUND_HALF_UP)
+    if value >= DELTA_E_LIMIT:
+        raise http.validation_error("ΔE 값이 너무 큽니다", fields=[{"name": "ΔE", "reason": f"{text} — 100000 미만이어야 합니다"}])
     return value
 
 
@@ -110,11 +143,18 @@ def _defect_rows(codes: list[str], positions: list[str], keep: set[str] = frozen
     return out
 
 
-def _inspection(inspection_id: int) -> dict:
-    """경로의 키로 검사 한 건. 없으면 404."""
+#: 경로의 검사 키가 가질 수 있는 가장 큰 값 (bigint) — 이보다 큰 숫자는 그런 검사가 없다
+_ID_MAX = 2 ** 63 - 1
+
+
+def _inspection(inspection_id: str) -> dict:
+    """경로의 키로 검사 한 건. 없으면 404 — 숫자가 아닌 키도 "그런 검사는 없다" 로 404 다(다른 화면과 같게)."""
+    key = (inspection_id or "").strip()
+    if not (key.isascii() and key.isdigit()) or int(key) > _ID_MAX:
+        raise http.not_found()
     row = conn.q1("""select n.*, r.roll_no, j.job_no from inspection n
                        join roll r on r.roll_id = n.roll_id join job j on j.job_id = n.job_id
-                      where n.inspection_id = %s""", (inspection_id,))
+                      where n.inspection_id = %s""", (int(key),))
     if row is None:
         raise http.not_found()
     return row
@@ -135,14 +175,18 @@ def inspections(request: Request, no: str = "", roll_no: str = "", job_no: str =
     d1, d2 = stats.parse_date(date_from, "검사일 시작"), stats.parse_date(date_to, "검사일 끝")
     if result and result not in RESULTS:
         raise http.validation_error("판정은 합격 또는 불합격입니다", fields=[{"name": "판정", "reason": result}])
-    scanned = None
+    scanned, scan_error = None, None
     no = no.strip()
     if no:                                   # 라벨 바코드로 들어온 롤 (`?no=`) — 그 롤의 검사만 보이고 등록칸에 번호가 채워진다
-        scanned = conn.q1("""select v.roll_id, v.roll_no, v.process_type, v.state, j.job_no, i.item_name
-                               from v_roll_state v join job j on j.job_id = v.job_id join item i on i.item_id = j.item_id
-                              where v.roll_no = %s""", (no,))
-        if scanned is None:
-            raise http.validation_error("없는 롤입니다", fields=[{"name": "롤 번호", "reason": no}])
+        try:
+            node = scanned_roll(no)
+        except HTTPException as exc:         # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
+            scan_error, no = scan_failure(request, exc), ""
+        else:
+            scanned = conn.q1("""select v.roll_id, v.roll_no, v.process_type, v.state, j.job_no, i.item_name
+                                   from v_roll_state v join job j on j.job_id = v.job_id join item i on i.item_id = j.item_id
+                                  where v.roll_id = %s""", (node.id,))
+            no = scanned["roll_no"]
     rows = conn.q(f"""
         select n.inspection_id, n.delta_e, n.result, n.inspected_at, n.inspected_by, n.note,
                r.roll_no, r.process_type, j.job_no, i.item_name,
@@ -164,7 +208,7 @@ def inspections(request: Request, no: str = "", roll_no: str = "", job_no: str =
          "d1": d1, "d2": d2, "result": result or None})
     editing = None
     if edit.strip():
-        if not edit.strip().isdigit():
+        if not (edit.strip().isascii() and edit.strip().isdigit()) or int(edit) > _ID_MAX:
             raise http.validation_error("없는 검사입니다", fields=[{"name": "검사", "reason": edit}])
         editing = conn.q1("""select n.inspection_id, n.delta_e, n.result, n.note, r.roll_no, j.job_no
                                from inspection n join roll r on r.roll_id = n.roll_id join job j on j.job_id = n.job_id
@@ -176,10 +220,10 @@ def inspections(request: Request, no: str = "", roll_no: str = "", job_no: str =
                                         where x.inspection_id = %s order by x.inspection_defect_id""", (int(edit),))
     defect_codes = conn.q("select defect_code, defect_name, use_yn from defect_code order by defect_code")
     return templating.render(request, "qua/inspections.html", {
-        "rows": rows, "limit": LIST_LIMIT, "scanned": scanned, "editing": editing, "results": RESULTS,
-        "defect_codes": defect_codes,
+        "rows": rows, "limit": LIST_LIMIT, "scanned": scanned, "scan_error": scan_error, "editing": editing,
+        "results": RESULTS, "defect_codes": defect_codes,
         "q": {"no": no, "roll_no": roll_no, "job_no": job_no, "date_from": date_from, "date_to": date_to, "result": result},
-    }, screen_id="QUA-01")
+    }, screen_id="QUA-01", status_code=422 if scan_error else 200)
 
 
 @router.post(nav.path_of("QUA-01"))                                                  # F-QUA-01 검사 결과 등록
@@ -190,9 +234,7 @@ def create_inspection(request: Request, roll_no: str = Form(""), delta_e: str = 
     roll_no = roll_no.strip()
     if not roll_no:
         raise http.validation_error("롤 번호를 스캔해 주세요", fields=[{"name": "롤 번호", "reason": "비어 있음"}])
-    roll = conn.q1("select roll_id, roll_no, job_id from roll where roll_no = %s", (roll_no,))
-    if roll is None:
-        raise http.validation_error("없는 롤입니다", fields=[{"name": "롤 번호", "reason": roll_no}])
+    roll = conn.q1("select roll_id, roll_no, job_id from roll where roll_id = %s", (scanned_roll(roll_no).id,))
     de, res, defects = _delta_e(delta_e), _result(result), _defect_rows(defect_code, position)
     _guard_approved(roll["roll_id"], roll["roll_no"], "등록")
     with conn.tx() as cur:
@@ -210,11 +252,12 @@ def create_inspection(request: Request, roll_no: str = Form(""), delta_e: str = 
 
 
 @router.post(nav.path_of("QUA-01") + "/{inspection_id}")                             # F-QUA-02 검사 결과 수정
-def update_inspection(request: Request, inspection_id: int, delta_e: str = Form(""), result: str = Form(""),
+def update_inspection(request: Request, inspection_id: str, delta_e: str = Form(""), result: str = Form(""),
                       note: str = Form(""), defect_code: list[str] = Form(default=[]),
                       position: list[str] = Form(default=[]),
                       user: rbac.User = rbac.require_fn("F-QUA-02")):
     row = _inspection(inspection_id)
+    inspection_id = row["inspection_id"]
     kept = {r["defect_code"] for r in conn.q(
         """select d.defect_code from inspection_defect x join defect_code d on d.defect_code_id = x.defect_code_id
             where x.inspection_id = %s""", (inspection_id,))}
@@ -234,8 +277,9 @@ def update_inspection(request: Request, inspection_id: int, delta_e: str = Form(
 
 
 @router.post(nav.path_of("QUA-01") + "/{inspection_id}/delete")                      # F-QUA-03 검사 결과 삭제
-def delete_inspection(request: Request, inspection_id: int, user: rbac.User = rbac.require_fn("F-QUA-03")):
+def delete_inspection(request: Request, inspection_id: str, user: rbac.User = rbac.require_fn("F-QUA-03")):
     row = _inspection(inspection_id)
+    inspection_id = row["inspection_id"]
     _guard_approved(row["roll_id"], row["roll_no"], "삭제")
     with conn.tx() as cur:
         cur.execute("delete from inspection_defect where inspection_id = %s", (inspection_id,))

@@ -14,8 +14,10 @@
 
 {% if opened %}
 <section class="panel" id="form">
-  <h2>슬리팅 분할 <small><code>{{ opened.roll_no }}</code> · {{ opened.process_type }} · Job {{ opened.job_no }} · {{ pui.state(opened.state) }}</small></h2>
-  {% if opened.state == '재고' %}
+  <h2>슬리팅 분할 <small><code>{{ opened.roll_no }}</code> · {{ opened.process_type }} · Job {{ opened.job_no }}{% if opened.job_status != lineage.JOB_OPEN %} ({{ opened.job_status }}){% endif %} · {{ pui.state(opened.state) }}</small></h2>
+  {% if opened.state == '재고' and opened.job_status != lineage.JOB_OPEN %}
+  <p class="err big">{{ opened.job_status }} 상태의 Job 에는 롤을 만들 수 없습니다</p>
+  {% elif opened.state == '재고' %}
   <form class="form-grid" method="post" action="{{ nav.path_of('RLL-02') }}" id="slit-form">
     <input type="hidden" name="roll_no" value="{{ opened.roll_no }}">
     {{ ui.field('분할 수', 'count', '', type='number', required=true, step='1') }}
@@ -62,6 +64,7 @@
     </tbody>
   </table>
   {{ ui.notes(['분할하면 부모 롤은 `소진` 이 되고 슬리팅 롤 N개가 `재고` 로 생긴다. 계보에는 `슬리팅` N줄.',
+               '부모 롤의 Job 이 `등록` 상태여야 한다. 취소·완료된 Job 의 롤은 나눌 수 없다 (D-208).',
                '폭·길이는 가설 컬럼이다 (D-18).']) }}
 </section>
 {% endblock %}

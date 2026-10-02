@@ -21,7 +21,8 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, rbac, templating
 from ..util import audit, http
-from .pop import LIST_LIMIT, back_to, bad, date_of, decimal_of, find_job, int_of, job_of, path_id, text_of
+from .pop import (INT8_MAX, LAB, LIST_LIMIT, RATIO, back_to, bad, date_of, decimal_of, find_job, int_of, job_of, path_id,
+                  text_of)
 
 router = APIRouter()
 
@@ -44,7 +45,8 @@ def _record(record_id: int) -> dict:
 
 
 def _lab(color_l: str, color_a: str, color_b: str) -> tuple:
-    return (decimal_of(color_l, "색상값 L"), decimal_of(color_a, "색상값 a"), decimal_of(color_b, "색상값 b"))
+    return (decimal_of(color_l, "색상값 L", digits=LAB), decimal_of(color_a, "색상값 a", digits=LAB),
+            decimal_of(color_b, "색상값 b", digits=LAB))
 
 
 def _target(r: dict) -> str:
@@ -80,7 +82,7 @@ def record_list(request: Request, job_no: str = "", date_from: str = "", date_to
                         ([r["color_record_id"] for r in rows],)):
             mixes.setdefault(m["color_record_id"], []).append(m)
     editing, editing_mix = None, []
-    edit_id = int_of(edit, "조색 기록")
+    edit_id = int_of(edit, "조색 기록", maximum=INT8_MAX)
     if edit_id is not None:
         editing = _record(edit_id)
         editing_mix = conn.q("""select seq_no, component_name, ratio_pct from color_record_mix
@@ -147,7 +149,7 @@ def mix_replace(request: Request, id: str, component_name: list[str] = Form(defa
         if not (comp or "").strip() and not (ratio or "").strip():
             continue                                    # 화면의 빈 행
         name = text_of(comp, f"{n}행 성분", required=True, max_len=100)
-        pct = decimal_of(ratio, f"{n}행 비율", required=True, positive=True)
+        pct = decimal_of(ratio, f"{n}행 비율", required=True, positive=True, digits=RATIO)
         if pct > MIX_TOTAL:
             raise bad("비율은 100 이하여야 합니다", f"{n}행 비율", str(pct))
         mix.append((name, pct))

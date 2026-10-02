@@ -140,7 +140,9 @@ def parse_item(item_id: str | None) -> int | None:
     text = (item_id or "").strip()
     if not text:
         return None
-    if not text.isdigit() or conn.q1("select 1 from item where item_id = %s", (int(text),)) is None:
+    # 숫자는 ASCII 0-9 만 — `²` 같은 글자는 isdigit() 은 참이지만 int() 가 못 읽는다(500 이 되던 것). bigint 를 넘는 값도 없는 품목이다
+    if not (text.isascii() and text.isdigit()) or int(text) > 2 ** 63 - 1 \
+            or conn.q1("select 1 from item where item_id = %s", (int(text),)) is None:
         raise http.validation_error("없는 품목입니다", fields=[{"name": "품목", "reason": text}])
     return int(text)
 

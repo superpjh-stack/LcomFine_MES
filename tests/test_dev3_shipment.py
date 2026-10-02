@@ -311,3 +311,45 @@ def _flash(html: str) -> dict | None:
     import re
     m = re.search(r'<script type="application/json" id="flash-data">(.*?)</script>', html, re.S)
     return json.loads(html_lib.unescape(m.group(1))) if m else None
+
+
+# ── 웨이브 D (QA 결함 수정) ─────────────────────────────────────────────
+HTML = {"accept": "text/html"}
+
+
+@pytest.mark.fn("F-SHP-04")
+def test_scan_of_unknown_shipment_redraws_the_screen_with_the_scan_box(w):
+    """없는 출하 LOT 번호 스캔(GET `?no=`) — JSON 은 422, 브라우저는 같은 화면을 422 로 다시 그린다: 큰 글씨 사유 + 스캔칸 (D-201)."""
+    field = client("field")
+    r = field.get(SHIPMENTS, params={"no": P + "NOPE"})
+    assert r.status_code == 422 and r.json()["message"] == "없는 출하 LOT 입니다"
+    r = field.get(SHIPMENTS, params={"no": P + "NOPE", "device": "pop"}, headers=HTML)
+    assert r.status_code == 422
+    assert "data-scan" in r.text and 'id="scan-result"' in r.text and 'class="err big"' in r.text
+    assert "없는 출하 LOT 입니다" in r.text and P + "NOPE" in r.text and "ch-pop" in r.text
+    assert 'id="shipment-form"' in r.text and 'name="no" data-scan' in r.text   # 출하 화면 그대로 — 스캔칸은 출하 LOT 번호를 받는다
+    r = field.get(SHIPMENTS, params={"no": P + "R1"}, headers=HTML)             # 롤 번호를 쏘면 — 출하 LOT 이 아니다
+    assert r.status_code == 422 and "출하 LOT 번호가 아닙니다" in r.text and "data-scan" in r.text
+
+
+@pytest.mark.fn("F-SHP-02", "F-SHP-04")
+def test_scan_result_stays_on_the_screen_and_lowercase_opens(w):
+    """스캔 결과는 알림 말고 본문에도 남는다(알림이 다음 스캔으로 닫혀도 보인다). 소문자 출하 LOT 번호도 열린다 (D-201 · D-308)."""
+    no = _register()
+    field = client("field")
+    page = f"{SHIPMENTS}?no={no}"
+    r = field.post(f"{SHIPMENTS}/{no}/rolls", data={"roll_no": P + "R1"}, headers={**HTML, "referer": f"http://testserver{page}"},
+                   follow_redirects=False)
+    assert r.status_code == 303
+    r = field.get(page, headers=HTML)
+    assert r.status_code == 200 and 'id="scan-result"' in r.text and 'class="ok-msg"' in r.text and "담았습니다" in r.text
+    assert f'action="{SHIPMENTS}/{no}/rolls"' in r.text and "data-scan" in r.text
+    r = field.post(f"{SHIPMENTS}/{no}/rolls", data={"roll_no": P + "R1"}, headers={**HTML, "referer": f"http://testserver{page}"},
+                   follow_redirects=False)                                       # 같은 롤을 다시 — 422 는 303 + 경고
+    assert r.status_code == 303
+    r = field.get(page, headers=HTML)
+    assert 'id="scan-result"' in r.text and 'class="err big"' in r.text and "data-scan" in r.text
+    assert count("select count(*) as n from roll_genealogy where child_shipment_id = (select shipment_id from shipment where shipment_no = %s)",
+                 (no,)) == 1                                                     # 한 번 스캔 = 한 건
+    r = field.get(SHIPMENTS, params={"no": no.lower()}, headers=HTML)
+    assert r.status_code == 200 and f'action="{SHIPMENTS}/{no}/rolls"' in r.text

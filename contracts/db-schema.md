@@ -2,6 +2,8 @@
 
 > 원본은 `src/lcomfine/db/schema.sql` 이다(D-08). **§4 는 그 파일과 실제 DB 에서 찍어 낸 렌더본**이라 손으로 고치지 않는다 —
 > `schema.sql` 을 고치고 `make db-schema && make contracts`. `make check-schema` 가 이 문서 ↔ 실제 DB 를 컬럼 단위로 대조한다(G-04).
+> 데이터가 있는 DB(여럿이 같이 쓰는 DB · 운영 DB)는 `make db-schema` 로 지우지 않고 **`ALTER` 로 같은 모양을 만든 뒤** `make contracts` 를 돌린다 —
+> 새 컬럼은 `schema.sql` 에서도 그 테이블의 맨 끝에 적는다(`ADD COLUMN` 이 맨 끝에 붙으므로 컬럼 순서가 같아야 한다).
 > 스키마를 고치는 사람은 아키텍트뿐이다. 개발자는 `progress-devN.md` §3 에 요청을 남긴다(D-22).
 > 컬럼은 설계도 「프로세스별 입력과 출력」 표의 **입력** 낱말에서 끌어왔다. 모자란 곳의 구조 컬럼은 `가설`(D-18)이고 규격 값은 넣지 않았다.
 
@@ -539,6 +541,8 @@ DB 가 막지 않고 `lineage` 만 막는 것: 소진된 롤을 **다른 작업�
 | created_by | text | N | 등록자 login_id |
 | updated_at | timestamp with time zone | Y | 수정 일시 |
 | updated_by | text | Y | 수정자 login_id |
+| session_epoch | integer | N | 세션 판 번호 — 상태·비밀번호가 바뀌면 트리거가 +1. 로그인 때의 값과 다른 세션은 무효 (D-26) |
+| revoked_sessions | jsonb | N | 로그아웃한 세션 ID → 로그아웃 시각(epoch 초). 쿠키 수명이 지난 것은 다음 로그아웃 때 지운다 (D-26) |
 
 ### `sys_permission` — SYS · 권한 표 — 역할 × 대메뉴 한 칸이 한 행 (4 × 12 = 48). 코드가 아니라 데이터다 (G-17 · D-14)
 
@@ -619,7 +623,7 @@ DB 가 막지 않고 `lineage` 만 막는 것: 소진된 롤을 **다른 작업�
 |---|---|
 | 작업지시 | `roll.job_id` → `job` (생산 LOT 은 `roll.job_lot_id` → `job_lot`) |
 | 조색 기록 | `roll.job_id` = `color_record.job_id` |
-| 생산 실적 | 인쇄 롤: `roll.work_result_id` → `work_result`(→ `work_stop` `work_scrap` `material_input`). 후가공·슬리팅 롤: 계보를 거슬러 올라간 인쇄 롤의 실적 |
+| 생산 실적 | 인쇄 롤: `roll.work_result_id` → `work_result`(→ `work_stop` `work_scrap` `material_input`). 후가공·슬리팅 롤: 계보를 거슬러 올라간 인쇄 롤의 실적 — **이 길을 화면에서 보여 주는 것은 롤 이력(F-RLL-06 `GET /rll/history?no=`, 개발2)의 책임이다**: 후가공·슬리팅 롤 번호로 열면 `lineage.trace_backward` 로 닿은 모든 조상 인쇄 롤의 실적이 나온다(D-210). LOT 추적 화면(F-TRC-01·02)은 계보만 보인다(D-401) |
 | 검사 결과 | `inspection.roll_id` (최신 `inspected_at` 이 그 롤의 판정) |
 | 출하 | `roll_genealogy` 의 `parent_roll_id = 롤` · `child_shipment_id` → `shipment` (자손 롤의 출하는 정방향 추적) |
 | 원재료 LOT | 역방향 추적 |
@@ -635,7 +639,7 @@ DB 가 막지 않고 `lineage` 만 막는 것: 소진된 롤을 **다른 작업�
 | `work_result.status` | `진행` ⇄ `정지` → `완료` | P5 (F-POP-01·02·04·05) |
 | `shipment.status` | `등록` → `승인` / `취소` | P8 (F-SHP-01·03·05) |
 | `inspection.result` | `합격` / `불합격` | P7 |
-| `sys_user.status` | `정상` / `잠금` / `중지` | 공통 (F-SYS-02·03) |
+| `sys_user.status` | `정상` / `잠금` / `중지` | 공통 (F-SYS-02·03). 바뀌면 트리거 `sys_user_session_epoch_trg` 가 `session_epoch` 를 올려 그 계정의 살아 있는 세션을 끊는다(비밀번호 해시가 바뀔 때도 — D-26) |
 | 롤 상태 | `재고` / `소진` / `출하` | 아무도 — 계보에서 계산 (`v_roll_state`) |
 
 Job 이 참조하는 판사양·아니록스·잉크조성은 각각 하나다. 다색 인쇄에서 색마다 다른 아니록스·잉크를 지정하는 구조는 현업의 작업지시서 양식을 받은 뒤 정한다(D-18).

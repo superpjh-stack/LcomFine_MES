@@ -1,0 +1,15 @@
+# 이미지에 넣지 않는 것 — 비밀(.env) · 로컬 가상환경 · 산출물 · 백업 덤프
+.env
+.env.*
+!.env.example
+.venv/
+.git/
+.gstack/
+.claude/
+.pytest_cache/
+**/__pycache__/
+*.pyc
+*.log
+backups/
+outputs/
+tests/

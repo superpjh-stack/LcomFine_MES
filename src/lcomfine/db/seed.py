@@ -104,12 +104,22 @@ def seed_permissions(reset: bool = False) -> None:
 
 
 def seed_users() -> None:
-    """시드 계정을 환경변수 비밀번호로 맞춘다(있으면 비밀번호·상태를 되돌린다 — 검사 도구가 이 계정으로 로그인한다)."""
+    """시드 계정을 환경변수 비밀번호로 맞춘다(있으면 비밀번호·상태를 되돌린다 — 검사 도구가 이 계정으로 로그인한다).
+
+    비밀번호가 이미 그 값이면 해시를 다시 쓰지 않는다 — 다시 쓰면 `sys_user_session_epoch_trg` 가 그 계정의 살아 있는 세션을
+    전부 끊는다(D-26). 그래서 시드를 다시 돌려도 로그인해 있던 사람은 그대로다."""
     password = get_settings().seed_password
     if not password:
         raise SystemExit("LCOMFINE_SEED_PASSWORD 미설정 — 시드 계정을 만들 수 없다. `make setup` 으로 `.env` 를 만들거나 "
                          "환경변수로 준다. 기본 비밀번호는 두지 않는다(G-19).")
     for login_id, name, role_code in USERS:
+        cur = conn.q1("select password_hash from sys_user where login_id = %s", (login_id,))
+        if cur is not None and auth.verify_password(password, cur["password_hash"]):
+            conn.x("""update sys_user set role_code = %s, user_name = %s, status = '정상', fail_count = 0,
+                             updated_at = now(), updated_by = %s
+                       where login_id = %s""",
+                   (role_code, example(name), SEEDED_BY, login_id))
+            continue
         conn.x("""insert into sys_user (login_id, user_name, password_hash, role_code, created_by)
                   values (%s, %s, %s, %s, %s)
                   on conflict (login_id) do update

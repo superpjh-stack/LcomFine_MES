@@ -321,3 +321,109 @@ def test_example_folder_passes_validation(capsys):
             labelled = [v for k, v in row.values.items() if (k.endswith("_name") or k == "note") and v]
             assert all("(예시)" in v for v in labelled), (r.spec.filename, row.values)
     capsys.readouterr()
+
+
+# ── 웨이브 D (QA 결함 수정) — 화면이 막는 변경은 배치도 하지 않는다 (D-309 · DEF-QA3-005) ──
+def _job(job_no: str) -> dict:
+    return one("""select i.item_code, c.customer_code, j.order_qty::text as order_qty, j.status, j.due_date::text as due,
+                         j.note, j.updated_by
+                    from job j join item i on i.item_id = j.item_id join customer c on c.customer_id = j.customer_id
+                   where j.job_no = %s""", (job_no,))
+
+
+def _load_clean(tmp_path, by: str):
+    folder = write(tmp_path, CLEAN)
+    for command in ("load-master", "load-print-std", "load-jobs"):
+        assert migration.COMMANDS[command](folder, by=by) == 0
+    return folder
+
+
+@pytest.mark.fn("B-MIG-01", "B-MIG-04")
+@pytest.mark.parametrize("kind", ["작업 실적", "롤", "출하"])
+def test_load_jobs_does_not_overwrite_a_job_that_has_records(tmp_path, capsys, clean_db, kind):
+    """작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — 그 행은 건너뛰고 오류로 리포트(줄 번호·키·사유), 종료코드 1.
+    화면(F-JOB-02)이 막는 "실적 뒤 품목·수량 변경" 을 배치가 우회하지 않는다. 다른 행은 그대로 적재된다."""
+    by = P + "live"
+    folder = _load_clean(tmp_path, by)
+    job_id = one("select job_id from job where job_no = %s", (P + "J001",))["job_id"]
+    if kind == "작업 실적":
+        conn.x("insert into work_result (job_id, worker) values (%s, 't3')", (job_id,))
+    elif kind == "롤":
+        conn.x("insert into roll (roll_no, process_type, job_id, produced_by) values (%s, '인쇄', %s, 't3')", (P + "R001", job_id))
+    else:
+        conn.x("""insert into shipment (shipment_no, job_id, customer_id, ship_date, registered_by)
+                  select %s, job_id, customer_id, current_date, 't3' from job where job_id = %s""", (P + "S001", job_id))
+    before = _job(P + "J001")
+    conn.x("insert into item (item_code, item_name, item_type, unit, created_by) values (%s, '제품 B (예시)', '제품', 'm', 't3')", (P + "P02",))
+    (folder / "job.csv").write_text(
+        CLEAN["job.csv"].replace(f"{P}J001,{P}P01,{P}C01,{P}PL1,{P}AN1,{P}INK1,{P}EQ1,1000,m,2001-03-15",
+                                 f"{P}J001,{P}P02,{P}C01,,,,,7,m,2001-12-31")
+        .replace(f"{P}J002,{P}P01,{P}C01,,,,,500", f"{P}J002,{P}P01,{P}C01,,,,,501"), encoding="utf-8")
+    capsys.readouterr()
+
+    assert migration.COMMANDS["validate"](folder) == 1                      # 검증이 미리 알린다 (쓰지 않는다)
+    out = capsys.readouterr().out
+    assert f"job.csv 2행 [{P}J001]: 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {kind} 1" in out
+
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    out = capsys.readouterr().out
+    assert "판정: FAIL" in out
+    assert f"job.csv 2행 [{P}J001]: 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {kind} 1" in out   # 줄 번호 · 키 · 사유
+    assert _job(P + "J001") == before                                       # 품목·고객·수량·납기·수정자 전부 그대로
+    assert _job(P + "J002")["order_qty"] == "501.000"                       # 실적이 없는 Job 은 갱신된다
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (2, 1, 1)
+    assert f"2행 [{P}J001]" in log["error_detail"] and "덮어쓰지 않는다" in log["error_detail"]
+    assert migration.COMMANDS["report"](None, by=by) == 1                   # 리포트에도 오류로 남는다
+    assert "덮어쓰지 않는다" in capsys.readouterr().out
+
+    # 값이 같아도 건드리지 않는다 (견주지 않는다) — 그 Job 의 행은 파일에서 빼야 오류가 없어진다
+    (folder / "job.csv").write_text(CLEAN["job.csv"], encoding="utf-8")
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    assert _job(P + "J001") == before
+    capsys.readouterr()
+
+
+@pytest.mark.fn("B-MIG-04")
+def test_load_jobs_does_not_revive_a_cancelled_job_or_take_a_raw_material(tmp_path, capsys, clean_db):
+    """화면이 422 로 막는 것 두 가지 — 취소된 Job 을 되살리기(F-JOB-02) · 원재료 품목의 작업지시(F-JOB-01)."""
+    by = P + "rule"
+    folder = _load_clean(tmp_path, by)
+    conn.x("update job set status = '취소' where job_no = %s", (P + "J001",))
+    head = CLEAN["job.csv"].splitlines()[0] + "\n"
+    (folder / "job.csv").write_text(head + f"{P}J001,{P}P01,{P}C01,,,,,9,m,2001-03-15,등록,(예시)\n"
+                                         + f"{P}J009,{P}R01,{P}C01,,,,,5,m,2001-03-15,,(예시)\n", encoding="utf-8")
+    capsys.readouterr()
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    out = capsys.readouterr().out
+    assert f"job.csv 2행 [{P}J001]: 취소된 Job 은 되살리지 않는다" in out
+    assert f"job.csv 3행 [{P}J009]: item_code: 제품 품목만 작업지시할 수 있다 — '{P}R01' 는 원재료" in out
+    assert (_job(P + "J001")["status"], _job(P + "J001")["order_qty"]) == ("취소", "1000.000")
+    assert count("select count(*) as n from job where job_no = %s", (P + "J009",)) == 0
+    assert migration.COMMANDS["validate"](folder) == 1                      # 검증도 같은 두 행을 알린다
+    out = capsys.readouterr().out
+    assert "취소된 Job 은 되살리지 않는다" in out and "제품 품목만 작업지시할 수 있다" in out
+
+    # 취소된 Job 을 `취소` 그대로 다시 적재하는 것은 된다 (다시 돌려도 같은 결과 — G-15)
+    (folder / "job.csv").write_text(head + f"{P}J001,{P}P01,{P}C01,,,,,1000,m,2001-03-15,취소,(예시)\n", encoding="utf-8")
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
+    assert _job(P + "J001")["status"] == "취소"
+    capsys.readouterr()
+
+
+@pytest.mark.fn("B-MIG-03")
+def test_load_print_std_refuses_non_positive_anilox_numbers(tmp_path, capsys, clean_db):
+    """화면(F-PRT-05·06)은 선수·셀 용적이 0 보다 커야 한다고 막는다 — 배치도 그 행을 건너뛰고 오류로 남긴다."""
+    by = P + "anilox"
+    folder = write(tmp_path, {**CLEAN, "anilox.csv": CLEAN["anilox.csv"] + f"{P}AN2,아니록스 B (예시),0,,,Y\n"
+                                                                      + f"{P}AN3,아니록스 C (예시),120,-1,,Y\n"
+                                                                      + f"{P}AN4,아니록스 D (예시),120.5,3.2,,Y\n"})
+    migration.COMMANDS["load-master"](folder, by=by)
+    capsys.readouterr()
+    assert migration.COMMANDS["load-print-std"](folder, by=by) == 1
+    out = capsys.readouterr().out
+    assert f"anilox.csv 3행 [{P}AN2]: line_count: 0 보다 커야 한다" in out
+    assert f"anilox.csv 4행 [{P}AN3]: cell_volume: 0 보다 커야 한다" in out
+    assert [r["anilox_code"] for r in conn.q("select anilox_code from anilox where anilox_code like %s order by 1", (P + "%",))] == \
+        [P + "AN1", P + "AN4"]

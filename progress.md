@@ -4,12 +4,27 @@
 
 ## 지금 해야 할 것
 
-1. **웨이브 D — 결함 수정 (아키텍트 · 개발2 · 개발3 병렬).** 수용 기준은 QA 가 실패하는 채로 둔 테스트 39건 — QA 테스트·검사기는 고치지 않고 `uv run pytest -q` 전건 통과 + `make gate-full` 의 FAIL 6 해소.
-   - **아키텍트**: 세션 무효화(중지·잠금·로그아웃 뒤 쿠키, DEF-QA1-003 · QA3-003) · NUL 입력 500 → 422(DEF-QA1-001) · Referer 없는 폼 422 → 405(DEF-QA1-005) · `/docs` 무인증(DEF-QA1-006) · 503 화면의 DB 오류 원문 노출(DEF-QA3-009) · `static/app.js` 알림 중 스캔 유실·포커스 복귀(DEF-QA3-001) · 현황판 오류 화면에서 새로고침 끊김(DEF-QA3-004) · `tools/backup.py`(G-20, DEF-QA3-006) · `Dockerfile`+`docker-compose.yml`(D-03) · `gate.py` 가 G-22 를 QA3 리포트에서 읽기 · `check_routes.py` 의 `min(login_id)` 로그인 · 계약 반영(D-101~D-307, F-RLL-02 · F-JOB-03 문장, migration-files 확정) · 모바일 메뉴 순서(DEF-QA3-007) · 로그인 채널 선택(DEF-QA3-008)
-   - **개발2**: 후가공·슬리팅 롤 이력에 조상 인쇄 롤의 생산 실적(DEF-QA2-001) · splice 의 `job_no` 로 취소·완료 Job 에 롤 생성(DEF-QA2-002) · 범위 밖 숫자 500 → 422(DEF-QA1-002: pop·mat·clr·rll)
-   - **개발3**: 검사·출하 스캔 진입 GET 422 에서 스캔칸 유지(DEF-QA1-004 · QA3-002) · 이관 `load-jobs` 가 실적 있는 Job 을 덮어씀(DEF-QA3-005) · `delta_e` 범위 500(DEF-QA1-002) · 숫자 아닌 검사 ID 422 → 404(DEF-QA1-007) · 소문자 롤 번호(DEF-QA2-003)
-2. 그 뒤 **QA3 재검(G-22 브라우저 한 바퀴)** — 11·12단계가 스캔만으로 진행되는지. gate 전건 PASS 까지 C→D 반복.
-3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-202 · D-303 + QA 「사람 확인」(추적 화면에 경로 위 롤의 검사·실적 미표시, m+kg 합산, 출하 등록이 걸린 Job 의 취소, 입고량 초과 투입, 생산 LOT·Job 번호로 추적 불가, 출하일 범위, 미사용 역할 계정 로그인, 슬리팅 분할 수 상한, 403 접근 로그 미기록, 쿠키 Secure·수명·자동 로그아웃).
+1. **웨이브 D 2차 (개발1 · 개발3 병렬, 작은 수정)** — G-21 의 남은 실패 2건과 수정 중 드러난 구멍:
+   - 개발3: `routers/qua.py:183` · `shp.py:127` 의 `except` 가 QA3 정적 스캔(`test_static_scan_finds_no_unreviewed_swallowing_except`)에 걸림 → `except` 없이(개발2 처럼 `resolve` 가 None 인지로) 가른다. 이관 `load-jobs` 재실행: 실적 있는 Job 이라도 **파일 값이 DB 와 같으면 변경 없음으로 통과**, 다를 때만 오류(D-309 보강).
+   - 개발1: 진행 중인 작업 실적이 있는 Job 은 `완료`·`취소` 422 (개발2 §3-10 — 마감된 Job 에 인쇄 롤이 생기는 구멍). `sys/users.html` 의 "다음 로그인부터 적용" 문구를 D-26 대로. 임시 `.req` 인라인 스타일 제거.
+2. **웨이브 C 재검 (QA)** — ① `tests/test_qa1_rbac.py:198` 과 `test_404_non_numeric_path_key` 가 같은 요청에 422/404 를 서로 다르게 기대(QA1 자기 모순) → DEF-QA1-007 의 기대값(404)으로 정리. ② **G-22 브라우저 한 바퀴 재실행** — 11·12단계가 스캔만으로 진행되는지, 리포트의 `G-22` 행 갱신. ③ 결함 19건의 재검 결과를 리포트 3종에 기록.
+3. 그 뒤 `make gate-full` 전건 PASS + 치명 0 + 연속 2회전 변화 없음 → 종료(goal.md §4.4).
+4. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-202 · D-208 · D-303/D-309 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+
+## 2026-10-03 — 웨이브 D 1차 완료 (아키텍트 · 개발2 · 개발3) · 오케스트레이터 재실측
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 20 · FAIL 2 · 미검증 0 / 22** — FAIL: G-21(pytest 2건 실패) · G-22(QA3 리포트의 판정이 아직 재검 전 FAIL). G-08 · G-13 · G-15 · G-19 · G-20 이 FAIL → PASS | `make gate-full` (혼자 돌 때 직접 실행) |
+| pytest | **1580 passed · 2 failed** (직전 1522 · 39). QA 테스트·검사기는 수정하지 않음 | `uv run pytest -q` |
+| 남은 실패 2건 | ① `test_qa1_rbac.py::test_forbidden_comes_before_validation` — QA1 의 두 테스트가 같은 요청(`POST /qua/inspections/abc/delete`)에 422 와 404 를 각각 기대(자기 모순). 개발3 은 DEF-QA1-007 대로 404 로 고침 ② `test_qa3_ops.py::test_static_scan_finds_no_unreviewed_swallowing_except` — 개발3 이 이번에 넣은 스캔 422 처리의 `except` 2곳 | 위와 같음 |
+| 세션 무효화 (G-19) | 요청마다 `sys_user` 확인 · 로그아웃은 그 세션만 서버에서 무효 · 상태·비밀번호 변경은 DB 트리거가 세션 판 번호를 올려 전부 끊음. `sys_user` 컬럼 2개 추가(`session_epoch` · `revoked_sessions`) — `ALTER` 로 반영, 계약 컬럼 296 → **298** = DB | `make check-schema` (G-04 15/15) · `tests/test_qa3_channel_e2e.py -k "session or cookie"` |
+| POP 스캔 (G-13) | 검사 14 전부 PASS — 알림 중 스캔 글자가 스캔칸으로, 닫으면 포커스 복귀(공용 `static/app.js`) · 검사·출하 화면의 없는 번호 스캔이 같은 화면 422 · 현황판이 오류·서버 끊김 뒤 스스로 복귀 | `uv run python tools/check_security.py` (gate-full 안에서) |
+| G-08 키 연결 | 후가공·슬리팅 롤 이력에 조상 인쇄 롤의 생산 실적 · splice/후가공/슬리팅 롤이 붙는 Job 은 부모의 Job 이고 `등록` 상태여야 함(D-208) | `uv run python tools/check_data.py --only G-08` |
+| G-15 이관 | 실적·롤·출하가 있는 Job 은 덮어쓰지 않고 오류 리포트(D-309) | gate-full 의 G-15 (10/10) |
+| G-20 백업 | `make backup` → 덤프 + 행 수 · `make restore-check` → 임시 DB 복구 · 테이블 30개 행 수 일치 · 임시 DB 삭제 | gate-full 의 G-20 (2/2) |
+| 결정 | D-26~D-31(아키텍트) · D-208~210(개발2) · D-308~310(개발3) · D-401~D-415(QA 「사람 확인」) 추가 — 전부 가설, 차단 0 | `grep -c "^## D-" decisions.md` |
+| 미확인 | Docker 이미지 빌드·기동(데몬 꺼짐 — `docker compose config` 문법만) · 워커 여러 개 · 실물 스캐너·프린터 | 아키텍트 보고 |
 
 ## 2026-10-03 — 웨이브 C 완료 (QA 1·2·3) · 오케스트레이터 재실측
 

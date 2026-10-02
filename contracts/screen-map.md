@@ -81,12 +81,12 @@
 | 화면 | 경로 | 담당 | 비고 |
 |---|---|---|---|
 | 메인 | `/` | 개발1 | 권한 표 밖 — 로그인한 누구나. 아키텍트가 최소 구현(묶음별 바로가기)을 넣어 두었다 |
-| 로그인 | `/login` | 아키텍트 | `?device=pop\|mobile\|board` 로 열면 그 채널로 세션 고정 |
+| 로그인 | `/login` | 아키텍트 | 화면에서 채널을 골라 로그인하면 그 채널로 세션 고정. `?device=pop\|mobile\|board` 로 열면 그 채널이 미리 골라져 있다 (D-30) |
 | 오류 | `/error` | 아키텍트 | 인자 없이 열면 오류 계약 안내(200) |
 
 | 담당 | 만지는 파일 |
 |---|---|
-| 아키텍트 | `app/{main,nav,rbac,auth,templating,settings,contracts}.py` · `app/util/` · `templates/{base,login,_error,_placeholder}.html` · `templates/home/_macros.html` · `static/` · `db/{schema.sql,conn.py,seed.py}` · `tools/{gate,check_routes,check_trace,check_schema,gen_contracts,init_env}.py` · `Makefile` · `contracts/` · `CLAUDE.md` |
+| 아키텍트 | `app/{main,nav,rbac,auth,templating,settings,contracts}.py` · `app/util/` · `templates/{base,login,_error,_placeholder}.html` · `templates/home/_macros.html` · `static/` · `db/{schema.sql,conn.py,seed.py}` · `tools/{gate,check_routes,check_trace,gen_contracts,init_env,backup}.py` · `Makefile` · `Dockerfile` · `docker-compose.yml` · `.env.example` · `contracts/` · `CLAUDE.md` (`tools/check_schema.py` 는 QA2 가 이어받았다 — D-24) |
 | 개발1 | `app/routers/{home,bas,prt,job,sys}.py` · `templates/{home,bas,prt,job,sys}/`(`home/_macros.html` 제외) · `app/numbering.py` · `db/seed_dev1.py` · `tests/test_dev1_*.py` · `progress-dev1.md` |
 | 개발2 | `app/routers/{pop,mat,clr,rll}.py` · `templates/{pop,mat,clr,rll}/` · `app/{lineage,printing}.py` · `db/seed_dev2.py` · `tests/test_dev2_*.py` · `tests/test_lineage_scenario.py` · `progress-dev2.md` |
 | 개발3 | `app/routers/{qua,shp,trc,sta}.py` · `templates/{qua,shp,trc,sta}/` · `app/{erp,stats}.py` · `src/lcomfine/migration/` · `db/seed_dev3.py` · `tests/test_dev3_*.py` · `contracts/migration-files.md`(제안) · `progress-dev3.md` |
@@ -116,8 +116,8 @@
 | 채널 | 여는 법 | 레이아웃 (`base.html` 의 `body.ch-*`) | 대상 화면 |
 |---|---|---|---|
 | 관리자 Web | 기본 | 3단(메뉴 · 본문 · 계약 패널) | §1 의 채널에 `관리자 Web` 이 있는 화면 |
-| 현장 POP | `?device=pop` 또는 `/login?device=pop` | 터치용 확대 · 계약 패널 숨김 · 스캔칸 포커스(`_macros.scan_box`) · 알림은 큰 글씨 | `현장 POP` 이 있는 화면 |
-| 모바일 | `?device=mobile` | 한 단 · 폭 390px 에서 가로 스크롤 없음 | LOT 추적 · 집계 |
-| 현황판 | `?device=board` | 메뉴 없음 · 큰 글씨 · 자동 새로고침(`<meta refresh>`) · 헤더에 `마지막 갱신` | 현황판 |
+| 현장 POP | 로그인 화면에서 `현장 POP` 을 고르거나 `?device=pop` · `/login?device=pop` | 터치용 확대 · 계약 패널 숨김 · 스캔칸 포커스(`_macros.scan_box`) · 알림은 큰 글씨. 알림이 떠 있어도 스캔을 받고, 닫으면 스캔칸으로 돌아온다(`app.js`) | `현장 POP` 이 있는 화면 |
+| 모바일 | 로그인 화면에서 `모바일` 또는 `?device=mobile` | 한 단 · 폭 390px 에서 가로 스크롤 없음 · **본문이 메뉴보다 먼저**(메뉴는 아래, 헤더의 「메뉴」 로 내려간다) | LOT 추적 · 집계 |
+| 현황판 | 로그인 화면에서 `현황판` 또는 `?device=board` | 메뉴 없음 · 큰 글씨 · 자동 새로고침(`app.js` 가 서버 응답을 확인하고 다시 그린다 — 오류 화면에서도 이어진다, D-27) · 헤더에 `마지막 갱신` | 현황판 |
 
 채널은 레이아웃만 바꾼다. 어느 채널에서든 권한은 역할로 판정한다.

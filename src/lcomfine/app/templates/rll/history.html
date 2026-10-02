@@ -10,6 +10,10 @@
 {% else %}<a href="{{ nav.path_of('SHP-01') }}?no={{ n.no }}"><code>{{ n.no }}</code></a>{% endif %}
 {% endmacro %}
 
+{% macro stops_of(w) %}
+{% if can_stops and (w.stop_count or w.scrap_count) %}<a href="{{ nav.path_of('POP-02') }}?work_id={{ w.work_result_id }}">정지 {{ w.stop_count }}회 · 폐기 {{ w.scrap_count }}건</a>{% else %}정지 {{ w.stop_count }}회 · 폐기 {{ w.scrap_count }}건{% endif %}
+{% endmacro %}
+
 {% block body %}
 {{ pui.assets() }}
 {{ pui.result(flash, scan_error) }}
@@ -31,7 +35,7 @@
     <dt>생산 LOT</dt><dd>{{ r.job_lot_no|txt }}</dd>
     <dt>설비 · 길이 · 폭</dt><dd>{{ r.equipment_name|txt }} · {{ r.length_m|num(3) }} m · {{ r.width_mm|num(2) }} mm</dd>
     <dt>생산 일시 · 작업자</dt><dd>{{ r.produced_at|dt }} · {{ r.produced_by }}</dd>
-    <dt>생산 실적</dt><dd>{% if detail.work %}실적 {{ detail.work.work_result_id }} · {{ detail.work.started_at|dt }} ~ {{ detail.work.ended_at|dt }} · 실적 수량 {{ detail.work.output_qty|num(3) }} {{ detail.work.qty_unit|txt('') }} · {{ detail.work.worker }}{% elif r.process_type == '인쇄' %}{{ NOT_COLLECTED }}{% else %}- (작업 실적은 인쇄 롤에만 있다){% endif %}</dd>
+    <dt>생산 실적</dt><dd>{% if r.process_type == '인쇄' %}{% if detail.works %}{% set w = detail.works[0] %}실적 {{ w.work_result_id }} · {{ w.started_at|dt }} ~ {{ w.ended_at|dt }} · 실적 수량 {{ w.output_qty|num(3) }} {{ w.qty_unit|txt('') }} · {{ w.worker }} · {{ stops_of(w) }}{% else %}{{ NOT_COLLECTED }}{% endif %}{% elif detail.works %}조상 인쇄 롤 {{ detail.print_roll_count }}개의 실적 {{ detail.works|length }}건 — <a href="#works">아래 표</a>{% else %}{{ NOT_COLLECTED }}{% endif %}</dd>
     <dt>조색 기록</dt><dd>{% if detail.color_count %}<a href="{{ nav.path_of('CLR-01') }}?job_no={{ r.job_no }}">{{ detail.color_count }}건</a>{% else %}{{ NOT_COLLECTED }}{% endif %}</dd>
     <dt>검사 결과</dt><dd>{% if detail.inspection %}{{ pui.state(detail.inspection.result) }} ΔE {{ detail.inspection.delta_e|num(2) }} · {{ detail.inspection.inspected_at|dt }} · {{ detail.inspection.inspected_by }} (검사 {{ detail.inspection_count }}회 중 최신){% else %}{{ NOT_COLLECTED }}{% endif %}</dd>
     <dt>출하</dt><dd>{% if detail.shipment %}<code>{{ detail.shipment.shipment_no }}</code> · {{ detail.shipment.status }} · 출하일 {{ detail.shipment.ship_date|dt }}{% else %}-{% endif %}</dd>
@@ -44,6 +48,30 @@
     {% endif %}
   </div>
 </section>
+
+{% if r.process_type != '인쇄' %}
+<section class="panel grid-panel" id="works">
+  <h2>생산 실적 <small>계보를 거슬러 올라간 조상 인쇄 롤 {{ detail.print_roll_count }}개 · 실적 {{ detail.works|length }}건</small></h2>
+  <table class="grid plain">
+    <thead><tr><th>실적</th><th>인쇄 롤</th><th>Job</th><th>설비</th><th>시작</th><th>종료</th><th>실적 수량</th><th>작업자</th><th>정지 · 폐기</th></tr></thead>
+    <tbody>
+    {% for w in detail.works %}
+      <tr>
+        <td>실적 {{ w.work_result_id }}</td>
+        <td><a href="{{ nav.path_of('RLL-03') }}?no={{ w.roll_no }}"><code>{{ w.roll_no }}</code></a></td>
+        <td><code>{{ w.job_no }}</code></td><td>{{ w.equipment_name|txt }}</td>
+        <td>{{ w.started_at|dt }}</td><td>{{ w.ended_at|dt }}</td>
+        <td class="num">{{ w.output_qty|num(3) }} {{ w.qty_unit|txt('') }}</td><td>{{ w.worker }}</td>
+        <td>{{ stops_of(w) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['작업 실적은 인쇄 롤에 붙는다 — 이 롤의 계보(roll_genealogy)를 거꾸로 따라가 닿은 인쇄 롤의 실적이다. 경로는 저장하지 않고 열 때마다 조회한다.']) }}
+</section>
+{% endif %}
 
 <section class="panel grid-panel">
   <h2>부모 (한 단계 위) <small>{{ detail.parents|length }}건</small></h2>

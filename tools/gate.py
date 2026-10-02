@@ -7,6 +7,7 @@
   · QA 소유 검사기(`check_data` `check_security` `check_screens`)가 아직 없으면 그 게이트는 `미검증` 이다.
     여기서 대신 잴 수 있는 사실(스텁 여부·파일 유무·행 수)은 재서 실측 칸에 적는다 — 재 보니 안 되는 것은 `FAIL`.
   · **통과한 것처럼 보이게 하지 않는다.** 검사기 없이 PASS 를 주지 않는다(검사기가 있는 G-01~G-04 와 G-21 만 PASS 가 나올 수 있다).
+  · G-22(브라우저 한 바퀴)는 QA3 의 리포트 `outputs/qa3-채널보안.md` 에 적힌 `G-22  …  PASS|FAIL  …` 행을 읽는다. 없으면 `미검증`.
   · `decisions.md` 에 `상태: 차단` 으로 올라온 D-번호가 언급한 게이트는, 실측이 PASS/FAIL 이 아닐 때 `BLOCKED` 로 나온다.
 
     uv run python tools/gate.py               # 읽기 전용 판정표. 종료코드 0 (판정은 출력으로 한다 — D-24)
@@ -324,9 +325,19 @@ def main() -> int:
     put("G-21", PASS if ok21 else FAIL,
         f"pytest passed {n_pass} · failed {n_fail} · check-routes {'PASS' if code_routes == 0 else 'FAIL'} · /health {health}")
 
+    # ── G-22 브라우저 한 바퀴 — 사람이 보는 것과 같은 조작이라 검사기가 아니라 QA3 의 리포트가 판정한다.
+    #    리포트의 `G-22  항목  PASS|FAIL  실측` 행(검사기 행과 같은 형식)을 읽는다. 리포트나 그 행이 없으면 미검증이다 —
+    #    캡처 파일이 있다는 것만으로 PASS 를 주지 않는다.
     e2e = ROOT / "outputs" / "e2e"
     shots = [p for p in e2e.glob("*") if p.is_file()] if e2e.exists() else []
-    put("G-22", UNVERIFIED, f"outputs/e2e 파일 {len(shots)}개 — 브라우저 한 바퀴는 QA3 가 돌고 `outputs/qa3-채널보안.md` 에 판정을 적는다")
+    report = ROOT / "outputs" / "qa3-채널보안.md"
+    row = per_gate(report.read_text(encoding="utf-8")).get("G-22") if report.exists() else None
+    if row is None:
+        put("G-22", UNVERIFIED, f"outputs/e2e 파일 {len(shots)}개 — " + (
+            f"`{report.relative_to(ROOT)}` 에 `G-22  …  PASS|FAIL  …` 판정 행이 없다" if report.exists()
+            else f"`{report.relative_to(ROOT)}` 없음 — 브라우저 한 바퀴는 QA3 가 돌고 그 리포트에 판정을 적는다"))
+    else:
+        put("G-22", row[0], f"{row[1]} · 출처 {report.relative_to(ROOT)} · outputs/e2e 파일 {len(shots)}개")
 
     # ── 차단 반영 · 출력 ──
     blocked = blocked_gates()

@@ -15,16 +15,19 @@
 
   {% if pending %}
   <ul class="pending-rolls">
-    {% for p in pending %}<li><code>{{ p.roll_no }}</code> {{ p.process_type }} · Job {{ p.job_no }} · {{ pui.state(p.state) }}</li>{% endfor %}
+    {% for p in pending %}<li><code>{{ p.roll_no }}</code> {{ p.process_type }} · Job {{ p.job_no }}{% if p.job_status != lineage.JOB_OPEN %} ({{ p.job_status }}){% endif %} · {{ pui.state(p.state) }}</li>{% endfor %}
   </ul>
+  {% if not job_options %}
+  <p class="err">스캔한 롤의 Job 이 `{{ lineage.JOB_OPEN }}` 상태가 아니다 — 취소·완료된 Job 에는 후가공 롤을 만들 수 없다.</p>
+  {% endif %}
   <form class="form-grid" method="post" id="finish-form"
         action="{{ nav.path_of('RLL-01') }}{% if pending|length > 1 %}/splice{% endif %}">
     {% for p in pending %}<input type="hidden" name="roll_no" value="{{ p.roll_no }}">{% endfor %}
     {{ ui.select('설비', 'equipment_code', equipment_options, '', blank='선택 안 함') }}
     {{ ui.field('길이 (m)', 'length_m', '', type='number', step='any') }}
     {{ ui.field('폭 (mm)', 'width_mm', '', type='number', step='any') }}
-    {% if pending|length > 1 and pending|map(attribute='job_no')|unique|list|length > 1 %}
-    {{ ui.field('후가공 롤의 Job 번호 (부모들의 Job 이 다르다)', 'job_no', '', required=true) }}
+    {% if pending|length > 1 and job_count > 1 %}
+    {{ ui.select('후가공 롤의 Job (부모 롤들의 Job 중 하나 — 부모들의 Job 이 다르다)', 'job_no', job_options, '', required=true) }}
     {% endif %}
   </form>
   <div class="form-actions">
@@ -71,6 +74,7 @@
     </tbody>
   </table>
   {{ ui.notes(['부모 롤은 `재고` 상태여야 한다. 이미 소진·출하된 롤을 스캔하면 422.',
+               '후가공 롤의 Job 은 부모 롤들의 Job 중 하나이고 `등록` 상태여야 한다. 취소·완료된 Job 에는 롤을 만들지 않는다 (D-208).',
                '계보에는 부모 → 자식 한 줄씩만 남는다: 후가공 1줄, splice 는 부모 수만큼.']) }}
 </section>
 {% endblock %}

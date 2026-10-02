@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ...db import conn
 from .. import lineage, nav, printing, rbac, templating
 from ..util import audit, http
-from .pop import (LIST_LIMIT, back_to, bad, decimal_of, equipment_of, equipment_options, find_job, int_of,
+from .pop import (LIST_LIMIT, WIDTH, back_to, bad, decimal_of, equipment_of, equipment_options, find_job, int_of,
                   label_page, scan_failure, text_of)
 
 router = APIRouter()
@@ -56,7 +56,7 @@ def _split_numbers(values: list[str]) -> list[str]:
 
 _ROLL_LIST = """
 select v.roll_id, v.roll_no, v.process_type, v.state, r.length_m, r.width_mm, r.slit_seq, r.produced_at, r.produced_by,
-       j.job_no, e.equipment_name,
+       j.job_no, j.status as job_status, e.equipment_name,
        (select string_agg(p.roll_no, ', ' order by p.roll_no)
           from roll_genealogy g join roll p on p.roll_id = g.parent_roll_id
          where g.child_roll_id = v.roll_id) as parent_rolls,
@@ -65,6 +65,21 @@ select v.roll_id, v.roll_no, v.process_type, v.state, r.length_m, r.width_mm, r.
   join roll r on r.roll_id = v.roll_id
   join job j on j.job_id = r.job_id
   left join equipment e on e.equipment_id = r.equipment_id
+"""
+
+
+#: 인쇄 롤들의 작업 실적 — 롤 이력의 「생산 실적」. 정지·폐기는 그 실적에 매달린 기록을 센다(읽기만 한다)
+_WORKS_OF_ROLLS = """
+select w.work_result_id, w.status, w.started_at, w.ended_at, w.output_qty, w.qty_unit, w.worker,
+       r.roll_no, j.job_no, e.equipment_name,
+       (select count(*) from work_stop s where s.work_result_id = w.work_result_id) as stop_count,
+       (select count(*) from work_scrap c where c.work_result_id = w.work_result_id) as scrap_count
+  from roll r
+  join work_result w on w.work_result_id = r.work_result_id
+  join job j on j.job_id = w.job_id
+  left join equipment e on e.equipment_id = w.equipment_id
+ where r.roll_id = any(%s)
+ order by w.started_at, w.work_result_id
 """
 
 
@@ -80,6 +95,7 @@ def finishing_list(request: Request, add: str = "", rolls: str = "", made: str =
 
     스캔 흐름 — 부모 롤을 스캔할 때마다 `?add=<롤 번호>` 로 들어와 `rolls`(스캔해 둔 롤, 쉼표로 이은 번호)에 붙는다.
     1개면 후가공 실적 등록, 2개 이상이면 splice 등록으로 보낸다. 스캔해 둔 목록은 주소에만 있다(어디에도 저장하지 않는다).
+    부모들의 Job 이 서로 다르면 후가공 롤의 Job 을 **부모 롤들의 Job 가운데 `등록` 상태인 것**에서 고르게 한다(D-208).
     """
     pending = list(dict.fromkeys(_split_numbers([rolls])))
     scan_error = None
@@ -106,8 +122,10 @@ def finishing_list(request: Request, add: str = "", rolls: str = "", made: str =
     return templating.render(
         request, "rll/finishing.html",
         {"rows": rows, "pending": pending_rows, "pending_csv": ",".join(r["roll_no"] for r in pending_rows),
+         "job_count": len({r["job_no"] for r in pending_rows}),
+         "job_options": [(j, j) for j in dict.fromkeys(r["job_no"] for r in pending_rows if r["job_status"] == lineage.JOB_OPEN)],
          "scan_error": scan_error, "equipment_options": equipment_options(),
-         "made_no": made_no, "made_labels": _labels_of([made_no]) if made_no else [],
+         "made_no": made_no, "made_labels": _labels_of([made_no]) if made_no else [], "lineage": lineage,
          "can_finish": user.can("F-RLL-01"), "can_splice": user.can("F-RLL-02")},
         screen_id="RLL-01", status_code=422 if scan_error else 200)
 
@@ -116,7 +134,7 @@ def _finish(request: Request, user: rbac.User, fn_id: str, nodes: list[lineage.N
             equipment_code: str, length_m: str, width_mm: str):
     eq = equipment_of(equipment_code)
     length = decimal_of(length_m, "길이", non_negative=True)
-    width = decimal_of(width_mm, "폭", positive=True)
+    width = decimal_of(width_mm, "폭", positive=True, digits=WIDTH)
     job_id = None
     if (job_no or "").strip():
         job = find_job(job_no)
@@ -155,6 +173,7 @@ def splice_create(request: Request, roll_no: list[str] = Form(default=[]), job_n
     """부모 롤 **N개(2 이상)** 스캔 → 후가공 롤 1개와 계보 `splice` N줄. 한 트랜잭션.
 
     `roll_no` 는 반복 필드(또는 쉼표·공백으로 이은 번호). 부모들의 Job 이 서로 다르면 `job_no` 로 후가공 롤의 Job 을 준다.
+    `job_no` 는 부모 롤들의 Job 중 하나여야 하고, 취소·완료 Job 이면 422 — 판정은 `lineage.make_finishing_roll` 이 한다(D-208).
     """
     numbers = _split_numbers(roll_no)
     if len(numbers) < 2:
@@ -192,7 +211,7 @@ def slitting_list(request: Request, no: str = "", parent: str = "", user: rbac.U
     return templating.render(
         request, "rll/slitting.html",
         {"rows": rows, "opened": opened, "scan_error": scan_error, "equipment_options": equipment_options(),
-         "made_parent": made_parent, "made_labels": made_labels, "can_slit": user.can("F-RLL-04")},
+         "made_parent": made_parent, "made_labels": made_labels, "can_slit": user.can("F-RLL-04"), "lineage": lineage},
         screen_id="RLL-02", status_code=422 if scan_error else 200)
 
 
@@ -206,7 +225,7 @@ def slitting_create(request: Request, roll_no: str = Form(""), count: str = Form
     """
     node = _roll_node(roll_no, "부모 롤")
     n = int_of(count, "분할 수", required=True, minimum=1)
-    widths = [decimal_of(w, f"폭 {i}", positive=True) for i, w in enumerate(_split_numbers([widths_mm]), start=1)] or None
+    widths = [decimal_of(w, f"폭 {i}", positive=True, digits=WIDTH) for i, w in enumerate(_split_numbers([widths_mm]), start=1)] or None
     eq = equipment_of(equipment_code)
     length = decimal_of(length_m, "길이", non_negative=True)
     with conn.tx() as cur:
@@ -225,6 +244,7 @@ def history(request: Request, no: str = "", user: rbac.User = rbac.require_fn("F
     """롤 번호(스캔)로 그 롤의 공정 구분·Job·상태·부모·자식 한 단계. 없는 롤은 422.
 
     롤 번호 하나로 그 롤의 작업지시·조색 기록·생산 실적·검사 결과·출하를 Job-Lot-Roll 키로 이어 읽는다(G-08). 읽기만 한다.
+    생산 실적은 인쇄 롤이면 그 롤의 실적, 후가공·슬리팅 롤이면 계보를 거슬러 올라간 조상 인쇄 롤들의 실적이다.
     """
     scan_error, detail = None, None
     if no.strip():
@@ -245,14 +265,19 @@ def history(request: Request, no: str = "", user: rbac.User = rbac.require_fn("F
                      left join job_lot jl on jl.job_lot_id = r.job_lot_id
                      left join equipment e on e.equipment_id = r.equipment_id
                     where r.roll_id = %s""", (node.id,))
-            work = conn.q1("""select w.work_result_id, w.status, w.started_at, w.ended_at, w.output_qty, w.qty_unit, w.worker
-                                from work_result w where w.work_result_id = %s""", (roll["work_result_id"],)) \
-                if roll["work_result_id"] else None
+            # 생산 실적 — 인쇄 롤은 자기 실적, 후가공·슬리팅 롤은 계보를 거슬러 올라가 닿은 인쇄 롤들의 실적 (db-schema.md §6).
+            # 조상은 역방향 추적(재귀 조회)으로 그때그때 찾는다 — 경로를 저장하지 않는다.
+            if roll["process_type"] == lineage.PRINT_ROLL:
+                print_roll_ids = [node.id]
+            else:
+                print_roll_ids = [n.id for n in lineage.trace_backward(node.ref).rolls()
+                                  if n.label == lineage.PRINT_ROLL and n.id != node.id]
+            works = conn.q(_WORKS_OF_ROLLS, (print_roll_ids,)) if print_roll_ids else []
             detail = {
                 "roll": roll,
                 "parents": lineage.parents_of(node.ref),
                 "children": lineage.children_of(node.ref),
-                "work": work,
+                "works": works, "print_roll_count": len(print_roll_ids),
                 "color_count": conn.q1("select count(*) as n from color_record where job_id = %s", (roll["job_id"],))["n"],
                 "inspection": conn.q1("""select result, delta_e, inspected_at, inspected_by from inspection
                                           where roll_id = %s order by inspected_at desc, inspection_id desc limit 1""",
@@ -266,7 +291,7 @@ def history(request: Request, no: str = "", user: rbac.User = rbac.require_fn("F
     return templating.render(
         request, "rll/history.html",
         {"detail": detail, "recent": recent, "scan_error": scan_error, "no": no.strip(), "lineage": lineage,
-         "can_label": user.can("F-RLL-07")},
+         "can_label": user.can("F-RLL-07"), "can_stops": user.can("F-POP-07")},
         screen_id="RLL-03", status_code=422 if scan_error else 200)
 
 

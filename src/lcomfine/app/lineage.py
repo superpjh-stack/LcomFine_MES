@@ -360,6 +360,23 @@ def _check_size(length_m, width_mm) -> None:
         raise http.validation_error("길이·폭을 확인해 주세요", fields=fields)
 
 
+JOB_OPEN = "등록"       # job.status — 롤을 새로 만들 수 있는 Job (취소·완료 Job 에는 후가공·슬리팅 롤을 만들지 않는다, D-208)
+
+
+def _assert_job_open(cur, job_id: int) -> None:
+    """후가공·슬리팅 롤이 붙을 Job 은 `등록` 상태여야 한다 — 취소·완료 Job 이면 422(D-208).
+
+    Job 행을 `for share` 로 잠근다(쓰지는 않는다) — 롤을 만드는 동안 그 Job 이 마감·취소되지 않는다.
+    """
+    cur.execute("select job_no, status from job where job_id = %s for share", (job_id,))
+    job = cur.fetchone()
+    if job is None:
+        raise http.validation_error("없는 Job 입니다", fields=[{"name": "Job", "reason": str(job_id)}])
+    if job["status"] != JOB_OPEN:
+        raise http.validation_error(f"{job['status']} 상태의 Job 에는 롤을 만들 수 없습니다",
+                                    fields=[{"name": job["job_no"], "reason": f"상태 {job['status']}"}])
+
+
 def make_print_roll(cur, *, work_result_id: int, by: str, length_m=None, width_mm=None) -> dict:
     """인쇄 롤 1개 (F-POP-02 작업 종료). 그 작업 실적의 `material_input` 마다 `투입` 한 줄. 만든 `roll` 행을 돌려준다.
 
@@ -396,7 +413,8 @@ def make_finishing_roll(cur, *, parent_roll_ids: list[int], by: str, job_id: int
     """후가공 롤 1개. 부모가 1개면 `후가공` 한 줄(F-RLL-01), 2개 이상이면 `splice` N줄(F-RLL-02).
 
     `job_id` 를 안 주면 부모 롤들의 Job(전부 같을 때). 부모들의 Job 이 서로 다른데 `job_id` 가 없으면 422.
-    422: 부모 0개 · 같은 롤 중복 · 부모가 `재고` 가 아님.
+    `job_id` 는 **부모 롤들의 Job 중 하나**여야 하고, 후가공 롤이 붙을 Job 은 `등록` 상태여야 한다(D-208).
+    422: 부모 0개 · 같은 롤 중복 · 부모가 `재고` 가 아님 · 부모와 무관한 Job · 취소·완료 Job.
     """
     ids = [int(i) for i in parent_roll_ids]
     if not ids:
@@ -413,8 +431,16 @@ def make_finishing_roll(cur, *, parent_roll_ids: list[int], by: str, job_id: int
             raise http.validation_error("부모 롤들의 Job 이 서로 다릅니다 — 후가공 롤의 Job 을 지정하세요",
                                         fields=[{"name": "Job", "reason": f"부모 롤의 Job {len(jobs)}개"}])
         job_id = next(iter(jobs))
-    elif not _rows(cur, "select 1 from job where job_id = %s", (job_id,)):
-        raise http.validation_error("없는 Job 입니다", fields=[{"name": "Job", "reason": str(job_id)}])
+    elif job_id not in jobs:
+        given = _rows(cur, "select job_no from job where job_id = %s", (job_id,))
+        if not given:
+            raise http.validation_error("없는 Job 입니다", fields=[{"name": "Job", "reason": str(job_id)}])
+        parent_jobs = [r["job_no"] for r in _rows(cur, "select job_no from job where job_id = any(%s) order by job_no",
+                                                  (sorted(jobs),))]
+        raise http.validation_error(
+            "부모 롤의 Job 이 아닙니다 — 후가공 롤의 Job 은 부모 롤들의 Job 중 하나여야 합니다",
+            fields=[{"name": given[0]["job_no"], "reason": f"부모 롤의 Job: {', '.join(parent_jobs)}"}])
+    _assert_job_open(cur, job_id)
     lots = {p["job_lot_id"] for p in parents.values()}
     job_lot_id = next(iter(lots)) if len(lots) == 1 and jobs == {job_id} else None   # 생산 LOT 이 하나로 모일 때만 물려준다
     roll = _insert_roll(cur, process_type=FINISHING_ROLL, job_id=job_id, job_lot_id=job_lot_id, work_result_id=None,
@@ -430,7 +456,7 @@ def slit_roll(cur, *, parent_roll_id: int, count: int, by: str, equipment_id: in
     """슬리팅 — 부모 롤 1개를 `count` 개로 나눈다(F-RLL-04). 슬리팅 롤 N개와 `슬리팅` N줄. `slit_seq` 는 1..N.
 
     부모 상태는 시작할 때 한 번만 본다(첫 자식을 만들면 부모는 이미 `소진` 이다).
-    422: count < 1 · `widths_mm` 길이가 count 와 다름 · 부모가 `재고` 가 아님.
+    422: count < 1 · `widths_mm` 길이가 count 와 다름 · 부모가 `재고` 가 아님 · 부모 롤의 Job 이 취소·완료(D-208).
     """
     if count is None or int(count) < 1:
         raise http.validation_error("분할 수는 1 이상이어야 합니다", fields=[{"name": "분할 수", "reason": str(count)}])
@@ -443,6 +469,7 @@ def slit_roll(cur, *, parent_roll_id: int, count: int, by: str, equipment_id: in
     _check_size(length_m, None)
     assert_usable(cur, [(ROLL, int(parent_roll_id))])
     parent = _rows(cur, "select roll_id, job_id, job_lot_id from roll where roll_id = %s", (parent_roll_id,))[0]
+    _assert_job_open(cur, parent["job_id"])
     out: list[dict] = []
     for seq in range(1, count + 1):
         roll = _insert_roll(cur, process_type=SLIT_ROLL, job_id=parent["job_id"], job_lot_id=parent["job_lot_id"],

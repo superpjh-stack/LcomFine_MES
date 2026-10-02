@@ -46,16 +46,14 @@ check-security:  # G-13~G-20 — QA3 가 만든다
 	@test -f tools/check_security.py || { echo "미구현 — tools/check_security.py 없음 (QA3)"; exit 1; }
 	uv run python tools/check_security.py
 
-gate:            # G-01~G-22 판정표 (읽기 전용). 시드 멱등(G-09)까지 재려면 `make gate-full`
+gate:            # G-01~G-22 판정표 (읽기 전용). 시드 멱등(G-09)까지 재려면 `make gate-full` — **종료 판정은 gate-full 로 한다**(gate 의 G-09 는 늘 미검증)
 	@uv run python tools/gate.py
 
 gate-full:       # 시드를 한 번 더 돌려 행 수 diff 를 잰다 — 다른 사람이 시드·스키마를 돌리는 중에는 쓰지 않는다
 	@uv run python tools/gate.py --run-seeds
 
-backup:          # G-20 — 아직 자리만 있다. tools/backup.py 가 생기면 덤프를 backups/ 에 만든다
-	@test -f tools/backup.py || { echo "미구현 — tools/backup.py 없음 (G-20)"; exit 1; }
+backup:          # G-20 — pg_dump → backups/<DB>-<일시>.dump + 덤프 시점의 테이블별 행 수(.json). backups/ 는 gitignore. 운영 DB 는 읽기만 한다
 	uv run python tools/backup.py backup
 
-restore-check:   # G-20 — 빈 DB 에 복구해 테이블별 행 수를 대조한다
-	@test -f tools/backup.py || { echo "미구현 — tools/backup.py 없음 (G-20)"; exit 1; }
+restore-check:   # G-20 — 가장 최근 덤프를 **별도의 임시 DB** 에 복구해 테이블별 행 수를 대조하고 임시 DB 를 지운다 ($(DB) 를 덮어쓰지 않는다)
 	uv run python tools/backup.py restore-check

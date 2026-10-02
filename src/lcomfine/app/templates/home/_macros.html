@@ -17,14 +17,19 @@
 {% endmacro %}
 
 {# 스캔칸 — 바코드 한 번 = 한 건 (G-13). 스캐너는 키보드 입력 + Enter 로 가정한다 (D-04).
-   화면이 열리면 포커스를 잡고, 처리 뒤 돌아와도 다시 잡는다(app.js `data-scan`). 오류가 나도 다음 스캔을 막지 않는다. #}
-{% macro scan_box(action, name='barcode', label='바코드 스캔', hidden={}, method='post', placeholder='') %}
+   화면이 열리면 포커스를 잡고, 처리 뒤 돌아와도 다시 잡는다(app.js `data-scan`). 오류가 나도 다음 스캔을 막지 않는다 —
+   알림이 떠 있어도 스캔 글자는 이 칸으로 들어가고, 알림을 닫으면 포커스가 이 칸으로 돌아온다(app.js · 템플릿이 따로 할 일 없음).
+   스캔칸 옆에 **보이는 입력칸**(예: 투입량)이 필요하면 call 블록으로 넣는다 — 스캔칸과 처리 버튼 사이에 들어간다:
+     {% call ui.scan_box(action, name='lot_no', label='원재료 LOT 번호') %}<label>투입량<input type="number" name="input_qty" step="any"></label>{% endcall %}
+   `button` 은 버튼 글자. 화면에 `data-scan` 은 하나만 둔다(포커스를 두 곳이 다투지 않게). #}
+{% macro scan_box(action, name='barcode', label='바코드 스캔', hidden={}, method='post', placeholder='', button='처리') %}
 <form class="scan-box" method="{{ method }}" action="{{ action }}" autocomplete="off">
   {% for k, v in hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   <label>{{ label }}
     <input type="text" name="{{ name }}" data-scan autofocus required inputmode="text" placeholder="{{ placeholder }}">
   </label>
-  <button type="submit" class="btn btn-primary">처리</button>
+  {% if caller %}{{ caller() }}{% endif %}
+  <button type="submit" class="btn btn-primary">{{ button }}</button>
 </form>
 {% endmacro %}
 

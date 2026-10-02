@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from .. import lineage, nav, rbac, templating
@@ -63,11 +63,26 @@ def _stages(trace: lineage.Trace) -> list[dict]:
     return [stages[d] for d in sorted(stages)]
 
 
-def _render(request: Request, **ctx) -> HTMLResponse:
+def _render(request: Request, status_code: int = 200, **ctx) -> HTMLResponse:
     base = {"mode": "search", "q": "", "no": "", "results": None, "trace": None, "stages": [], "limit": SEARCH_LIMIT,
-            "directions": DIRECTIONS, "L": lineage}
+            "directions": DIRECTIONS, "L": lineage, "scan_error": None}
     base.update(ctx)
-    return templating.render(request, TEMPLATE, base, screen_id="TRC-01")
+    return templating.render(request, TEMPLATE, base, screen_id="TRC-01", status_code=status_code)
+
+
+def _trace(request: Request, no: str, direction: str) -> HTMLResponse:
+    """번호 하나에서 그 방향으로 추적한 화면. 없는 번호 · 그 방향으로 갈 수 없는 번호는 422 —
+    JSON 은 그대로 올리고, 브라우저는 **이 화면**을 422 로 다시 그린다(사유가 보이고 입력칸이 남는다, D-201)."""
+    try:
+        node = _start(no, direction)
+    except HTTPException as exc:
+        if not http.wants_html(request):
+            raise
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        return _render(request, status_code=422, mode="search",
+                       scan_error={"message": detail.get("message", ""), "fields": detail.get("fields") or []})
+    trace = lineage.trace_forward(node.ref) if direction == lineage.FORWARD else lineage.trace_backward(node.ref)
+    return _render(request, mode=direction, no=node.no, q=node.no, trace=trace, stages=_stages(trace))
 
 
 @router.get(nav.path_of("TRC-01"), response_class=HTMLResponse)                     # F-TRC-03 LOT 검색 = 화면 GET
@@ -79,13 +94,9 @@ def search(request: Request, q: str = "", no: str = "", user: rbac.User = rbac.r
 
 @router.get(nav.path_of("TRC-01") + "/forward", response_class=HTMLResponse)        # F-TRC-01 정방향 추적
 def forward(request: Request, no: str = "", user: rbac.User = rbac.require_fn("F-TRC-01")) -> HTMLResponse:
-    node = _start(no, lineage.FORWARD)
-    trace = lineage.trace_forward(node.ref)
-    return _render(request, mode=lineage.FORWARD, no=node.no, q=node.no, trace=trace, stages=_stages(trace))
+    return _trace(request, no, lineage.FORWARD)
 
 
 @router.get(nav.path_of("TRC-01") + "/backward", response_class=HTMLResponse)       # F-TRC-02 역방향 추적
 def backward(request: Request, no: str = "", user: rbac.User = rbac.require_fn("F-TRC-02")) -> HTMLResponse:
-    node = _start(no, lineage.BACKWARD)
-    trace = lineage.trace_backward(node.ref)
-    return _render(request, mode=lineage.BACKWARD, no=node.no, q=node.no, trace=trace, stages=_stages(trace))
+    return _trace(request, no, lineage.BACKWARD)

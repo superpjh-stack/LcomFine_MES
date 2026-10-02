@@ -2,6 +2,7 @@
    롤 라벨의 바코드를 스캔칸에 넣으면(`?no=`) 그 롤이 열리고 등록칸에 번호가 채워진다. 롤마다 최신 검사가 그 롤의 판정이다. #}
 {% extends "base.html" %}
 {% import "home/_macros.html" as ui %}
+{% import "qua/_scan.html" as scan %}
 
 {% macro defect_inputs(existing) %}
 <div class="defect-rows">
@@ -40,9 +41,11 @@
   td.wrap{white-space:normal}
   .badge{font-size:11px;font-weight:700;border-radius:3px;padding:0 6px;background:var(--tag-bg);color:var(--tag);border:1px solid #e8cf9a}
 </style>
+{{ scan.styles() }}
 {% endblock %}
 
 {% block body %}
+{{ scan.result(flash, scan_error) }}
 <section class="panel">
   <h2>롤 스캔 <small>롤 라벨의 바코드 — 그 롤의 검사 이력이 열린다</small></h2>
   {{ ui.scan_box(screen.path, name='no', label='롤 번호', method='get') }}

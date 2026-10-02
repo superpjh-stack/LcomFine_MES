@@ -95,8 +95,13 @@ svg = printing.barcode_svg(coa_no, height=40, show_text=False)   # height = 막�
 | F-CLR-03 수정 | `POST /clr/records/{id}` | `color_name*` `color_l` `color_a` `color_b` `note` | `id` |
 | F-CLR-04 삭제 | `POST /clr/records/{id}/delete` | — | `id` |
 | F-RLL-01 후가공 | `POST /rll/finishing` | `roll_no*`(부모 1개) `equipment_code` `length_m` `width_mm` | `roll_no` `relation`(후가공) `parents` `label_url` |
-| F-RLL-02 splice | `POST /rll/finishing/splice` | `roll_no*` 반복(2개 이상 · 쉼표로 이어도 됨) `job_no`(부모 Job 이 다를 때) `equipment_code` `length_m` `width_mm` | `roll_no` `relation`(splice) `parents` `label_url` |
+| F-RLL-02 splice | `POST /rll/finishing/splice` | `roll_no*` 반복(2개 이상 · 쉼표로 이어도 됨) `job_no`(부모 Job 이 다를 때 — **부모 롤들의 Job 중 하나 · `등록` 상태**, D-208) `equipment_code` `length_m` `width_mm` | `roll_no` `relation`(splice) `parents` `label_url` |
 | F-RLL-04 슬리팅 | `POST /rll/slitting` | `roll_no*`(부모 1개) `count*` `widths_mm`(쉼표로 N개) `length_m` `equipment_code` | `parent` `rolls`[N] `label_urls`[N] |
+
+웨이브 D 에서 더해진 422 (전부 `validation_error`, 항목 사유 포함) —
+- **닫힌 Job (D-208)**: F-RLL-01 · F-RLL-02 · F-RLL-04 는 새 롤이 붙을 Job(부모 롤의 Job, splice 는 `job_no`)이 `취소`·`완료` 면 422 `<상태> 상태의 Job 에는 롤을 만들 수 없습니다`. splice 의 `job_no` 가 부모 롤들의 Job 이 아니면 422 `부모 롤의 Job 이 아닙니다 — …`. `lineage.make_finishing_roll` · `lineage.slit_roll` 을 직접 불러도 같다.
+- **숫자 범위 (D-209)**: 수량·길이는 정수부 11자리(소수 3자리), 폭은 8자리(소수 2자리), 색상값은 5자리(소수 2자리), 차수·분할 수는 `integer` 범위. 넘으면 422 `<칸 이름>이(가) 너무 큽니다`. 소수 자릿수를 넘는 값은 반올림해 담는다.
+- **롤 이력 (D-210)**: `GET /rll/history?no=<후가공·슬리팅 롤>` 의 「생산 실적」 은 계보를 거슬러 올라간 조상 인쇄 롤의 실적 표(`id="works"`)다.
 
 조회 화면의 인자 — `/mat/receipts?date_from&date_to&item_code&supplier` · `/mat/inspections?no&insp_status` · `/mat/lots?no&lot&item_code&insp_status` ·
 `/mat/inputs?work_id` · `/pop/work?no(Job 번호)&day&roll` · `/pop/stops?work_id` · `/pop/roll-labels?no` · `/clr/records?job_no&date_from&date_to&edit` ·
@@ -143,6 +148,28 @@ svg = printing.barcode_svg(coa_no, height=40, show_text=False)   # height = 막�
 - 브라우저 확인은 헤드리스 Chromium 한 종류, POP 채널만. 터치 조작(손가락)·모바일 폭은 보지 않았다.
 - `make gate` 의 G-06·G-07·G-08·G-14 는 `미검증` 으로 나온다 — 판정기(`check_data.py` · `check_security.py`)가 아직 없다(QA2·QA3).
 
+## 2-D. 웨이브 D — QA 결함 수정 (2026-10-03 · 실측)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| DEF-QA2-001 롤 이력의 생산 실적 | 후가공·슬리팅 롤의 롤 이력에 **조상 인쇄 롤의 실적 표**(`lineage.trace_backward` → 인쇄 롤 → `work_result`). QA 검사 행 「후가공·슬리팅 롤 번호 → 그 롤의 생산 실적」 **PASS** — 슬리팅 롤 2/2 · 후가공 롤 2/2 (고치기 전 0/2 · 0/2) | `uv run python tools/check_data.py --only G-08` · `tests/test_qa2_lineage.py::test_g08_roll_history_shows_production_result_for_finishing_and_slit_rolls` · `tests/test_dev2_rll.py::test_history_of_finishing_and_slit_rolls_shows_the_ancestor_print_work_results` |
+| DEF-QA2-002 splice 의 Job | `job_no` = 부모 롤들의 Job 중 하나 · `등록` 상태(D-208). 취소된 Job 지정 → **422 · 취소 Job 의 롤 0개**, 부모와 무관한 `등록` Job 지정 → 422, 부모의 Job 이지만 `완료` → 422. 422 뒤 롤 수·계보 행 수·부모 상태 그대로. QA 검사 행 「취소된 Job 에 롤이 생기지 않는다」 **PASS** | 같은 검사기 · `…::test_g08_splice_cannot_put_a_roll_under_a_cancelled_job` · `tests/test_dev2_rll.py::test_splice_job_must_be_an_open_job_of_the_parents` |
+| 같은 구멍 — 1:1 후가공 · 슬리팅 | **있었다.** `완료` Job 의 재고 롤로 후가공·슬리팅 → 판정을 끈 상태(고치기 전의 동작)에서 200 · 200, 고친 뒤 422 · 422. `lineage.make_finishing_roll` · `slit_roll` 안에서 막는다(Job 행 `for share`) | `tests/test_dev2_rll.py::test_finishing_and_slitting_are_blocked_for_closed_jobs` (`완료` · `취소` 둘 다, 다시 `등록` 이면 200) |
+| DEF-QA1-002 숫자 범위 | mat(입고 수량 · 투입량) · pop(실적 수량 · 길이 · 폭 · 폐기 수량) · clr(색상값 · 차수) · rll(길이 · 폭 · 슬리팅 폭 · 분할 수) 전부 **내 입력 도우미에서** 422 `<칸>이(가) 너무 큽니다`(공용 `DataError` 처리에 닿기 전). 상한 값(`99999999999.999` · `99999999.99` · `99999.99` · `2147483647`)은 담긴다 | `uv run pytest -q tests/test_qa1_errors.py -k out_of_range` → mat · pop · clr · rll 통과 · 각 `tests/test_dev2_*.py` 의 `…out_of_range…`/검증 테스트 |
+| G-08 | **PASS — 검사 9 · 실패 0** (고치기 전 9 중 2 FAIL) | `uv run python tools/check_data.py --only G-08` |
+| G-05 · G-06 · G-07 회귀 | PASS 9/9 · 6/6 · 8/8 — 임의 계보 5개 · 추적 313건 불일치 0 · Job 간 splice 3회 그대로 통과 · 막기 28/28 | `uv run python tools/check_data.py --only G-05,G-06,G-07` |
+| pytest (개발2) | **160 passed** — printing 63 · mat 34 · pop 17 · clr 9 · rll 18 · lineage 10 · scenario 9 (웨이브 B 의 152 + 새 8) | `uv run pytest -q tests/test_dev2_*.py tests/test_lineage_scenario.py` |
+| pytest (QA2) | `tests/test_qa2_*.py` 63건 중 62 통과 — 남은 1건 `test_g04_schema_checker_passes` 는 아키텍트가 작업 중인 `sys_user` 컬럼 2개(`session_epoch` · `revoked_sessions`)가 계약 렌더본에 아직 없어서다(내 변경과 무관 — 내 수정 직전 실행에서는 통과) | `uv run pytest -q tests/test_qa2_*.py` · `uv run python tools/check_schema.py` |
+| 뒷정리 | `T2-` 품목 0 · Job 0 (테스트·임시 확인 뒤) | `psql -h /tmp -d lcomfine_db -Atc "select count(*) from item where item_code like 'T2-%'"` |
+
+고친 파일 — `app/lineage.py`(`_assert_job_open` · `make_finishing_roll` · `slit_roll`) · `routers/pop.py`(`decimal_of` · `int_of` + 컬럼 범위 상수) · `routers/{mat,clr,rll}.py` ·
+`templates/rll/{history,finishing,slitting}.html` · `tests/test_dev2_{rll,pop,mat,clr}.py` · `decisions.md` D-208~D-210. `templates/pop/_ui.html` 은 건드리지 않았다.
+
+확인하지 못한 것 (웨이브 D) —
+- 브라우저로 열어 보지 않았다. 롤 이력의 실적 표 · 후가공 화면의 Job 선택칸 · 슬리팅 화면의 닫힌 Job 안내는 TestClient 의 HTML 로만 확인했다(POP 폭에서의 표 넘침 여부 미확인).
+- 전체 `uv run pytest -q` · `make gate` · `check_security.py` · `check_screens.py` 는 돌리지 않았다(병렬 작업 규칙). 돌린 것은 위 표의 명령과 `tests/test_qa1_{functions,errors}.py` · `tests/test_dev3_*.py` · `tests/test_arch_*.py` · `tests/test_dev1_job.py`(456 passed)다.
+- Job 행 잠금(`for share`)이 실제 동시 요청(마감과 슬리팅이 같은 순간)에서 기다리는지는 재지 않았다 — 순차 요청만 쟀다.
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 스키마 변경 요청은 없다. 아래는 아키텍트 소유 파일에 대한 것이다 — 전부 우회해 두었고 막힌 것은 없다.
@@ -156,3 +183,6 @@ svg = printing.barcode_svg(coa_no, height=40, show_text=False)   # height = 막�
 | 5 | `contracts/interfaces.md` §4·§5 (아키텍트) | 코드에 더한 것을 계약에 반영: `Node.ref` · `Trace.rolls()` · 상수(`lineage.PRINT_ROLL`/`FINISHING_ROLL`/`SLIT_ROLL` · `FORWARD`/`BACKWARD`) · `printing.code128_symbols(value)` · `printing.code128_modules(value)` · `Edge.depth` = 가장 가까운 길 · `link` 이 출하 판정(다른 Job · 불합격 · 등록 아님)을 한다는 것 · 없는 노드의 `trace_*`/`roll_state` 는 404 | 이 파일 §1 에 공표 |
 | 6 | `contracts/function-list.md` (아키텍트) | 계약 문장에 없어 더한 규칙을 확인: F-POP-02 「정지 중인 실적은 재개 뒤 종료」 · F-MAT-07 「진행 상태만(정지 중 422)」 · F-RLL-02 「부모 Job 이 다르면 `job_no`」 · F-MAT-03 「같은 판정 재등록은 허용」 (D-202~D-204) | `decisions.md` 에 `가설` 로 올렸다 |
 | 7 | 개발3 `routers/shp.py` · `qua.py` (참고) | `/shp/shipments?no=` 등 스캔 진입 GET 에서 없는 번호는 브라우저 오류 화면으로 간다(요청 2 와 같은 문제). 고치려면 `routers/pop.py` 의 `scan_failure` 와 `pop/_ui.html` 을 가져다 쓸 수 있다 | — |
+| 8 | `contracts/function-list.md` (아키텍트 · 웨이브 D) | 계약 문장 반영: **F-RLL-02** 「`job_no` 는 부모 롤들의 Job 중 하나여야 하고, 취소·완료 Job 이면 422. 부모와 무관한 Job 지정도 422」(확정) · **F-RLL-01 · F-RLL-04** 「부모 롤의 Job 이 취소·완료면 422」(가설, D-208) · **F-RLL-06** 「후가공·슬리팅 롤은 계보를 거슬러 올라간 조상 인쇄 롤의 실적을 함께 보인다」(D-210 — `db-schema.md` §6 의 책임 화면) · 숫자 입력 범위(D-209)는 `api-contract.md` 의 422 표에 한 줄 | 코드·테스트는 이미 그렇게 돈다. `decisions.md` D-208~D-210 |
+| 9 | `contracts/interfaces.md` §4 (아키텍트) | `make_finishing_roll` · `slit_roll` 의 422 에 「부모와 무관한 `job_id` · 롤이 붙을 Job 이 `등록` 이 아님」 추가, 상수 `lineage.JOB_OPEN` | 이 파일 §1.3 에 공표 |
+| 10 | `routers/job.py` F-JOB-02 (개발1 · 아키텍트 판단) | 작업 실적이 `진행`·`정지` 인 Job 을 `완료` 로 마감할 수 있다 → 그 실적을 종료하면(F-POP-02) 마감된 Job 에 인쇄 롤이 생긴다(실측 200). F-POP-02 쪽에서 막으면 열린 실적을 닫을 길이 없다 — 「열린 실적이 있는 Job 은 마감 422」 가 맞아 보인다 | 막지 않았다(D-208 끝 줄) |

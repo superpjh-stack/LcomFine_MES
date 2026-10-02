@@ -106,6 +106,36 @@ def test_work_finish_validation(w):
     finish(work_id)
 
 
+@pytest.mark.fn("F-POP-02", "F-POP-06")
+def test_out_of_range_numbers_are_422_naming_the_field(w):
+    """DEF-QA1-002 — 컬럼이 담지 못하는 숫자는 500 이 아니라 422, 어느 칸인지 알린다 (수량·길이 numeric(14,3) · 폭 numeric(10,2))."""
+    c = client("field")
+    work_id = start(w)
+    scan_input(work_id, w.good_lot())
+    for path, data, name in (
+            (f"{WORK}/{work_id}/finish", {"output_qty": "1e15"}, "실적 수량"),
+            (f"{WORK}/{work_id}/finish", {"output_qty": "100000000000"}, "실적 수량"),               # 정수부 12자리
+            (f"{WORK}/{work_id}/finish", {"output_qty": "99999999999.9995"}, "실적 수량"),           # 반올림하면 12자리
+            (f"{WORK}/{work_id}/finish", {"output_qty": "1", "length_m": "1e15"}, "길이"),
+            (f"{WORK}/{work_id}/finish", {"output_qty": "1", "width_mm": "1e9"}, "폭"),
+            (f"{STOPS}/scrap", {"work_id": str(work_id), "scrap_qty": "1e15"}, "폐기 수량"),
+            (f"{STOPS}/scrap", {"work_id": str(work_id), "scrap_qty": "1e-9"}, "폐기 수량"),          # 담기면 0 — 0 보다 커야 한다
+            (f"{STOPS}/scrap", {"work_id": "99999999999999999999", "scrap_qty": "1"}, "작업 실적"),
+            (STOPS, {"work_id": "99999999999999999999", "stop_reason": "x"}, "작업 실적")):
+        body = err(c.post(path, data=data))
+        assert body["fields"][0]["name"] == name, (path, data, body)
+    body = err(c.post(f"{WORK}/{work_id}/finish", data={"output_qty": "1e15"}))
+    assert body["message"] == "실적 수량이(가) 너무 큽니다" and "정수부 11자리" in body["fields"][0]["reason"]
+    assert _work(work_id)["status"] == "진행" and count("select count(*) as n from roll where work_result_id = %s", (work_id,)) == 0
+    assert count("select count(*) as n from work_scrap where work_result_id = %s", (work_id,)) == 0
+    ok(c.post(f"{STOPS}/scrap", data={"work_id": str(work_id), "scrap_qty": "99999999999.999"}))       # 상한까지는 담긴다
+    roll_no = finish(work_id, qty="99999999999.999", length_m="99999999999.999", width_mm="99999999.99")
+    assert one("select output_qty::text as q from work_result where work_result_id = %s", (work_id,))["q"] == "99999999999.999"
+    assert one("select width_mm::text as w from roll where roll_no = %s", (roll_no,))["w"] == "99999999.99"
+    for path, params in ((STOPS, {"work_id": "99999999999999999999"}), (nav.path_of("MAT-04"), {"work_id": "99999999999999999999"})):
+        assert err(c.get(path, params=params))["fields"][0]["name"] == "작업 실적"                    # 조회의 키도 500 이 아니다
+
+
 @pytest.mark.fn("F-POP-02")
 def test_work_finish_is_atomic(w, monkeypatch):
     """롤 생성 뒤에 실패하면 롤·계보·실적 상태가 함께 되돌아간다 (한 트랜잭션)."""

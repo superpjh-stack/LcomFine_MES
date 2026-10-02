@@ -4,6 +4,9 @@
 - 로그인 성공·실패는 `sys_access_log`(구분 `로그인`)에 남는다 (G-18).
 - 실패 횟수는 세지만 잠그지 않는다 — 잠금 횟수는 설계도에 없다(D-20). 상태가 `정상` 인 계정만 로그인한다.
 - 자동 로그아웃은 `LCOMFINE_SESSION_IDLE_MINUTES` 가 있을 때만 한다.
+- 세션 무효화(D-26): 세션 쿠키는 **누구의 어느 세션인가**(`login_id` · `sid` · `ep`)만 들고, 그 세션이 지금도 유효한지는
+  요청마다 `rbac.current_user` 가 DB 에서 확인한다. 로그아웃은 그 세션 ID 를 `sys_user.revoked_sessions` 에 적어
+  로그아웃 전의 쿠키를 다시 써도 통하지 않게 한다. 상태·비밀번호가 바뀌면 DB 트리거가 `session_epoch` 를 올려 그 계정의 세션을 전부 끊는다.
 """
 
 from __future__ import annotations
@@ -12,6 +15,8 @@ import base64
 import hashlib
 import hmac
 import os
+import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -19,12 +24,15 @@ from ..db import conn
 from . import nav, rbac
 from .rbac import User
 from .settings import get_settings
-from .util import audit
+from .util import audit, http
 
 PBKDF2_ITERATIONS = 260_000
 PBKDF2_ALGO = "pbkdf2_sha256"
 STATUS_ACTIVE = "정상"
 DEVICE_SESSION_KEY = "device"
+#: 세션 쿠키의 수명(초) = `SessionMiddleware(max_age=…)`. 응답마다 다시 서명되므로 쓰는 동안은 이어진다.
+#: 로그아웃한 세션 ID 는 이 시간이 지나면 쿠키 서명도 만료라 더 들고 있을 필요가 없다 (Starlette 기본 14일 — 자동 로그아웃은 D-20)
+SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
 
 
 def hash_password(password: str, *, salt: bytes | None = None) -> str:
@@ -111,18 +119,43 @@ def home_path_for(request, user: User) -> str:
 
 # ── 세션 ────────────────────────────────────────────────────────────────
 def login_session(request, user: User, device: str | None = None) -> None:
+    """로그인한 세션을 연다. 쿠키에는 사용자와 **세션 ID · 그때의 세션 판 번호**를 넣는다 — 유효 판정은 `rbac.current_user` 가 DB 로 한다."""
+    row = conn.q1("select session_epoch from sys_user where login_id = %s", (user.login_id,))
+    if row is None:   # 인증과 세션 열기 사이에 계정이 지워졌다
+        raise http.unauthorized()
     request.session["user"] = user.to_session()
+    request.session[rbac.SESSION_ID_KEY] = secrets.token_urlsafe(16)
+    request.session[rbac.SESSION_EPOCH_KEY] = int(row["session_epoch"])
+    rbac.forget_user(request)
     request.session["login_at"] = datetime.now().isoformat(timespec="seconds")
     request.session["last_seen"] = request.session["login_at"]
     request.session[DEVICE_SESSION_KEY] = device if device in nav.DEVICE_CHANNEL else "web"
 
 
+def revoke_session(login_id: str, session_id: str) -> None:
+    """그 세션 ID 를 서버 쪽에서 무효로 만든다 — 로그아웃 전의 쿠키를 다시 써도 통하지 않는다.
+    쿠키 수명이 지난 옛 기록은 같이 지운다(서명이 만료라 어차피 통하지 않는다)."""
+    now = int(time.time())
+    conn.x(
+        """update sys_user
+              set revoked_sessions = (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                                        from jsonb_each(revoked_sessions) e
+                                       where (e.value #>> '{}')::bigint > %s) || jsonb_build_object(%s::text, %s::bigint)
+            where login_id = %s""",
+        (now - SESSION_MAX_AGE_SECONDS, session_id, now, login_id))
+
+
 def logout_session(request) -> None:
+    """로그아웃 — 접근 로그를 남기고, 그 세션을 서버에서 무효로 만든 뒤 쿠키를 비운다."""
     user = rbac.current_user(request)
+    session_id = request.session.get(rbac.SESSION_ID_KEY)
     if user is not None:
         audit.write_log(log_type=audit.LOGIN, login_id=user.login_id, role_code=user.role_code, method=request.method,
                         path="/logout", screen_id="login", ok=True, detail="로그아웃", ip=audit.client_ip(request))
+        if session_id:
+            revoke_session(user.login_id, str(session_id))
     request.session.clear()
+    rbac.forget_user(request)
 
 
 def session_expired(request) -> bool:

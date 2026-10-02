@@ -1,0 +1,70 @@
+# 엘컴화인 MES — 앱 + PostgreSQL (decisions.md D-03: 운영 환경 미정 → 어디든 올릴 수 있게만. 실제 배포·물리 구성도는 범위 밖)
+#
+#   1) `.env` 에 비밀 세 개를 넣는다 (값은 저장소·문서에 적지 않는다 — `make setup` 이 난수로 채운다):
+#        LCOMFINE_DB_PASSWORD · LCOMFINE_SESSION_SECRET · LCOMFINE_SEED_PASSWORD
+#   2) docker compose up -d --build
+#   3) http://<호스트>:${LCOMFINE_HOST_PORT:-8020}/health → 200
+#
+# · DB 는 호스트로 포트를 내지 않는다(앱만 붙는다). 호스트 포트는 앱 하나 — `LCOMFINE_HOST_PORT`(기본 8020 · 8000 은 다른 사업이 쓴다).
+# · 스키마(`schema.sql`)는 **빈 볼륨으로 처음 뜰 때 한 번** 만들어진다. 그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다.
+# · `seed` 는 한 번 돌고 끝나는 작업이다: 역할 4 · 권한 48칸 · 계정 4 · 채번 형식 6 + `(예시)` 기준정보. 다시 돌려도 행 수가 같다(G-09).
+#   이미 있는 권한 칸·채번 형식은 건드리지 않는다. `(예시)` 행이 필요 없으면 command 에 `--common-only` 를 붙인다(그러면 채번 형식은 직접 넣는다 — D-05).
+# · 백업: docker compose exec app /app/.venv/bin/python tools/backup.py backup   (덤프는 볼륨 lcomfine-backups 에 쌓인다)
+#         docker compose exec app /app/.venv/bin/python tools/backup.py restore-check   (임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로)
+#         docker compose cp app:/app/backups ./backups   (호스트로 꺼내기 — backups/ 는 gitignore)
+name: lcomfine-mes
+
+x-app-env: &app-env
+  LCOMFINE_ENV: ${LCOMFINE_ENV:-prod}
+  LCOMFINE_PORT: "8020"
+  LCOMFINE_PG_DSN: postgresql://lcomfine:${LCOMFINE_DB_PASSWORD:?.env 에 LCOMFINE_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db
+  LCOMFINE_SESSION_SECRET: ${LCOMFINE_SESSION_SECRET:?.env 에 LCOMFINE_SESSION_SECRET 를 넣는다 (비우면 재기동마다 로그인이 풀린다)}
+  LCOMFINE_SEED_PASSWORD: ${LCOMFINE_SEED_PASSWORD:?.env 에 LCOMFINE_SEED_PASSWORD 를 넣는다 (기본 비밀번호는 없다 — G-19)}
+  LCOMFINE_SESSION_IDLE_MINUTES: ${LCOMFINE_SESSION_IDLE_MINUTES:-}
+  LCOMFINE_BOARD_REFRESH_SECONDS: ${LCOMFINE_BOARD_REFRESH_SECONDS:-}
+  TZ: ${TZ:-Asia/Seoul}
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lcomfine_db
+      POSTGRES_USER: lcomfine
+      POSTGRES_PASSWORD: ${LCOMFINE_DB_PASSWORD:?.env 에 LCOMFINE_DB_PASSWORD 를 넣는다}
+      TZ: ${TZ:-Asia/Seoul}          # 집계의 「날짜가 기간 안」 은 DB 세션 시간대의 날짜다 (D-301)
+    volumes:
+      - lcomfine-db:/var/lib/postgresql/data
+      - ./src/lcomfine/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lcomfine -d lcomfine_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  seed:
+    build: .
+    restart: "no"
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/app/.venv/bin/python", "-m", "lcomfine.db.seed"]
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "${LCOMFINE_HOST_PORT:-8020}:8020"
+    volumes:
+      - lcomfine-backups:/app/backups
+
+volumes:
+  lcomfine-db:
+  lcomfine-backups:
