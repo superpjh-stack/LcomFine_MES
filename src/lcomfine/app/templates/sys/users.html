@@ -96,7 +96,9 @@
   </div>
   {% endif %}
   {{ ui.notes(['비밀번호는 해시만 저장한다. 복잡도·잠금 횟수·변경 주기는 정해진 것이 없다 — 미확정 (D-20).',
-               '역할을 바꾸면 그 사용자가 다음에 로그인할 때부터 적용된다.',
+               '역할·이름을 바꾸면 그 사용자의 다음 요청부터 반영된다 — 다시 로그인하지 않아도 된다 (D-26).',
+               '상태를 `잠금`·`중지` 로 바꾸거나 비밀번호를 초기화하면 그 계정으로 로그인해 있던 세션이 곧바로 전부 끊긴다. `정상` 으로 되돌려도 끊긴 세션은 살아나지 않는다 — 다시 로그인한다 (D-26).',
+               '자기 계정의 비밀번호를 초기화하면 지금 이 세션도 끊긴다 — 새 비밀번호로 다시 로그인한다.',
                '삭제는 행을 지우지 않고 상태를 `중지` 로 바꾼다 — 접근 로그가 그 계정을 가리킨다 (D-21). 자기 자신은 삭제할 수 없다.']) }}
 </section>
 
@@ -105,7 +107,5 @@ document.querySelectorAll("form[data-confirm]").forEach(function (f) {
   f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
 });
 </script>
-<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
-.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}</style>
 {% endblock %}

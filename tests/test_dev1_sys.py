@@ -146,6 +146,66 @@ def test_delete_user_is_status_stop(uid):
     assert c.post(f"{USERS}/{uid}-없음/delete").status_code == 404
 
 
+@pytest.mark.fn("F-SYS-02", "F-SYS-04")
+def test_user_screen_says_what_the_session_really_does(uid):
+    """사용자 화면의 안내 문구와 실제 동작이 같다 (D-108 · D-26). 임시 계정으로 확인한다 — 시드 계정은 로그인에만 쓴다.
+    ① 역할·이름 변경은 그 사용자의 다음 요청부터(다시 로그인하지 않는다) ② 잠금·중지·비밀번호 초기화는 그 계정의 세션을 곧바로 끊는다."""
+    admin = client("admin")
+    page = admin.get(USERS).text
+    assert "다음 요청부터 반영된다" in page and "곧바로 전부 끊긴다" in page and "살아나지 않는다" in page
+    assert "다음에 로그인할 때부터" not in page and "다음 로그인부터" not in page   # 옛 문구(D-105)는 사실이 아니다
+
+    assert _add(admin, uid, role_code="QC").status_code == 200
+    path = f"{USERS}/{uid}"
+    me = client(uid, PW_A)                                                    # 이 세션 하나로 끝까지 본다 — 다시 로그인하지 않는다
+    epoch = _user(uid)["session_epoch"]
+
+    # ① 역할·이름 — 다음 요청부터 반영, 세션은 그대로
+    assert me.get(USERS).status_code == 403                                   # 품질은 시스템 관리가 `없음`
+    assert admin.post(path, data={"role_code": "ADMIN", "user_name": f"{uid} 새 이름 (예시)"}).status_code == 200
+    r = me.get(USERS)
+    assert r.status_code == 200 and f"{uid} 새 이름 (예시)" in r.text         # 같은 세션의 바로 다음 요청 — 새 역할 · 새 이름
+    assert admin.post(path, data={"role_code": "QC"}).status_code == 200
+    assert me.get(USERS).status_code == 403                                   # 내린 것도 다음 요청부터
+    assert me.get("/").status_code == 200 and _user(uid)["session_epoch"] == epoch   # 세션은 끊기지 않았다
+
+    # ② 잠금 — 그 계정의 세션이 전부(여러 단말) 곧바로 끊긴다. `정상` 으로 되돌려도 끊긴 세션은 살아나지 않는다
+    other = client(uid, PW_A)
+    assert other.get("/").status_code == 200
+    assert admin.post(path, data={"status": "잠금"}).status_code == 200
+    assert me.get("/").status_code == 401 and other.get("/").status_code == 401
+    assert admin.post(path, data={"status": "정상"}).status_code == 200
+    assert me.get("/").status_code == 401 and other.get("/").status_code == 401
+    me = client(uid, PW_A)                                                    # 다시 로그인하면 된다
+    assert me.get("/").status_code == 200
+
+    # ② 비밀번호 초기화 — 옛 비밀번호로 들어와 있던 세션이 끊긴다
+    assert admin.post(path, data={"password": PW_B}).status_code == 200
+    assert me.get("/").status_code == 401
+    me = client(uid, PW_B)
+    assert me.get("/").status_code == 200
+
+    # ② 중지(삭제) — 세션이 끊기고 다시 로그인도 못 한다
+    assert admin.post(f"{path}/delete").status_code == 200
+    assert me.get("/").status_code == 401 and _login_status(uid, PW_B) == 401
+    assert admin.get(USERS).status_code == 200                                # 바꾼 사람(관리자)의 세션은 그대로다
+
+
+@pytest.mark.fn("F-SYS-02")
+def test_resetting_own_password_ends_own_session(uid):
+    """자기 계정의 비밀번호를 초기화하면 지금 세션도 끊긴다 — 화면에 그렇게 적었다 (D-108). 임시 관리자 계정으로 확인한다."""
+    assert _add(client("admin"), uid, role_code="ADMIN").status_code == 200
+    me = client(uid, PW_A)
+    assert "지금 이 세션도 끊긴다" in me.get(USERS).text
+    r = me.post(f"{USERS}/{uid}", data={"password": PW_B})
+    assert r.status_code == 200, r.text                                       # 그 요청 자체는 성공하고 변경 로그도 남는다
+    assert change_logs("F-SYS-02", f"sys_user:{uid}") == 1
+    assert me.get(USERS).status_code == 401                                   # 다음 요청부터 미로그인
+    r = me.get(USERS, headers={"accept": "text/html"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/login")   # 브라우저는 로그인 화면으로 간다
+    assert client(uid, PW_B).get(USERS).status_code == 200                    # 새 비밀번호로 다시 로그인한다
+
+
 @pytest.mark.fn("F-SYS-04")
 def test_users_list_never_shows_hash(uid):
     c = client("admin")

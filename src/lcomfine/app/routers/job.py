@@ -37,6 +37,7 @@ router = APIRouter()
 ORDERS, MAPPING = nav.path_of("JOB-01"), nav.path_of("JOB-02")
 ST_OPEN, ST_DONE, ST_CANCEL = "등록", "완료", "취소"
 STATUSES = (ST_OPEN, ST_DONE, ST_CANCEL)
+WORK_DONE = "완료"            # `work_result.status` — 진행 ⇄ 정지 → 완료 (db-schema.md §7). 이 값이 아니면 아직 열려 있는 실적이다
 LIST_LIMIT = 500
 
 # 기준정보 참조 — (폼 이름, 화면 이름, 테이블, pk, 코드 컬럼, 이름 컬럼, 필수, 선택 목록 조건)
@@ -59,6 +60,7 @@ select j.job_id, j.job_no, j.status, j.order_qty, j.qty_unit, j.due_date, j.note
        k.ink_code, k.ink_name, k.color_name, k.target_l, k.target_a, k.target_b,
        e.equipment_code, e.equipment_name,
        (select count(*) from work_result w where w.job_id = j.job_id) as work_count,
+       (select count(*) from work_result w where w.job_id = j.job_id and w.status <> '완료') as open_work_count,
        (select count(*) from roll r where r.job_id = j.job_id) as roll_count,
        (select count(*) from job_lot l where l.job_id = j.job_id) as lot_count
   from job j
@@ -90,6 +92,22 @@ def job_of_input(job_no: str | None) -> dict:
     if row is None:
         raise bad("없는 Job 번호입니다", "Job 번호", job_no or "비어 있습니다")
     return row
+
+
+def lock_job(cur, job_id: int) -> None:
+    """Job 행을 잠근다 — 마감·취소를 판정하고 상태를 바꾸는 동안 그 Job 에 작업 실적·롤이 새로 붙지 못한다.
+
+    실적·롤을 넣는 쪽은 `job` 을 가리키는 FK 검사로 이 행에 `for key share` 를 건다. `for update` 는 그것과 부딪히므로
+    아직 커밋되지 않은 실적·롤이 있으면 그 트랜잭션이 끝날 때까지 기다린 뒤에 센다(읽기만 한다 — D5·D6 에 쓰지 않는다)."""
+    cur.execute("select job_id from job where job_id = %s for update", (job_id,))
+
+
+def open_works(cur, job_id: int) -> list[dict]:
+    """종료되지 않은(`진행`·`정지`) 작업 실적 — 이것이 있는 Job 은 마감하지 못한다(D-107)."""
+    cur.execute("""select w.work_result_id, w.status, w.started_at, w.worker
+                     from work_result w where w.job_id = %s and w.status <> %s order by w.work_result_id""",
+                (job_id, WORK_DONE))
+    return cur.fetchall()
 
 
 def lots_of(job_id: int) -> list[dict]:
@@ -247,8 +265,20 @@ def update_order(request: Request, job_no: str, user: rbac.User = rbac.require_f
         raise http.validation_error("작업 실적이 있는 작업지시는 품목·수량을 바꿀 수 없습니다",
                                     fields=[{"name": n, "reason": f"작업 실적 {job['work_count']}건"} for n in locked])
     assign = ", ".join(f"{c} = %s" for c in sets)
-    conn.x(f"update job set {assign}, updated_at = now(), updated_by = %s where job_id = %s",
-           [*sets.values(), user.login_id, job["job_id"]])
+    with conn.tx() as cur:
+        if sets.get("status") == ST_DONE:
+            # 열린 실적이 있는 채로 마감하면, 그 실적을 종료할 때(F-POP-02) 마감된 Job 에 인쇄 롤이 생긴다.
+            # 종료 쪽에서 막으면 열린 실적을 닫을 길이 없으므로 마감 쪽에서 막는다 (D-107 · D-208)
+            lock_job(cur, job["job_id"])
+            still_open = open_works(cur, job["job_id"])
+            if still_open:
+                raise http.validation_error(
+                    "진행 중인 작업 실적이 있는 작업지시는 마감할 수 없습니다 — 작업을 종료한 뒤 마감합니다",
+                    fields=[{"name": f"작업 실적 {w['work_result_id']}",
+                             "reason": f"{w['status']} · 시작 {screen.dt(w['started_at'])} · 작업자 {w['worker']}"}
+                            for w in still_open])
+        cur.execute(f"update job set {assign}, updated_at = now(), updated_by = %s where job_id = %s",
+                    [*sets.values(), user.login_id, job["job_id"]])
     changed = " · ".join(sets)
     audit.log_change(request, user, "F-JOB-02", f"job:{job_no}", f"작업지시 수정 ({changed})")
     return http.saved(request, f"작업지시 {job_no} 을(를) 수정했습니다", back=f"{ORDERS}?no={job_no}",
@@ -260,11 +290,16 @@ def cancel_order(request: Request, job_no: str, user: rbac.User = rbac.require_f
     job = job_of_path(job_no)
     if job["status"] == ST_CANCEL:
         raise bad("이미 취소된 작업지시입니다", "상태", ST_CANCEL)
-    used = [{"name": name, "reason": f"{n}건"} for name, n in (("작업 실적", job["work_count"]), ("롤", job["roll_count"])) if n]
-    if used:
-        raise http.validation_error("작업 실적이나 롤이 있는 작업지시는 취소할 수 없습니다", fields=used)
-    conn.x("update job set status = %s, updated_at = now(), updated_by = %s where job_id = %s",
-           (ST_CANCEL, user.login_id, job["job_id"]))                 # 행은 지우지 않는다 (D-21)
+    with conn.tx() as cur:
+        lock_job(cur, job["job_id"])                                  # 세는 것과 바꾸는 것을 한 트랜잭션에 — 그 사이에 실적이 끼어들지 못한다
+        cur.execute("""select (select count(*) from work_result w where w.job_id = %(id)s) as work_count,
+                              (select count(*) from roll r where r.job_id = %(id)s) as roll_count""", {"id": job["job_id"]})
+        now = cur.fetchone()                                          # 종료 여부와 무관하다 — 진행 중인 실적 하나만 있어도 취소하지 못한다
+        used = [{"name": name, "reason": f"{n}건"} for name, n in (("작업 실적", now["work_count"]), ("롤", now["roll_count"])) if n]
+        if used:
+            raise http.validation_error("작업 실적이나 롤이 있는 작업지시는 취소할 수 없습니다", fields=used)
+        cur.execute("update job set status = %s, updated_at = now(), updated_by = %s where job_id = %s",
+                    (ST_CANCEL, user.login_id, job["job_id"]))        # 행은 지우지 않는다 (D-21)
     audit.log_change(request, user, "F-JOB-03", f"job:{job_no}", "작업지시 취소")
     return http.saved(request, f"작업지시 {job_no} 을(를) 취소했습니다", back=f"{ORDERS}?no={job_no}",
                       data={"job_no": job_no, "status": ST_CANCEL})

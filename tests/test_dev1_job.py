@@ -6,6 +6,8 @@
 기준정보는 접두 `T1-…` 로 스스로 만들고, 만든 Job 과 함께 끝나면 지운다.
 """
 import re
+import threading
+import time
 from datetime import date, timedelta
 
 import pytest
@@ -47,10 +49,18 @@ def _job(job_no: str) -> dict | None:
     return conn.q1("select * from job where job_no = %s", (job_no,))
 
 
-def _work_result(job_no: str) -> int:
-    """현장 실행(P5)이 만든 작업 실적을 흉내 낸다 — Job 이 "진행" 인지는 이 행이 있는가로 읽는다."""
-    return conn.q1("""insert into work_result (job_id, worker) select job_id, %s from job where job_no = %s
-                      returning work_result_id""", (TEST_BY, job_no))["work_result_id"]
+def _work_result(job_no: str, status: str = "진행") -> int:
+    """현장 실행(P5)이 만든 작업 실적을 흉내 낸다 — Job 이 "진행" 인지는 이 행이 있는가로 읽는다.
+    상태는 `work_result.status`(진행 ⇄ 정지 → 완료, db-schema.md §7). `완료` 는 종료 시각을 함께 넣는다."""
+    return conn.q1("""insert into work_result (job_id, worker, status, ended_at)
+                      select job_id, %s, %s, case when %s = '완료' then now() end from job where job_no = %s
+                      returning work_result_id""", (TEST_BY, status, status, job_no))["work_result_id"]
+
+
+def _set_work(work_id: int, status: str) -> None:
+    """현장 화면(F-POP-02·04·05)이 실적의 상태를 바꾼 것을 흉내 낸다."""
+    conn.x("update work_result set status = %s, ended_at = case when %s = '완료' then now() end where work_result_id = %s",
+           (status, status, work_id))
 
 
 def _outside_d2(ids: dict) -> dict:
@@ -135,8 +145,8 @@ def test_update_order_rules(t, ids):
     assert c.post(path, data={"status": "보류"}).status_code == 422
     assert c.post(path, data={"status": "취소"}).status_code == 422           # 취소는 취소 기능으로
 
-    # 작업 실적이 생긴 뒤 — 품목·수량은 422, 납기·비고·마감은 된다
-    _work_result(job_no)
+    # 작업 실적이 생긴 뒤 — 품목·수량은 422, 납기·비고·마감은 된다 (마감은 실적을 종료한 뒤 — 아래 D-107 테스트)
+    _work_result(job_no, "완료")
     r = c.post(path, data={"order_qty": "500"})
     assert r.status_code == 422 and "작업 실적" in r.json()["message"]
     assert c.post(path, data={"item_id": ids["raw"]}).status_code == 422
@@ -148,6 +158,129 @@ def test_update_order_rules(t, ids):
     assert row["due_date"].isoformat() == new_due and row["status"] == "완료"
 
     assert c.post(f"{ORDERS}/{t}-없는번호", data={"note": "x"}).status_code == 404   # 경로의 키가 없으면 404
+
+
+@pytest.mark.fn("F-JOB-02")
+def test_close_is_blocked_while_work_is_open(t, ids):
+    """진행 중(종료되지 않은) 작업 실적이 있는 Job 은 마감하지 못한다 (D-107).
+    열린 실적을 종료하면(F-POP-02) 인쇄 롤이 생기므로, 마감된 Job 에 롤이 붙는 길을 마감 쪽에서 막는다."""
+    c = client("prod")
+    job_no = _create(c, ids)
+    path = f"{ORDERS}/{job_no}"
+    running = _work_result(job_no)                                            # 시작했고 아직 종료하지 않은 실적
+    logs = change_logs("F-JOB-02", f"job:{job_no}")
+
+    r = c.post(path, data={"status": "완료"})
+    assert r.status_code == 422 and r.json()["code"] == "validation_error", r.text
+    assert "진행 중인 작업 실적" in r.json()["message"]
+    fields = r.json()["fields"]                                               # 어느 실적이 열려 있는지 사유에 보인다
+    assert [f["name"] for f in fields] == [f"작업 실적 {running}"]
+    assert "진행" in fields[0]["reason"] and TEST_BY in fields[0]["reason"]
+    assert _job(job_no)["status"] == "등록" and change_logs("F-JOB-02", f"job:{job_no}") == logs   # 아무것도 바뀌지 않았다
+
+    # 다른 값과 함께 보내도 마감이 막히면 전부 그대로다 (한 요청 = 전부 또는 전무)
+    r = c.post(path, data={"status": "완료", "note": "마감과 함께 (예시)"})
+    assert r.status_code == 422 and _job(job_no)["note"] == "비고 (예시)"
+    # 열린 실적이 있어도 마감이 아닌 수정은 된다
+    assert c.post(path, data={"note": "실적이 열린 동안의 비고 (예시)"}).status_code == 200
+    assert _job(job_no)["note"] == "실적이 열린 동안의 비고 (예시)" and _job(job_no)["status"] == "등록"
+
+    # 화면도 같은 것을 말한다 — 진행 중 건수, `완료` 는 고를 수 없다
+    page = c.get(ORDERS, params={"no": job_no}).text
+    assert "(진행 중 1건)" in page and "종료해야 마감할 수 있다" in page
+    assert '<option value="완료" disabled>' in page
+
+    _set_work(running, "정지")                                                # 정지 중인 실적도 아직 종료되지 않은 실적이다
+    r = c.post(path, data={"status": "완료"})
+    assert r.status_code == 422 and "정지" in r.json()["fields"][0]["reason"]
+
+    second = _work_result(job_no)                                             # 열린 실적이 둘이면 둘 다 보인다
+    done = _work_result(job_no, "완료")                                       # 종료한 실적은 사유에 나오지 않는다
+    r = c.post(path, data={"status": "완료"})
+    assert r.status_code == 422
+    assert [f["name"] for f in r.json()["fields"]] == [f"작업 실적 {running}", f"작업 실적 {second}"]
+    assert f"작업 실적 {done}" not in r.text
+
+    _set_work(running, "완료")                                                # 하나만 종료 — 아직 하나가 열려 있다
+    r = c.post(path, data={"status": "완료"})
+    assert r.status_code == 422 and [f["name"] for f in r.json()["fields"]] == [f"작업 실적 {second}"]
+    _set_work(second, "완료")                                                 # 전부 종료 — 이제 마감된다
+    r = c.post(path, data={"status": "완료"})
+    assert r.status_code == 200 and r.json()["status"] == "완료" and _job(job_no)["status"] == "완료"
+    page = c.get(ORDERS, params={"no": job_no}).text
+    assert "(진행 중" not in page and "종료해야 마감" not in page and '<option value="완료" selected>' in page
+
+    # 잘못 마감한 것을 되돌리는 길(완료 → 등록, D-103)은 그대로다
+    assert c.post(path, data={"status": "등록"}).status_code == 200 and _job(job_no)["status"] == "등록"
+
+    # 이미 `완료` 인 Job 에 열린 실적이 남아 있는 옛 데이터 — 마감이 아닌 수정은 막지 않는다
+    assert c.post(path, data={"status": "완료"}).status_code == 200
+    _work_result(job_no)
+    assert c.post(path, data={"note": "마감 뒤 비고 (예시)"}).status_code == 200
+    assert _job(job_no)["status"] == "완료"
+
+
+@pytest.mark.fn("F-JOB-02")
+def test_close_waits_for_a_work_result_being_inserted(t, ids):
+    """마감은 Job 행을 잠그고 센다 — 아직 커밋되지 않은 작업 실적(작업 시작이 진행 중)을 못 보고 마감하는 일이 없다 (D-107)."""
+    c = client("prod")
+    job_no = _create(c, ids)
+    job_id = _job(job_no)["job_id"]
+    result: dict = {}
+
+    def close() -> None:
+        result["r"] = c.post(f"{ORDERS}/{job_no}", data={"status": "완료"})
+
+    with conn.tx() as cur:                                                    # 작업 시작(F-POP-01)이 실적을 넣고 아직 커밋하지 않은 순간
+        cur.execute("insert into work_result (job_id, worker) values (%s, %s)", (job_id, TEST_BY))
+        th = threading.Thread(target=close)
+        th.start()
+        time.sleep(1.0)
+        assert th.is_alive()                                                  # 마감은 그 트랜잭션이 끝나기를 기다린다
+    th.join(timeout=20)
+    assert not th.is_alive()
+    assert result["r"].status_code == 422 and "진행 중인 작업 실적" in result["r"].json()["message"]
+    assert _job(job_no)["status"] == "등록"
+
+
+@pytest.mark.fn("F-JOB-02")
+def test_closed_job_cannot_get_a_print_roll_through_an_open_work_result(t, ids):
+    """개발2 실측(progress-dev2.md §3-10)의 순서를 그대로 밟는다: 실적이 열린 채 마감 → 실적 종료 → 마감된 Job 에 인쇄 롤.
+    첫 걸음(마감)이 422 라 그 길이 닫히고, 열린 실적은 여전히 종료할 수 있으며(F-POP-02), 종료한 뒤에는 마감된다.
+    실적·투입 스캔은 SQL 로 넣은 전제 데이터이고, 종료는 현장 화면의 API 를 그대로 부른다."""
+    c = client("prod")
+    job_no = _create(c, ids)
+    job_id = _job(job_no)["job_id"]
+    work_id = _work_result(job_no)
+    lot_id = conn.q1("""insert into material_lot (lot_no, item_id, received_qty, qty_unit, received_by, insp_status, insp_at, insp_by)
+                        values (%s, %s, 100, 'm', %s, '합격', now(), %s) returning material_lot_id""",
+                     (f"{t}-ML", ids["raw"], TEST_BY, TEST_BY))["material_lot_id"]
+    conn.x("insert into material_input (work_result_id, material_lot_id, input_qty, qty_unit, scanned_by) values (%s, %s, 10, 'm', %s)",
+           (work_id, lot_id, TEST_BY))
+    roll_no = None
+    try:
+        r = c.post(f"{ORDERS}/{job_no}", data={"status": "완료"})             # 열린 실적이 있다 — 마감 422
+        assert r.status_code == 422 and r.json()["fields"][0]["name"] == f"작업 실적 {work_id}"
+        assert _job(job_no)["status"] == "등록"
+        assert conn.q1("select count(*) as n from roll where job_id = %s", (job_id,))["n"] == 0
+
+        r = client("field").post(f"/pop/work/{work_id}/finish", data={"output_qty": "10"})   # 열린 실적을 닫는 길은 그대로다
+        assert r.status_code == 200, r.text
+        roll_no = r.json()["roll_no"]
+        roll = conn.q1("""select r.process_type, j.status from roll r join job j on j.job_id = r.job_id
+                           where r.roll_no = %s""", (roll_no,))
+        assert roll == {"process_type": "인쇄", "status": "등록"}             # 인쇄 롤은 `등록` 상태의 Job 에 생겼다
+
+        r = c.post(f"{ORDERS}/{job_no}", data={"status": "완료"})             # 실적을 종료했으니 마감된다
+        assert r.status_code == 200 and _job(job_no)["status"] == "완료"
+        assert conn.q1("select count(*) as n from roll where job_id = %s", (job_id,))["n"] == 1   # 마감 뒤에 늘어난 롤은 없다
+    finally:                                                                  # 계보·투입·원재료 LOT 은 공용 뒷정리가 모른다 — 여기서 지운다
+        with conn.tx() as cur:
+            cur.execute("delete from roll_genealogy where parent_material_lot_id = %s", (lot_id,))
+            cur.execute("delete from material_input where work_result_id = %s", (work_id,))
+            cur.execute("delete from sys_access_log where target = %s", (f"roll:{roll_no}",))
+            cur.execute("delete from roll where job_id = %s", (job_id,))
+            cur.execute("delete from material_lot where material_lot_id = %s", (lot_id,))
 
 
 @pytest.mark.fn("F-JOB-02", "F-JOB-03")
@@ -177,6 +310,13 @@ def test_cancel_order_keeps_the_row(t, ids):
     r = c.post(f"{ORDERS}/{busy}/cancel")
     assert r.status_code == 422 and r.json()["fields"][0]["name"] == "작업 실적"
     assert _job(busy)["status"] == "등록"
+
+    for status in ("정지", "완료"):                                           # 정지 중이든 종료했든 실적이 있으면 422 — 롤이 없어도
+        worked = _create(c, ids)
+        _work_result(worked, status)
+        r = c.post(f"{ORDERS}/{worked}/cancel")
+        assert r.status_code == 422 and r.json()["fields"] == [{"name": "작업 실적", "reason": "1건"}], status
+        assert _job(worked)["status"] == "등록" and change_logs("F-JOB-03", f"job:{worked}") == 0
 
     rolled = _create(c, ids)                                                  # 롤이 있어도 422
     conn.x("""insert into roll (roll_no, process_type, job_id, produced_by)

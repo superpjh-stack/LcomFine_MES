@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
@@ -61,15 +61,14 @@ def _shipment(shipment_no: str) -> dict:
     return row
 
 
-def _scanned_shipment(no: str) -> dict:
-    """사용자가 입력·스캔한 출하 LOT 번호로 한 건. 다른 스캔 화면처럼 `lineage.resolve` 로 찾는다
-    (앞뒤 공백 제거 · 소문자로 들어오면 대문자로도 찾는다, D-201). 없는 번호 · 출하 LOT 이 아닌 번호는 422."""
-    node = lineage.resolve(no)
+def _shipment_problem(no: str, node: lineage.Node | None) -> Exception | None:
+    """`lineage.resolve(no)` 의 결과가 출하 LOT 이 아니면 그 사유(422) — **올리지 않고 돌려준다.** 출하 LOT 이면 None.
+    (앞뒤 공백 제거 · 소문자 → 대문자는 `lineage.resolve` 가 한다, D-201)"""
     if node is None:
-        raise http.validation_error("없는 출하 LOT 입니다", fields=[{"name": "출하 LOT 번호", "reason": no}])
+        return http.validation_error("없는 출하 LOT 입니다", fields=[{"name": "출하 LOT 번호", "reason": no}])
     if node.kind != lineage.SHIPMENT:
-        raise http.validation_error("출하 LOT 번호가 아닙니다", fields=[{"name": no, "reason": node.label}])
-    return conn.q1(_SHIPMENT_SQL + " where s.shipment_id = %s", (node.id,))
+        return http.validation_error("출하 LOT 번호가 아닙니다", fields=[{"name": no, "reason": node.label}])
+    return None
 
 
 def _rolls(shipment_id: int) -> list[dict]:
@@ -122,11 +121,12 @@ def shipments(request: Request, no: str = "", shipment_no: str = "", job_no: str
     opened, rolls, scan_error = None, [], None
     no = no.strip()
     if no:                                   # 한 건 열기 — 목록에서 고르거나 출하 LOT 번호를 스캔
-        try:
-            opened = _scanned_shipment(no)
-        except HTTPException as exc:         # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
-            scan_error = scan_failure(request, exc)
+        node = lineage.resolve(no)
+        problem = _shipment_problem(no, node)
+        if problem is not None:              # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
+            scan_error = scan_failure(request, problem)
         else:
+            opened = conn.q1(_SHIPMENT_SQL + " where s.shipment_id = %s", (node.id,))
             rolls = _rolls(opened["shipment_id"])
     rows = _search(shipment_no, job_no, customer, status, d1, d2)
     customers = conn.q("select customer_code, customer_name from customer where use_yn = 'Y' order by customer_code")

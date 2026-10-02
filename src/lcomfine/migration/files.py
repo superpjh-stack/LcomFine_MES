@@ -245,8 +245,11 @@ class FileResult:
     path: Path
     exists: bool = True
     read_count: int = 0                                  # 읽은 데이터 행 수 (머리 줄·빈 줄 제외)
-    rows: list[Row] = field(default_factory=list)        # 형식 검사를 통과한 행
+    rows: list[Row] = field(default_factory=list)        # 형식 검사를 통과한 행 (규칙 검사 뒤에는 적재할 행)
     errors: list[RowError] = field(default_factory=list)
+    #: 변경 없음 — 적재하지 않지만 오류도 아닌 행 (작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값, D-311).
+    #: 읽은 행 = 적재할 행 + 변경 없음 + 오류 행
+    unchanged: list[Row] = field(default_factory=list)
 
     @property
     def file_broken(self) -> bool:

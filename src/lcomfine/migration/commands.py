@@ -10,23 +10,28 @@
 - 적재는 업무 코드 기준 upsert — 다시 돌려도 행 수가 같다(G-15).
 - 실행 × 파일마다 `sys_migration_log` 한 줄(읽은 수 · 적재 수 · 오류 수 · 오류 내용). `validate` · `report` 는 아무 테이블에도 쓰지 않는다.
 - 형식이 틀리거나 참조 코드가 없는 행은 **그 행만** 건너뛰고 오류 목록에 남긴다. 오류가 하나라도 있으면 종료코드 1.
-- **화면이 422 로 막는 변경은 배치도 하지 않는다**(D-309 · `_check_rules`): 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 —
-  그 행은 건너뛰고 오류로 리포트(줄 번호·키·사유), 종료코드 1. `validate` 도 같은 행을 미리 알린다.
+- **화면이 422 로 막는 변경은 배치도 하지 않는다**(D-309 · D-311 · `_check_rules`): 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 —
+  파일 값이 DB 값과 같으면 **변경 없음**(오류 아님 · 쓰지 않는다), 하나라도 다르면 그 행은 건너뛰고 오류로 리포트
+  (줄 번호·키·다른 칸·사유), 종료코드 1. `validate` 도 같은 기준으로 미리 알린다.
+- 건수: 읽은 행 = 적재 + 변경 없음 + 오류 행. `sys_migration_log` 의 `loaded_count` · `error_count` 에는 변경 없음을 넣지 않고,
+  그 수와 키는 `error_detail` 첫 줄 `변경 없음 n행 — …` 로 남긴다(컬럼이 따로 없다).
 - 오류를 삼키지 않는다. 예상하지 못한 예외(DB 연결 실패 등)는 그대로 올라간다.
 """
 
 from __future__ import annotations
 
 import getpass
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import psycopg
 
 from ..db import conn
 from . import files
-from .files import FileResult, FileSpec, RowError
+from .files import FileResult, FileSpec, Row, RowError
 
 #: 적재한 행의 created_by · updated_by
 LOADED_BY = "migration"
@@ -34,6 +39,9 @@ DECISION_HISTORY = "D-01"
 NOT_COLLECTED = "미수집"
 #: 로그·화면에 낱낱이 적는 오류 줄 수의 상한 (나머지는 "외 n건" 으로 센다 — 숨기지 않는다)
 MAX_ERROR_LINES = 100
+#: 적재하지 않았지만 오류도 아닌 행 (D-311) — 출력의 열 이름이고 `sys_migration_log.error_detail` 첫 줄의 머리말
+UNCHANGED = "변경 없음"
+_UNCHANGED_LINE = re.compile(rf"^{UNCHANGED} (\d+)행")
 
 
 def _run_by(by: str | None) -> str:
@@ -80,15 +88,47 @@ _POSITIVE_ON_SCREEN: dict[str, tuple[str, ...]] = {"anilox": ("line_count", "cel
 
 
 def _job_state(query, job_nos: list[str]) -> dict[str, dict]:
-    """파일에 적힌 Job 번호 가운데 DB 에 이미 있는 것 → 상태와 딸린 작업 실적·롤·출하 수."""
+    """파일에 적힌 Job 번호 가운데 DB 에 이미 있는 것 → 딸린 작업 실적·롤·출하 수와, **파일의 열 이름으로 본** 지금의 값
+    (참조는 업무 코드로 — job.csv 의 한 줄과 칸마다 견줄 수 있다)."""
     if not job_nos:
         return {}
     return {r["job_no"]: r for r in query(
-        """select j.job_no, j.status,
+        """select j.job_no, i.item_code, c.customer_code, p.plate_code, a.anilox_code, f.ink_code, e.equipment_code,
+                  j.order_qty, j.qty_unit, j.due_date, j.status, j.note,
                   (select count(*)::int from work_result w where w.job_id = j.job_id) as works,
                   (select count(*)::int from roll r where r.job_id = j.job_id) as rolls,
                   (select count(*)::int from shipment s where s.job_id = j.job_id) as shipments
-             from job j where j.job_no = any(%s)""", (job_nos,))}
+             from job j
+             join item i on i.item_id = j.item_id
+             join customer c on c.customer_id = j.customer_id
+             left join plate_spec p on p.plate_spec_id = j.plate_spec_id
+             left join anilox a on a.anilox_id = j.anilox_id
+             left join ink_formula f on f.ink_formula_id = j.ink_formula_id
+             left join equipment e on e.equipment_id = j.equipment_id
+            where j.job_no = any(%s)""", (job_nos,))}
+
+
+def _shown(value) -> str:
+    return "빈 칸" if value is None else repr(str(value))
+
+
+def _differences(spec: FileSpec, values: dict, have: dict) -> list[str]:
+    """파일의 한 줄과 DB 의 그 행이 다른 칸 — `열 (파일 … ≠ DB …)`. 업무 키를 뺀 규격의 열을 전부 견준다(없으면 빈 목록).
+
+    견주는 것은 **적재하면 DB 에 담길 값**이다: 빈 칸은 NULL(기본값이 있는 열은 그 값), 숫자는 그 컬럼의 소수 자릿수로
+    반올림한 값(DB 가 하듯 — `1000` 과 `1000.000` 은 같다). 참조 칸은 업무 코드끼리 견준다.
+    """
+    out = []
+    for col in spec.cols:
+        if col.name in spec.key:
+            continue
+        mine, theirs = values[col.name], have[col.name]
+        if isinstance(mine, Decimal) and isinstance(theirs, Decimal) and mine.adjusted() <= theirs.adjusted() + 1:
+            # numeric(p,s) 컬럼의 값은 늘 소수 s 자리로 온다 — 파일 값을 그 자리로 맞춘다. (자릿수가 훨씬 큰 값은 맞추지 않아도 다르다)
+            mine = mine.quantize(Decimal(1).scaleb(theirs.as_tuple().exponent), rounding=ROUND_HALF_UP)
+        if mine != theirs:
+            out.append(f"{col.name} (파일 {_shown(values[col.name])} ≠ DB {_shown(theirs)})")
+    return out
 
 
 def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = None) -> None:
@@ -98,7 +138,8 @@ def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = 
     `item_types` 는 {품목 코드: 구분} — 검증(`validate`)에서 같은 폴더의 item.csv 가 바꿀 값을 미리 본다. 안 주면 DB 의 값.
 
     job.csv (F-JOB-01~03 · D-103)
-      ① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다. 값이 같은지 견주지 않는다 — 그 Job 의 행은 건드리지 않는다
+      ① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다(D-309 · D-311). 파일의 값이 DB 의 값과 **전부 같으면 변경 없음** —
+         오류가 아니고 쓰지도 않는다(`res.unchanged`). 하나라도 다르면 오류 — 사유에 다른 칸을 적는다
       ② 취소된 Job 을 `등록`·`완료` 로 되살리지 않는다(취소는 되돌릴 수 없다)
       ③ 품목이 `제품` 이 아니면 작업지시할 수 없다
     anilox.csv (F-PRT-05·06)
@@ -116,7 +157,12 @@ def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = 
                     (("works", "작업 실적", "건"), ("rolls", "롤", "개"), ("shipments", "출하", "건")) if have and have[key]]
             item_type = item_types.get(v["item_code"])
             if used:
-                reason = f"작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {' · '.join(used)} (F-JOB-02)"
+                different = _differences(res.spec, v, have)
+                if not different:                      # 값이 같다 — 변경 없음. 적재하지 않는다(수정 일시·수정자도 그대로)
+                    res.unchanged.append(row)
+                    continue
+                reason = (f"작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {' · '.join(used)} · "
+                          f"파일과 DB 가 다른 칸: {', '.join(different)} (F-JOB-02)")
             elif have and have["status"] == CANCELLED and v["status"] != CANCELLED:
                 reason = f"취소된 Job 은 되살리지 않는다 — status: {v['status']!r} (F-JOB-02 · 취소는 되돌릴 수 없다)"
             elif item_type is not None and item_type != PRODUCT:
@@ -136,6 +182,26 @@ def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = 
     else:
         return
     res.rows = kept
+
+
+def _unchanged_lines(spec: FileSpec, rows: list[Row]) -> list[str]:
+    return [f"{row.line}행 [{row.key_text(spec)}]" for row in rows]
+
+
+def _unchanged_note(spec: FileSpec, rows: list[Row]) -> str:
+    """`sys_migration_log.error_detail` 의 첫 줄 — 변경 없음 행의 수와 키(한 줄). 컬럼이 따로 없어 여기에 남긴다."""
+    if not rows:
+        return ""
+    lines = _unchanged_lines(spec, rows)
+    more = f" … 외 {len(lines) - MAX_ERROR_LINES}건" if len(lines) > MAX_ERROR_LINES else ""
+    return (f"{UNCHANGED} {len(rows)}행 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님): "
+            f"{', '.join(lines[:MAX_ERROR_LINES])}{more}")
+
+
+def _unchanged_of(detail: str | None) -> int:
+    """실행 기록 한 줄의 변경 없음 수 — `_unchanged_note` 가 `error_detail` 첫 줄에 적은 값. 그 줄이 없으면 0."""
+    found = _UNCHANGED_LINE.match(detail or "")
+    return int(found.group(1)) if found else 0
 
 
 # ── B-MIG-01 validate ───────────────────────────────────────────────────
@@ -167,7 +233,7 @@ def check_folder(directory: Path) -> list[FileResult]:
                 item_types.update({row.values["item_code"]: row.values["item_type"]
                                    for r in results if r.spec.name == "item" for row in r.rows})
             _check_rules(res, conn.q, item_types=item_types)
-        passed[spec.name] = {row.values[spec.key[0]] for row in res.rows}
+        passed[spec.name] = {row.values[spec.key[0]] for row in res.rows + res.unchanged}
         results.append(res)
     return results
 
@@ -176,22 +242,30 @@ def validate(directory: Path, *, by: str | None = None) -> int:
     """B-MIG-01 Import 파일 검증. 적재하지 않는다. 오류가 있으면 종료코드 1."""
     results = check_folder(Path(directory))
     print(f"Import 파일 검증 — {directory}  (적재하지 않는다)")
-    print(f"{'파일':<28}{'명령':<16}{'상태':<10}{'읽은 행':>8}{'통과':>8}{'오류':>8}")
+    print(f"{'파일':<28}{'명령':<16}{'상태':<10}{'읽은 행':>8}{'통과':>8}{'오류':>8}{'변경없음':>8}")
     for res in results:
         state = "있음" if res.exists else ("없음" if res.spec.required else "없음(선택)")
-        print(f"{res.spec.filename:<28}{res.spec.command:<16}{state:<10}{res.read_count:>8}{len(res.rows):>8}{len(res.errors):>8}")
+        print(f"{res.spec.filename:<28}{res.spec.command:<16}{state:<10}{res.read_count:>8}{len(res.rows):>8}{len(res.errors):>8}"
+              f"{len(res.unchanged):>8}")
     total = sum(len(r.errors) for r in results)
+    unchanged = sum(len(r.unchanged) for r in results)
     if total:
         print(f"\n오류 {total}건")
         for res in results:
             for e in res.errors:
                 print(f"  {res.spec.filename} {e.text()}")
+    if unchanged:
+        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (적재해도 덮어쓰지 않는다 · 오류 아님)")
+        for res in results:
+            for line in _unchanged_lines(res.spec, res.unchanged):
+                print(f"  {res.spec.filename} {line}")
     history = [r for r in results if not r.spec.loadable and r.read_count]
     if history:
         print(f"\n과거 이력 파일에 데이터가 있다 — 적재 범위 미확정 ({DECISION_HISTORY}). `load-history` 는 이 행들을 적재하지 않는다:")
         for res in history:
             print(f"  {res.spec.filename} {res.read_count}행")
-    print(f"\n판정: {'FAIL' if total else 'PASS'} — 파일 {sum(r.exists for r in results)}/{len(results)} · 오류 {total}건")
+    print(f"\n판정: {'FAIL' if total else 'PASS'} — 파일 {sum(r.exists for r in results)}/{len(results)} · 오류 {total}건"
+          f" · {UNCHANGED} {unchanged}건")
     return 1 if total else 0
 
 
@@ -205,6 +279,7 @@ class LoadResult:
     inserted: int = 0
     updated: int = 0
     errors: list[RowError] = field(default_factory=list)
+    unchanged: list[Row] = field(default_factory=list)      # 변경 없음 — 적재하지 않았고 오류도 아니다 (D-311)
     note: str = ""
 
 
@@ -222,8 +297,9 @@ def _upsert_sql(spec: FileSpec) -> str:
 
 def _write_log(command: str, spec: FileSpec, result: LoadResult, started: datetime, by: str | None) -> None:
     detail = _error_text(result.errors)
-    if result.note:
-        detail = f"{result.note}\n{detail}" if detail else result.note
+    note = result.note or _unchanged_note(spec, result.unchanged)
+    if note:
+        detail = f"{note}\n{detail}" if detail else note
     conn.x("""insert into sys_migration_log (command, target, source_file, read_count, loaded_count, error_count,
                                              error_detail, started_at, finished_at, run_by)
               values (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s)""",
@@ -249,6 +325,7 @@ def _load_file(command: str, spec: FileSpec, directory: Path, by: str | None) ->
                 cur.execute("select job_id from job where job_no = any(%s) order by job_id for update",
                             ([row.values["job_no"] for row in res.rows],))
             _check_rules(res, lambda sql, params: cur.execute(sql, params).fetchall())
+            out.unchanged = list(res.unchanged)                   # 값이 같은 「실적 있는 Job」 — 쓰지 않는다
             for row in res.rows:
                 params = [ids[c.ref][row.values[c.name]] if c.ref and row.values[c.name] is not None
                           else row.values[c.name] for c in spec.cols]
@@ -272,18 +349,25 @@ def _load_file(command: str, spec: FileSpec, directory: Path, by: str | None) ->
 
 def _print_load(command: str, title: str, directory: Path, results: list[LoadResult]) -> int:
     print(f"{title} ({command}) — {directory}")
-    print(f"{'파일':<28}{'대상 테이블':<24}{'읽음':>6}{'적재':>6}{'신규':>6}{'갱신':>6}{'오류':>6}")
+    print(f"{'파일':<28}{'대상 테이블':<24}{'읽음':>6}{'적재':>6}{'신규':>6}{'갱신':>6}{'오류':>6}{'변경없음':>8}")
     for r in results:
         print(f"{r.spec.filename:<28}{r.spec.table:<24}{r.read_count:>6}{r.loaded_count:>6}{r.inserted:>6}{r.updated:>6}{len(r.errors):>6}"
-              + (f"  {r.note}" if r.note else ""))
+              f"{len(r.unchanged):>8}" + (f"  {r.note}" if r.note else ""))
     total = sum(len(r.errors) for r in results)
+    unchanged = sum(len(r.unchanged) for r in results)
     if total:
         print(f"\n오류 {total}건 — 그 행은 적재하지 않았다")
         for r in results:
             for e in r.errors:
                 print(f"  {r.spec.filename} {e.text()}")
+    if unchanged:
+        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님)")
+        for r in results:
+            for line in _unchanged_lines(r.spec, r.unchanged):
+                print(f"  {r.spec.filename} {line}")
+    # 읽음 = 적재 + 변경 없음 + 오류 행 (파일 전체의 오류는 행이 아니다)
     print(f"\n판정: {'FAIL' if total else 'PASS'} — 읽음 {sum(r.read_count for r in results)} · "
-          f"적재 {sum(r.loaded_count for r in results)} · 오류 {total} · sys_migration_log {len(results)}줄")
+          f"적재 {sum(r.loaded_count for r in results)} · 오류 {total} · {UNCHANGED} {unchanged} · sys_migration_log {len(results)}줄")
     return 1 if total else 0
 
 
@@ -363,7 +447,8 @@ def build_report(directory: Path | None = None, by: str | None = None) -> dict:
     rows = []
     for g in logs:
         count = _table_count(g["target"])
-        rows.append({**g, "table_count": count, "match": count >= g["loaded_count"]})
+        rows.append({**g, "table_count": count, "match": count >= g["loaded_count"],
+                     "unchanged_count": _unchanged_of(g["error_detail"])})
     keys = []
     if directory is not None:
         for spec in files.SPECS:
@@ -390,22 +475,25 @@ def report(directory: Path | None = None, *, by: str | None = None) -> int:
     if not rep["logs"]:
         print(f"이관 실행 기록: {NOT_COLLECTED} — 적재 명령을 아직 돌리지 않았다")
         return 0
-    print(f"{'명령':<16}{'파일':<28}{'대상 테이블':<24}{'실행':>5}{'읽음':>6}{'적재':>6}{'오류':>6}{'테이블 행':>10}  {'대조':<6}{'끝난 시각'}")
+    print(f"{'명령':<16}{'파일':<28}{'대상 테이블':<24}{'실행':>5}{'읽음':>6}{'적재':>6}{'오류':>6}{'변경없음':>8}{'테이블 행':>10}  {'대조':<6}{'끝난 시각'}")
     for g in rep["logs"]:
         print(f"{g['command']:<16}{g['source_file'] or '-':<28}{g['target'] or '-':<24}{g['runs']:>5}{g['read_count']:>6}"
-              f"{g['loaded_count']:>6}{g['error_count']:>6}{g['table_count']:>10}  {'OK' if g['match'] else '불일치':<6}"
+              f"{g['loaded_count']:>6}{g['error_count']:>6}{g['unchanged_count']:>8}{g['table_count']:>10}  {'OK' if g['match'] else '불일치':<6}"
               f"{g['finished_at']:%Y-%m-%d %H:%M:%S}")
     with_errors = [g for g in rep["logs"] if g["error_count"]]
-    notes = [g for g in rep["logs"] if not g["error_count"] and g["error_detail"]]
+    # 오류가 아닌 줄 — 오류 없는 실행의 메모(빈 파일 · 선택 파일 없음)와, 어느 실행이든 「변경 없음」 줄
+    notes = [(g, line) for g in rep["logs"] for line in (g["error_detail"] or "").splitlines()
+             if not g["error_count"] or _UNCHANGED_LINE.match(line)]
     if with_errors:
         print(f"\n오류 목록 — 최신 실행 {len(with_errors)}건에 오류 행 {sum(g['error_count'] for g in with_errors)}개")
         for g in with_errors:
             for line in (g["error_detail"] or "").splitlines():
-                print(f"  {g['command']} {g['source_file']} {line}")
+                if not _UNCHANGED_LINE.match(line):
+                    print(f"  {g['command']} {g['source_file']} {line}")
     if notes:
         print("\n참고")
-        for g in notes:
-            print(f"  {g['command']} {g['source_file']} {g['error_detail']}")
+        for g, line in notes:
+            print(f"  {g['command']} {g['source_file']} {line}")
     missing_total = 0
     if rep["keys"]:
         print(f"\n파일 ↔ 테이블 업무 키 대조 — {directory}")
@@ -417,5 +505,5 @@ def report(directory: Path | None = None, *, by: str | None = None) -> int:
     mismatched = [g for g in rep["logs"] if not g["match"]]
     bad = bool(with_errors or mismatched or missing_total)
     print(f"\n판정: {'FAIL' if bad else 'PASS'} — 최신 실행 {len(rep['logs'])}건 · 오류 있는 실행 {len(with_errors)} · "
-          f"행 수 불일치 {len(mismatched)} · 테이블에 없는 키 {missing_total}")
+          f"행 수 불일치 {len(mismatched)} · 테이블에 없는 키 {missing_total} · {UNCHANGED} {sum(g['unchanged_count'] for g in rep['logs'])}행")
     return 1 if bad else 0

@@ -4,12 +4,23 @@
 
 ## 지금 해야 할 것
 
-1. **웨이브 D 2차 (개발1 · 개발3 병렬, 작은 수정)** — G-21 의 남은 실패 2건과 수정 중 드러난 구멍:
-   - 개발3: `routers/qua.py:183` · `shp.py:127` 의 `except` 가 QA3 정적 스캔(`test_static_scan_finds_no_unreviewed_swallowing_except`)에 걸림 → `except` 없이(개발2 처럼 `resolve` 가 None 인지로) 가른다. 이관 `load-jobs` 재실행: 실적 있는 Job 이라도 **파일 값이 DB 와 같으면 변경 없음으로 통과**, 다를 때만 오류(D-309 보강).
-   - 개발1: 진행 중인 작업 실적이 있는 Job 은 `완료`·`취소` 422 (개발2 §3-10 — 마감된 Job 에 인쇄 롤이 생기는 구멍). `sys/users.html` 의 "다음 로그인부터 적용" 문구를 D-26 대로. 임시 `.req` 인라인 스타일 제거.
-2. **웨이브 C 재검 (QA)** — ① `tests/test_qa1_rbac.py:198` 과 `test_404_non_numeric_path_key` 가 같은 요청에 422/404 를 서로 다르게 기대(QA1 자기 모순) → DEF-QA1-007 의 기대값(404)으로 정리. ② **G-22 브라우저 한 바퀴 재실행** — 11·12단계가 스캔만으로 진행되는지, 리포트의 `G-22` 행 갱신. ③ 결함 19건의 재검 결과를 리포트 3종에 기록.
-3. 그 뒤 `make gate-full` 전건 PASS + 치명 0 + 연속 2회전 변화 없음 → 종료(goal.md §4.4).
-4. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-202 · D-208 · D-303/D-309 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+1. **웨이브 C 재검 (QA 1명)** — 남은 FAIL 2개가 전부 QA 쪽 판정이다.
+   - G-21: `tests/test_qa1_rbac.py::test_forbidden_comes_before_validation`(198행)이 `POST /qua/inspections/abc/delete` 에 422 를 기대하고, `test_qa1_errors.py::test_404_non_numeric_path_key`(DEF-QA1-007)는 같은 요청에 404 를 기대한다 — QA1 자기 모순. DEF-QA1-007 의 기대값(404)으로 정리.
+   - G-22: **브라우저 한 바퀴 재실행**(`tools/e2e/run_e2e.py`) — 11·12단계가 스캔만으로 진행되는지 보고 리포트의 `G-22` 행 갱신.
+   - 결함 19건 재검 결과를 리포트 3종에 기록. 수정 라운드에서 바뀐 것(Job 마감 규칙 D-107 · 롤이 붙는 Job D-208 · 이관 변경 없음 D-311 · 세션 D-26)에 새 결함이 없는지. 개발1 이 남긴 틈(작업 시작과 마감이 겹칠 때 — `progress-dev1.md` §3-8)의 재현 여부.
+2. 그 뒤 `make gate-full` 전건 PASS + 치명 0 + 연속 2회전 변화 없음 → 종료(goal.md §4.4).
+3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-107 · D-202 · D-208 · D-303/D-309/D-311 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+
+## 2026-10-03 — 웨이브 D 2차 완료 (개발1 · 개발3) · 오케스트레이터 재실측
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 20 · FAIL 2 / 22** — FAIL: G-21(pytest 1건 — QA1 자기 모순) · G-22(리포트 판정이 재검 전) | `make gate-full` |
+| pytest | **1587 passed · 1 failed** (직전 1580 · 2). 남은 1건 = `test_qa1_rbac.py::test_forbidden_comes_before_validation` | `uv run pytest -q` |
+| 조용한 실패 정적 검사 | `qua.py` · `shp.py` · `trc.py` 의 스캔 422 처리를 `except` 없이 값으로 가름 → `test_static_scan_finds_no_unreviewed_swallowing_except` 통과 | `uv run pytest -q tests/test_qa3_ops.py` |
+| Job 마감 (D-107) | 진행·정지 중인 작업 실적이 있는 Job 은 `완료` 422(사유에 열린 실적). 취소는 원래 실적 1건이라도 있으면 422 | `uv run pytest -q tests/test_dev1_job.py` |
+| 이관 재실행 (D-311) | 실적 있는 Job 이라도 파일 값 = DB 값이면 「변경 없음」 통과(쓰지 않음), 다르면 오류 · `read = loaded + 변경 없음 + error` | `uv run pytest -q tests/test_dev3_migration.py` (17 passed) |
+| 계약 반영 (오케스트레이터 직접) | `function-list.md` F-JOB-02(D-107) · B-MIG-04(D-311) · `migration-files.md` §1 · §5 #4 | `uv run python tools/gen_contracts.py --check` → "렌더본 = 원본" · `make check-trace` G-01·G-02 PASS |
 
 ## 2026-10-03 — 웨이브 D 1차 완료 (아키텍트 · 개발2 · 개발3) · 오케스트레이터 재실측
 

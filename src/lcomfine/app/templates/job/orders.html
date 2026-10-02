@@ -29,7 +29,7 @@
 
 {% if job %}
 <section class="panel" id="job">
-  <h2>작업지시 <code>{{ job.job_no }}</code> <small>{{ job.status }} · 작업 실적 {{ job.work_count }}건 · 롤 {{ job.roll_count }}개 · 생산 LOT {{ job.lot_count }}개</small></h2>
+  <h2>작업지시 <code>{{ job.job_no }}</code> <small>{{ job.status }} · 작업 실적 {{ job.work_count }}건{% if job.open_work_count %} (진행 중 {{ job.open_work_count }}건){% endif %} · 롤 {{ job.roll_count }}개 · 생산 LOT {{ job.lot_count }}개</small></h2>
   <dl class="kv">
     <dt>품목</dt><dd><code>{{ job.item_code }}</code> {{ job.item_name }}</dd>
     <dt>고객</dt><dd><code>{{ job.customer_code }}</code> {{ job.customer_name }}</dd>
@@ -54,7 +54,7 @@
 </section>
 
 <section class="panel" id="form">
-  <h2>작업지시 수정 <small><code>{{ job.job_no }}</code>{% if job.work_count %} — 작업 실적이 있어 품목·수량은 바꿀 수 없다{% endif %}{% if job.status == ST_CANCEL %} — 취소된 작업지시는 수정할 수 없다{% endif %}</small></h2>
+  <h2>작업지시 수정 <small><code>{{ job.job_no }}</code>{% if job.work_count %} — 작업 실적이 있어 품목·수량은 바꿀 수 없다{% endif %}{% if job.open_work_count and job.status == ST_OPEN %} — 진행 중인 작업 실적 {{ job.open_work_count }}건을 종료해야 마감할 수 있다{% endif %}{% if job.status == ST_CANCEL %} — 취소된 작업지시는 수정할 수 없다{% endif %}</small></h2>
   {% set lock = job.work_count > 0 %}
   <form class="form-grid" method="post" action="{{ nav.path_of('JOB-01') }}/{{ job.job_no }}" id="job-form">
     {% if lock %}
@@ -75,7 +75,7 @@
     {{ ui.field('비고', 'note', job.note) }}
     <label>상태 (마감)
       <select name="status"{% if job.status == ST_CANCEL %} disabled{% endif %}>
-        {% for s in (ST_OPEN, ST_DONE) %}<option value="{{ s }}"{% if s == job.status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+        {% for s in (ST_OPEN, ST_DONE) %}<option value="{{ s }}"{% if s == job.status %} selected{% elif s == ST_DONE and job.open_work_count %} disabled{% endif %}>{{ s }}{% if s == ST_DONE and job.open_work_count and s != job.status %} — 진행 중인 작업 실적 종료 뒤{% endif %}</option>{% endfor %}
         {% if job.status == ST_CANCEL %}<option selected>{{ ST_CANCEL }}</option>{% endif %}
       </select>
     </label>
@@ -138,7 +138,5 @@ document.querySelectorAll("form[data-confirm]").forEach(function (f) {
   f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
 });
 </script>
-<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.scan-line{margin-top:10px}
-/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
-.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.scan-line{margin-top:10px}</style>
 {% endblock %}

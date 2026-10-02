@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
@@ -66,24 +66,34 @@ def approved_shipment_of(roll_id: int) -> str | None:
 
 
 # ── 스캔 진입 (D-201) ───────────────────────────────────────────────────
-def scan_failure(request: Request, exc: Exception) -> dict:
+def scan_failure(request: Request, problem: Exception) -> dict:
     """GET 스캔 진입(`?no=`)에서 번호를 못 찾았을 때 — JSON 은 422 를 그대로 올리고, 브라우저는 **같은 화면**을 422 로
     다시 그린다(오류 문장이 크게 보이고 스캔칸이 남아 포커스를 잡는다 — 다음 스캔을 막지 않는다). 돌려주는 값은 화면에 넘길 오류.
+    `problem` 은 아직 올리지 않은 `http.validation_error(...)` 다 — 올린 것을 `except` 로 받아 가르지 않는다.
     출하 화면(`shp.py`)도 이것을 쓴다."""
     if not http.wants_html(request):
-        raise exc
-    detail = getattr(exc, "detail", None) or {}
+        raise problem
+    detail = getattr(problem, "detail", None) or {}
     return {"message": detail.get("message", ""), "fields": detail.get("fields") or []}
+
+
+def roll_problem(roll_no: str, node: lineage.Node | None) -> Exception | None:
+    """`lineage.resolve(roll_no)` 의 결과가 롤이 아니면 그 사유(422) — **올리지 않고 돌려준다.** 롤이면 None.
+    스캔 진입 GET 은 이것을 `scan_failure` 에 넘기고, 등록 POST 는 `scanned_roll` 이 올린다."""
+    if node is None:
+        return http.validation_error("없는 롤입니다", fields=[{"name": "롤 번호", "reason": roll_no}])
+    if node.kind != lineage.ROLL:
+        return http.validation_error("롤 번호가 아닙니다", fields=[{"name": roll_no, "reason": node.label}])
+    return None
 
 
 def scanned_roll(roll_no: str) -> lineage.Node:
     """사용자가 입력·스캔한 롤 번호 → 롤 노드. 다른 스캔 화면처럼 `lineage.resolve` 로 찾는다
     (앞뒤 공백 제거 · 소문자로 들어오면 대문자로도 찾는다, D-201). 없는 번호 · 롤이 아닌 번호는 422."""
     node = lineage.resolve(roll_no)
-    if node is None:
-        raise http.validation_error("없는 롤입니다", fields=[{"name": "롤 번호", "reason": roll_no}])
-    if node.kind != lineage.ROLL:
-        raise http.validation_error("롤 번호가 아닙니다", fields=[{"name": roll_no, "reason": node.label}])
+    problem = roll_problem(roll_no, node)
+    if problem is not None:
+        raise problem
     return node
 
 
@@ -178,10 +188,10 @@ def inspections(request: Request, no: str = "", roll_no: str = "", job_no: str =
     scanned, scan_error = None, None
     no = no.strip()
     if no:                                   # 라벨 바코드로 들어온 롤 (`?no=`) — 그 롤의 검사만 보이고 등록칸에 번호가 채워진다
-        try:
-            node = scanned_roll(no)
-        except HTTPException as exc:         # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
-            scan_error, no = scan_failure(request, exc), ""
+        node = lineage.resolve(no)
+        problem = roll_problem(no, node)
+        if problem is not None:              # 없는 번호 — 브라우저면 이 화면을 422 로 다시 그린다 (스캔칸이 남는다, D-201)
+            scan_error, no = scan_failure(request, problem), ""
         else:
             scanned = conn.q1("""select v.roll_id, v.roll_no, v.process_type, v.state, j.job_no, i.item_name
                                    from v_roll_state v join job j on j.job_id = v.job_id join item i on i.item_id = j.item_id

@@ -341,7 +341,7 @@ def _load_clean(tmp_path, by: str):
 @pytest.mark.fn("B-MIG-01", "B-MIG-04")
 @pytest.mark.parametrize("kind", ["작업 실적", "롤", "출하"])
 def test_load_jobs_does_not_overwrite_a_job_that_has_records(tmp_path, capsys, clean_db, kind):
-    """작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — 그 행은 건너뛰고 오류로 리포트(줄 번호·키·사유), 종료코드 1.
+    """작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — 값이 다른 행은 건너뛰고 오류로 리포트(줄 번호·키·다른 칸·사유), 종료코드 1.
     화면(F-JOB-02)이 막는 "실적 뒤 품목·수량 변경" 을 배치가 우회하지 않는다. 다른 행은 그대로 적재된다."""
     by = P + "live"
     folder = _load_clean(tmp_path, by)
@@ -369,6 +369,9 @@ def test_load_jobs_does_not_overwrite_a_job_that_has_records(tmp_path, capsys, c
     out = capsys.readouterr().out
     assert "판정: FAIL" in out
     assert f"job.csv 2행 [{P}J001]: 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {kind} 1" in out   # 줄 번호 · 키 · 사유
+    assert f"파일과 DB 가 다른 칸: item_code (파일 '{P}P02' ≠ DB '{P}P01')" in out                        # 다른 칸 (D-311)
+    assert "plate_code (파일 빈 칸 ≠ DB" in out and "order_qty (파일 '7' ≠ DB '1000.000')" in out
+    assert "due_date (파일 '2001-12-31' ≠ DB '2001-03-15')" in out and "customer_code (" not in out       # 같은 칸은 적지 않는다
     assert _job(P + "J001") == before                                       # 품목·고객·수량·납기·수정자 전부 그대로
     assert _job(P + "J002")["order_qty"] == "501.000"                       # 실적이 없는 Job 은 갱신된다
     log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
@@ -377,11 +380,90 @@ def test_load_jobs_does_not_overwrite_a_job_that_has_records(tmp_path, capsys, c
     assert migration.COMMANDS["report"](None, by=by) == 1                   # 리포트에도 오류로 남는다
     assert "덮어쓰지 않는다" in capsys.readouterr().out
 
-    # 값이 같아도 건드리지 않는다 (견주지 않는다) — 그 Job 의 행은 파일에서 빼야 오류가 없어진다
+    # 값이 같은 행으로 되돌리면 오류가 아니다 — 변경 없음 (D-311). 여전히 쓰지 않는다
     (folder / "job.csv").write_text(CLEAN["job.csv"], encoding="utf-8")
-    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
     assert _job(P + "J001") == before
     capsys.readouterr()
+
+
+@pytest.mark.fn("B-MIG-01", "B-MIG-04", "B-MIG-06")
+def test_load_jobs_passes_an_unchanged_job_that_has_records(tmp_path, capsys, clean_db):
+    """이관한 Job 으로 생산을 시작한 뒤 같은 폴더를 다시 돌린다 (D-311) — 실적·롤·출하가 있는 Job 이라도 파일 값이 DB 값과 같으면
+    「변경 없음」 으로 통과한다(오류 아님 · 쓰지 않는다). 읽은 행 = 적재 + 변경 없음 + 오류. 한 칸이라도 다르면 오류(종료코드 1)."""
+    by = P + "same"
+    folder = _load_clean(tmp_path, by)
+    job_id = one("select job_id from job where job_no = %s", (P + "J001",))["job_id"]
+    conn.x("insert into work_result (job_id, worker) values (%s, 't3')", (job_id,))
+    conn.x("insert into roll (roll_no, process_type, job_id, produced_by) values (%s, '인쇄', %s, 't3')", (P + "R001", job_id))
+    stamp = lambda: one("select updated_at, updated_by, xmin::text as version from job where job_id = %s", (job_id,))  # noqa: E731
+    before, touched = _job(P + "J001"), stamp()
+    capsys.readouterr()
+
+    assert migration.COMMANDS["validate"](folder) == 0                      # 검증: 오류가 아니라 변경 없음으로 알린다
+    out = capsys.readouterr().out
+    assert "변경 없음 1건" in out and f"job.csv 2행 [{P}J001]" in out
+    assert "판정: PASS" in out and "오류 0건 · 변경 없음 1건" in out
+
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
+    out = capsys.readouterr().out
+    assert "판정: PASS — 읽음 3 · 적재 2 · 오류 0 · 변경 없음 1 · sys_migration_log 2줄" in out   # job 2행 + job_lot 1행 = 적재 2 + 변경 없음 1
+    assert "변경 없음 1건" in out and f"job.csv 2행 [{P}J001]" in out
+    assert (_job(P + "J001"), stamp()) == (before, touched)                 # 쓰지 않았다 — 수정 일시·수정자·행 버전까지 그대로
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (2, 1, 0)
+    assert log["read_count"] == log["loaded_count"] + 1 + log["error_count"]
+    assert log["error_detail"].startswith("변경 없음 1행") and f"2행 [{P}J001]" in log["error_detail"]
+
+    assert migration.COMMANDS["report"](folder, by=by) == 0                 # 리포트: 오류가 아니다 — 변경없음 열과 참고에 남는다
+    out = capsys.readouterr().out
+    line = next(ln for ln in out.splitlines() if ln.startswith("load-jobs") and "job.csv" in ln)
+    assert line.split()[3:8] == ["2", "2", "1", "0", "1"]                   # 실행 2회 · 읽음 2 · 적재 1 · 오류 0 · 변경없음 1
+    assert "오류 목록" not in out and "참고" in out and "변경 없음 1행" in out
+
+    head = CLEAN["job.csv"].splitlines()[0] + "\n"
+    same = f"{P}J001,{P}P01,{P}C01,{P}PL1,{P}AN1,{P}INK1,{P}EQ1,%s,m,2001-03-15,%s,(예시)\n"
+    other = f"{P}J002,{P}P01,{P}C01,,,,,500,m,2001-03-20,완료,(예시)\n"
+    # 적재하면 DB 에 담길 값으로 견준다 — 수량의 표기(1000.0 · 넷째 자리 반올림) · 기본값(상태를 비우면 등록)
+    for qty, status in (("1000.0", "등록"), ("1000.0004", "")):
+        (folder / "job.csv").write_text(head + same % (qty, status) + other, encoding="utf-8")
+        assert migration.COMMANDS["load-jobs"](folder, by=by) == 0, (qty, status)
+        assert (_job(P + "J001"), stamp()) == (before, touched)
+    capsys.readouterr()
+
+    # 한 칸이라도 다르면 오류 — 그 행을 건너뛰고(쓰지 않는다) 다른 칸을 적는다
+    for qty, status, column in (("1000.0005", "", "order_qty (파일 '1000.0005' ≠ DB '1000.000')"),
+                                ("1000", "완료", "status (파일 '완료' ≠ DB '등록')")):
+        (folder / "job.csv").write_text(head + same % (qty, status) + other, encoding="utf-8")
+        assert migration.COMMANDS["validate"](folder) == 1
+        assert f"다른 칸: {column}" in capsys.readouterr().out
+        assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+        out = capsys.readouterr().out
+        assert f"job.csv 2행 [{P}J001]: 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — 작업 실적 1건 · 롤 1개 · 파일과 DB 가 다른 칸: {column}" in out
+        assert "오류 1 · 변경 없음 0" in out
+        assert (_job(P + "J001"), stamp()) == (before, touched)
+    (folder / "job.csv").write_text(head + same.replace("(예시)", "") % ("1000", ""), encoding="utf-8")   # 비고를 비운 것도 다른 값이다
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    out = capsys.readouterr().out
+    assert "다른 칸: note (파일 빈 칸 ≠ DB '(예시)')" in out
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (1, 0, 1) and "변경 없음" not in log["error_detail"]
+    assert migration.COMMANDS["report"](None, by=by) == 1
+    capsys.readouterr()
+
+    # 한 파일에 변경 없음 행과 오류 행이 함께 — 읽음 2 = 적재 0 + 변경 없음 1 + 오류 1. 리포트는 변경 없음 줄을 오류 목록에 섞지 않는다
+    (folder / "job.csv").write_text(head + same % ("1000", "") + f"{P}J003,{P}NOITEM,{P}C01,,,,,100,m,2001-03-21,,(예시)\n",
+                                    encoding="utf-8")
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    capsys.readouterr()
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (2, 0, 1)
+    assert log["error_detail"].splitlines()[0].startswith("변경 없음 1행") and f"3행 [{P}J003]" in log["error_detail"].splitlines()[1]
+    assert migration.COMMANDS["report"](None, by=by) == 1
+    errors, notes = capsys.readouterr().out.split("\n참고\n")
+    assert "오류 행 1개" in errors and f"3행 [{P}J003]" in errors and "변경 없음 1행 —" not in errors
+    assert "변경 없음 1행 —" in notes and "오류 있는 실행 1" in notes and "변경 없음 1행" in notes.splitlines()[-1]
+    assert (_job(P + "J001"), stamp()) == (before, touched)
 
 
 @pytest.mark.fn("B-MIG-04")

@@ -79,9 +79,7 @@ document.querySelectorAll("form[data-confirm]").forEach(function (f) {
   f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
 });
 </script>
-<style>.form-actions{display:flex;gap:8px;margin-top:10px}
-/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
-.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+<style>.form-actions{display:flex;gap:8px;margin-top:10px}</style>
 {% endblock %}
 
 {% macro master_field(fd, value) %}

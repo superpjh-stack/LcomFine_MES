@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from .. import lineage, nav, rbac, templating
@@ -34,22 +34,23 @@ DIRECTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _start(no: str, direction: str) -> lineage.Node:
-    """`?no=` 를 노드로. 비어 있거나 없는 번호, 그 방향으로 갈 수 없는 종류면 422(사용자가 넣은 번호다)."""
+def _start(no: str, direction: str) -> tuple[lineage.Node | None, Exception | None]:
+    """`?no=` 를 (노드, 사유) 로. 비어 있거나 없는 번호, 그 방향으로 갈 수 없는 종류면 노드 없이 422 사유를 돌려준다
+    (사용자가 넣은 번호다). **올리지 않는다** — 올릴지 화면을 다시 그릴지는 `_trace` 가 정한다."""
     no = (no or "").strip()
     if not no:
-        raise http.validation_error("번호를 입력해 주세요", fields=[{"name": "번호", "reason": "비어 있음"}])
+        return None, http.validation_error("번호를 입력해 주세요", fields=[{"name": "번호", "reason": "비어 있음"}])
     node = lineage.resolve(no)
     if node is None:
-        raise http.validation_error("없는 번호입니다 — 원재료 LOT · 롤 · 출하 LOT 번호가 아닙니다",
-                                    fields=[{"name": "번호", "reason": no}])
+        return None, http.validation_error("없는 번호입니다 — 원재료 LOT · 롤 · 출하 LOT 번호가 아닙니다",
+                                           fields=[{"name": "번호", "reason": no}])
     if direction not in DIRECTIONS[node.kind]:
         if node.kind == lineage.SHIPMENT:
             message = "출하 LOT 은 계보의 맨 끝입니다 — 역방향 추적으로 조회합니다"
         else:
             message = "원재료 LOT 은 계보의 맨 앞입니다 — 정방향 추적으로 조회합니다"
-        raise http.validation_error(message, fields=[{"name": node.no, "reason": node.label}])
-    return node
+        return None, http.validation_error(message, fields=[{"name": node.no, "reason": node.label}])
+    return node, None
 
 
 def _stages(trace: lineage.Trace) -> list[dict]:
@@ -73,12 +74,11 @@ def _render(request: Request, status_code: int = 200, **ctx) -> HTMLResponse:
 def _trace(request: Request, no: str, direction: str) -> HTMLResponse:
     """번호 하나에서 그 방향으로 추적한 화면. 없는 번호 · 그 방향으로 갈 수 없는 번호는 422 —
     JSON 은 그대로 올리고, 브라우저는 **이 화면**을 422 로 다시 그린다(사유가 보이고 입력칸이 남는다, D-201)."""
-    try:
-        node = _start(no, direction)
-    except HTTPException as exc:
+    node, problem = _start(no, direction)
+    if problem is not None:
         if not http.wants_html(request):
-            raise
-        detail = exc.detail if isinstance(exc.detail, dict) else {}
+            raise problem
+        detail = problem.detail if isinstance(problem.detail, dict) else {}
         return _render(request, status_code=422, mode="search",
                        scan_error={"message": detail.get("message", ""), "fields": detail.get("fields") or []})
     trace = lineage.trace_forward(node.ref) if direction == lineage.FORWARD else lineage.trace_backward(node.ref)

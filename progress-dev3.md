@@ -35,7 +35,8 @@ stats.parse_date(text, name) · stats.parse_item(item_id_text) · stats.item_opt
 - 스캔 진입: 검사 결과 `/qua/inspections?no=<롤 번호>` · 출하 `/shp/shipments?no=<출하 LOT 번호>` · 추적 `/trc/trace/forward?no=` · `/trc/trace/backward?no=` · LOT 검색 `/trc/trace?q=<번호 일부>`.
 - COA 인쇄 화면 `/shp/coa/{shipment_no}/print` (승인된 출하만 — 아니면 422).
 - (웨이브 D) 스캔 진입에서 없는 번호: JSON 은 422, 브라우저는 **같은 화면을 422 로** 다시 그린다 — `#scan-result` 배너(큰 글씨) + 빈 스캔칸(D-201 · D-308). 검사 결과·출하 LOT 열기는 `lineage.resolve` 로 찾는다(공백 제거 · 소문자 → 대문자).
-- (웨이브 D) `routers/qua.py` 의 `scan_failure(request, exc)` · `scanned_roll(roll_no) -> lineage.Node` — 출하(`shp.py`)가 같이 쓴다. 템플릿 조각 `templates/qua/_scan.html`(`scan.styles()` · `scan.result(flash, scan_error)`), 스크립트 없음.
+- (웨이브 D) `routers/qua.py` 의 `scan_failure(request, problem)` · `scanned_roll(roll_no) -> lineage.Node` — 출하(`shp.py`)가 같이 쓴다. 템플릿 조각 `templates/qua/_scan.html`(`scan.styles()` · `scan.result(flash, scan_error)`), 스크립트 없음.
+- (웨이브 D 2차 · D-312) 스캔 진입 GET 은 **`except` 로 가르지 않는다** — `lineage.resolve` 의 결과를 값으로 보고, 올리지 않은 사유를 `scan_failure` 에 넘긴다(개발2 와 같은 방식). `qua.roll_problem(roll_no, node) -> Exception | None` · `shp._shipment_problem` · `trc._start -> (노드, 사유)`. 화면 동작은 그대로.
 
 ### 1.3 이관 배치 `lcomfine.migration`
 
@@ -45,7 +46,12 @@ uv run python -m lcomfine.migration <validate|load-master|load-print-std|load-jo
 `COMMANDS: dict[str, Callable[(directory, *, by=None) -> int]]`. 파일 규격은 `contracts/migration-files.md`(제안본), `(예시)` 파일 한 벌은 `src/lcomfine/migration/examples/`(코드 접두 `IMP-`).
 
 (웨이브 D · D-309) **적재는 화면이 422 로 막는 변경을 하지 않는다** — 그 행은 건너뛰고 오류(줄 번호·키·사유), 종료코드 1. `validate` 도 같은 행을 미리 알린다.
-① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다(값이 같아도 건드리지 않는다) ② 취소된 Job 을 되살리지 않는다 ③ `제품` 이 아닌 품목의 Job ④ 아니록스 선수·셀 용적 ≤ 0. 구현 `migration/commands.py` 의 `_check_rules`.
+① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 ② 취소된 Job 을 되살리지 않는다 ③ `제품` 이 아닌 품목의 Job ④ 아니록스 선수·셀 용적 ≤ 0. 구현 `migration/commands.py` 의 `_check_rules`.
+
+(웨이브 D 2차 · D-311) ① 의 재실행 규칙 — **실적·롤·출하가 있는 Job 이라도 파일 값 = DB 값이면 「변경 없음」**(오류 아님 · 쓰지 않는다 · 종료코드에 영향 없음). 한 칸이라도 다르면 오류(줄 번호·키·**다른 칸**·사유, 종료코드 1). `validate` 도 같은 기준.
+- 「같다」 = job.csv 의 키 밖 11칸 전부, **적재하면 DB 에 담길 값**으로 견준다(빈 칸 = NULL · 상태 기본값 `등록` · 수량은 소수 셋째 자리로 반올림 · 참조는 업무 코드).
+- 건수: **읽은 행 = 적재 + 변경 없음 + 오류 행.** `sys_migration_log` 의 `loaded_count` · `error_count` 에는 변경 없음을 넣지 않고, `error_detail` **첫 줄** `변경 없음 n행 — … : 2행 [키], …` 로 남긴다. `report` 표의 `변경없음` 열 · 「참고」 · 판정 줄에 보인다.
+- 출력 판정 줄: `load-*` → `판정: PASS — 읽음 3 · 적재 2 · 오류 0 · 변경 없음 1 · sys_migration_log 2줄` / `validate` → `판정: PASS — 파일 16/16 · 오류 0건 · 변경 없음 0건` / `report` → `… · 테이블에 없는 키 0 · 변경 없음 n행`.
 
 ## 2. 진행 — 실측 (2026-10-03 03:0x)
 
@@ -102,6 +108,23 @@ uv run python -m lcomfine.migration <validate|load-master|load-print-std|load-jo
 - 실물 스캐너로는 재지 않았다(키보드 입력 + Enter 가정, D-04). 스캐너가 글자 사이 간격 없이 쏘는 경우는 Playwright 의 5ms 간격 타이핑으로만 보았다.
 - 전체 `uv run pytest -q` 는 돌리지 않았다(다른 두 사람의 파일이 바뀌는 중) — 개발3 테스트와 QA 테스트 파일만.
 
+## 2-E. 웨이브 D 2차 — 작은 마무리 수정 실측 (2026-10-03 04:5x)
+
+| 항목 | 고친 것 | 실측 | 검증 방법 |
+|---|---|---|---|
+| QA3 정적 스캔의 「검토 안 된 삼킴」 2곳 | `qua.py inspections()` · `shp.py shipments()` 의 `try/except HTTPException` 을 없앰 — `lineage.resolve` 결과가 None·다른 종류인지를 값으로 보고, 올리지 않은 사유를 `scan_failure` 에 넘긴다(D-312). `trc.py _trace()` 의 같은 꼴도 함께. 세 라우터에 `HTTPException` 을 받는 `except` 0 | `test_static_scan_finds_no_unreviewed_swallowing_except` **통과**(수정 전 실패) | `uv run pytest -q tests/test_qa3_ops.py` → 6 passed |
+| 스캔 화면 동작 (그대로인지) | - | `/qua/inspections` · `/shp/shipments` · `/trc/trace/forward\|backward` 에 없는 번호·다른 종류의 번호(원재료 LOT): 브라우저 **HTTP 422 · `data-scan` 있음 · 스캔칸 비어 있음 · `#scan-result` 에 `err big` · 사유에 그 번호**, JSON 422 `validation_error`(`없는 롤입니다` · `롤 번호가 아닙니다` · `없는 출하 LOT 입니다` · `출하 LOT 번호가 아닙니다`). 실제 브라우저(Playwright Chromium · 포트 8023 — probe 가 띄우고 내림): 6개 브라우저 테스트 통과 | `uv run pytest -q tests/test_qa1_errors.py -k pop_scan_get_422` → 9 passed · `tests/test_qa2_lineage.py -k g08_inspection_scan` → 1 passed · `tests/test_qa3_channel_e2e.py` → 21 passed(`test_browser_*` 6개 PASSED, skip 0) · 스크래치 `scan_probe.py`(TestClient) |
+| 이관 `load-jobs` 재실행 (D-311) | 실적·롤·출하가 있는 Job: 파일 값 = DB 값 → **변경 없음**(rc 0 · 쓰지 않음), 다르면 오류 + 다른 칸. `validate` · `report` 도 같은 기준 | 롤이 달린 Job 을 같은 폴더로 재실행: `판정: PASS — 읽음 3 · 적재 2 · 오류 0 · 변경 없음 1` · 로그 `read 2 · loaded 1 · error 0` + `error_detail` 첫 줄 `변경 없음 1행 — … 2행 [키]` · Job 의 값·`updated_at`·`updated_by`·행 버전(xmin) 그대로. `1000.0` · `1000.0004` · 상태 빈 칸 = 같음. `1000.0005` · 상태 `완료` · 비고 빈 칸 = 다름 → rc 1 `파일과 DB 가 다른 칸: order_qty (파일 '1000.0005' ≠ DB '1000.000')`. 변경 없음 1 + 오류 1 이 섞인 파일: 로그 `(2, 0, 1)`, 리포트는 변경 없음 줄을 「참고」 에만 | `uv run pytest -q tests/test_dev3_migration.py` → **17 passed** (새 테스트 `test_load_jobs_passes_an_unchanged_job_that_has_records`) · 스크래치 `show_mig.py`(접두 `T3X-`, 삭제) |
+| QA 의 G-15 기대 | - | `check_migration`(재실행 멱등 · `판정: PASS — 읽음 \d+ · 적재 \d+ · 오류 0` 정규식 · 로그 22줄)과 덮어쓰기 probe(`overwritten = False`)가 **pytest 로** 통과 | `uv run pytest -q tests/test_qa3_ops.py tests/test_qa3_channel_e2e.py -k migration` |
+| pytest (판정 묶음) | - | **97 passed** (dev3 70 · qa3_ops 6 · qa3_channel_e2e 21) | `uv run pytest -q tests/test_dev3_*.py tests/test_qa3_ops.py tests/test_qa3_channel_e2e.py` |
+| 테스트가 남긴 것 | - | `T3*` 접두 행 0 · 포트 8023 내려감 | 아래 「확인」 의 `psql` |
+
+확인하지 못한 것 (웨이브 D 2차)
+- `make gate` · `gate-full` · `tools/check_security.py` 전체 · 전체 `uv run pytest -q` 는 돌리지 않았다(개발1 과 겹친다). G-15 · QA3-SF 행은 **같은 함수를 부르는 pytest** 로만 확인했다.
+- 정적 스캔은 `src/` 전체를 본다 — 통과는 내가 돌린 시점의 것이다. 개발1 이 그 뒤에 `except` 를 넣으면 다시 실패할 수 있다.
+- QA 의 `tools/e2e/run_e2e.py`(G-22)는 돌리지 않았다.
+- `job_lot.csv` 는 D-311 의 대상이 아니다 — 롤이 달린 Job 의 생산 LOT 행은 지금처럼 upsert 된다(값이 같아도 `updated_by = migration` 으로 다시 쓴다). 막을지는 정해진 것이 없다(D-309 ⓒ).
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 | # | 누구에게 | 무엇 | 왜 |
@@ -117,5 +140,9 @@ uv run python -m lcomfine.migration <validate|load-master|load-print-std|load-jo
 | 8 | 아키텍트 | `contracts/function-list.md` — B-MIG-04 문장에 "작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다" · F-QUA-01/04 "소문자 롤 번호도 찾는다 · 롤이 아닌 번호 422" · F-SHP-04 "출하 LOT 이 아닌 번호 422" (웨이브 D) | 계약 문장에 없는 판정을 더했다(D-308 · D-309) |
 | 9 | 아키텍트 · 개발1 | 품목 구분(`item_type`) 변경 — 원재료 LOT 이 달린 품목을 `제품` 으로, Job 이 쓰는 품목을 `원재료` 로 바꾸는 것을 **화면(F-BAS-02)도 배치도 받는다**(실측 200 · rc 0) | QA3 가 DEF-QA3-005 끝에 "재지 않았다" 로 적은 것. 배치만의 우회가 아니라 화면 규칙이 없다 — 막을지는 계약의 일 (D-309) |
 | 10 | 사람 (현업) · 아키텍트 | D-309 ⓑ — 실적이 있는 Job 의 행이 파일에 **같은 값으로** 다시 들어오면 지금은 오류(rc 1)다. "변경 없음" 으로 넘길 것인가 | 확정된 문장을 글자 그대로 구현했다. 이관한 Job 으로 생산을 시작한 뒤 같은 폴더를 다시 돌리는 운영이면 오류가 줄줄이 난다 |
+| 11 | 아키텍트 | `contracts/migration-files.md` 에 D-311 의 문장 (웨이브 D 2차 — 계약 파일이라 고치지 않았다). **§1 「덮어쓰지 않는 것」 행을 이렇게**: 「**작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다.** 파일의 값이 DB 의 값과 전부 같으면 **변경 없음** — 오류가 아니고 쓰지 않는다(수정 일시·수정자도 그대로). 하나라도 다르면 그 행은 건너뛰고 오류로 리포트한다(줄 번호·키·다른 칸·사유, 종료코드 1). 견주는 것은 업무 키를 뺀 모든 열의, 적재하면 DB 에 담길 값이다(빈 칸 = NULL 또는 기본값 · 숫자는 컬럼의 소수 자릿수로 반올림 · 참조는 업무 코드). 화면의 F-JOB-02 「작업 실적이 생기기 전에만 품목·수량을 바꾼다」 를 배치가 우회하지 않는다(D-309 · D-311). `validate` 도 같은 기준으로 미리 알린다 — 다른 행은 오류, 같은 행은 변경 없음(종료코드에 영향 없음)」. **§4 표**: `loaded_count` 「upsert 한 행 수 (추가 + 갱신). 변경 없음 행은 세지 않는다」 · `error_count` 「건너뛴 행 수 + 파일 전체의 오류. 변경 없음 행은 세지 않는다」 · `error_detail` 「… 변경 없음 행이 있으면 **첫 줄**이 `변경 없음 n행 — … : <줄 번호>행 [<업무 키>], …` 이다(오류가 아니다)」 · 표 아래 한 줄 「읽을 수 있는 파일에서 `read_count = loaded_count + 변경 없음 + error_count`」. **§2** `report` 설명에 「표의 `변경없음` 열과 「참고」 에 변경 없음 행을 보인다 — 종료코드에 영향 없음」. **§5 #4** 「…실적·롤·출하가 있고 **값이 다르면** 그 행은 적재하지 않고 오류다」 | 코드가 계약보다 앞섰다(D-311). 지금 계약 §1 은 "덮어쓰지 않는다 — 건너뛰고 오류" 만 적혀 있어, 값이 같은 행도 오류인 것으로 읽힌다 |
+| 12 | 아키텍트 | (선택) `sys_migration_log.unchanged_count integer not null default 0` | 지금은 변경 없음 수를 `error_detail` 첫 줄의 글자로 남기고 `report` 가 그 줄에서 읽는다. 컬럼이 생기면 `_unchanged_note` · `_unchanged_of` 를 걷어 낸다. 급하지 않다 — 없이도 건수는 맞는다 |
+| 13 | 아키텍트 | `contracts/function-list.md` B-MIG-04 문장(요청 8)에 「값이 같으면 변경 없음」 을 더한다 · B-MIG-01 「`validate` 도 같은 기준」 | D-311 |
+| 14 | 사람 (현업) | D-311 — 실적이 있는 Job 의 **상태·납기·비고만** 파일과 다를 때도 오류로 둘 것인가(지금은 오류: 생산 뒤 화면에서 `완료` 로 바꾼 Job 은 옛 파일의 `등록` 과 달라 그 행이 오류가 된다) | 「값이 하나라도 다르면 오류」 를 글자 그대로 구현했다 |
 
-스키마 변경 요청은 없다. 다른 사람의 파일을 고치지 않았다(`decisions.md` 에 D-301~D-310 을 덧붙인 것과 `contracts/migration-files.md` 제안본을 만든 것뿐 — 웨이브 D 에서는 계약 파일을 건드리지 않았다).
+요청 10 은 D-311 로 풀렸다(오케스트레이터 결정, 가설). 스키마 변경 요청은 없다(12 는 선택). 다른 사람의 파일을 고치지 않았다(`decisions.md` 에 D-301~D-312 를 덧붙인 것과 `contracts/migration-files.md` 제안본을 만든 것뿐 — 웨이브 D 에서는 계약 파일을 건드리지 않았다).
