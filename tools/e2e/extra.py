@@ -92,6 +92,8 @@ def main() -> None:
         while time.time() - t0 < 40 and stamp(bd.page) is not None:     # 새로고침이 실패할 때까지
             bd.page.wait_for_timeout(1000)
         down_url, down_stamp = bd.page.url, stamp(bd.page)
+        # D-27: 서버가 내려간 동안 화면에 남아 「서버 연결 끊김」 을 띄우는가 (낡은 화면을 새것처럼 두지 않는가)
+        stale = bd.page.evaluate("(() => { const e = document.getElementById('stale-banner'); return e ? e.textContent.trim() : null; })()")
         bd.shot("18-현황판-서버내려감.png")
         srv = start()
         t1 = time.time()
@@ -102,7 +104,8 @@ def main() -> None:
                 back = round(time.time() - t1, 1)
                 break
         bd.shot("18-현황판-서버복구75초뒤.png")
-        res["board_server_restart"] = {"first_stamp": first, "while_down": {"url": down_url, "stamp": down_stamp},
+        res["board_server_restart"] = {"first_stamp": first, "while_down": {"url": down_url, "stamp": down_stamp, "stale_banner": stale},
+                                       "stamp_after": stamp(bd.page), "stale_banner_after": bd.page.evaluate("!!document.getElementById('stale-banner')"),
                                        "recovered_without_touch": back is not None, "seconds": back, "url_after": bd.page.url,
                                        "waited_after_restart_s": round(time.time() - t1, 1)}
 
@@ -114,13 +117,17 @@ def main() -> None:
         srv = start(BAD_DSN)
         st = ad.goto("/bas/items")
         ad.shot("19-DB끊김-품목관리-503.png")
-        res["db_down"] = {"/bas/items": st, "message": "서비스 일시 중단" in ad.text()}
+        res["db_down"] = {"/bas/items": st, "message": "서비스 일시 중단" in ad.text(),
+                          # DEF-QA3-009: 503 화면에 DB 접속 오류 원문(소켓 경로 등)이 보이면 안 된다
+                          "leaks_connection_detail": [w for w in ("nonexistent-q3-socket", "connection", "socket", "psycopg", ".s.PGSQL") if w in ad.page.content()]}
         st2 = ad.goto("/trc/trace/backward?no=S000")
         res["db_down"]["/trc/trace/backward"] = st2
         t2 = time.time()
         while time.time() - t2 < 40 and stamp(bd.page) is not None:
             bd.page.wait_for_timeout(1000)
-        res["board_db_down"] = {"turned_to_error_page": stamp(bd.page) is None, "text": bd.text()[:60].replace("\n", " ")}
+        res["board_db_down"] = {"turned_to_error_page": stamp(bd.page) is None, "text": bd.text()[:60].replace("\n", " "),
+                                "error_page_body_class": bd.body_class(),
+                                "error_page_refresh_seconds": bd.page.evaluate("document.body.dataset.refreshSeconds || null")}
         bd.shot("19-DB끊김-현황판.png")
         srv.terminate(); srv.wait()
         srv = start()                                  # DB 가 돌아왔다

@@ -6,6 +6,10 @@
 
 단계가 화면에서 막히면 **우회하지 않고 적은 뒤**(journal.finding), 다음 단계가 이어지도록 그 상태만 API 로 만든다.
 그 단계의 `how` 는 `API 대체` 로 남는다. 캡처는 outputs/e2e/NN-단계명.png.
+
+G-22 판정(재검 · 웨이브 D 뒤): 16단계 전부 PASS **이고** 우회 0(스캔칸을 손으로 누름 · 주소로 직접 엶 — `lib.BYPASSES`)
+**이고** 유실 0(`lib.LOST_SCANS`) **이고** API 대체 0 일 때만 PASS. 우회가 한 번이라도 있으면 그 단계는 `결함(우회)` 이고 판정은 FAIL 이다.
+끝에 `_journal.json` 의 `state.verdict` 와 표준 출력에 그 수를 적는다.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import httpx  # noqa: E402
-from lib import BASE, MARK, OUT, PREFIX, Journal, Session, cleanup, conn, get_settings, zbar  # noqa: E402
+from lib import BASE, BYPASSES, LOST_SCANS, MARK, OUT, PREFIX, SCANS, Journal, Session, cleanup, conn, get_settings, zbar  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 J = Journal(OUT / "_journal.json")
@@ -299,7 +303,7 @@ def step06_incoming_inspection(b):
         r = s.scan(lot)                      # 스캔칸에 포커스가 있어야 한다
         if not r["focus_on_scan"]:
             bad.append(f"입고검사 화면이 열렸을 때 포커스가 스캔칸이 아님: {r['focus']}")
-            s.goto(f"/mat/inspections?no={lot}")
+            s.bypass_goto(f"06 입고검사 LOT {i}", f"/mat/inspections?no={lot}")
         form = "form.form-grid[action='/mat/inspections']"
         if not s.page.locator(form).count():
             bad.append(f"LOT {lot} 스캔 뒤 판정 폼이 안 열림 ({r})")
@@ -381,7 +385,7 @@ def step08_print(b):
         r = s.scan(S["job_no"])                         # 작업지시서 바코드
         if not r["focus_on_scan"]:
             bad.append(f"작업 실적 화면: 포커스가 스캔칸이 아님 ({r['focus']})")
-            s.goto(f"/pop/work?no={S['job_no']}")
+            s.bypass_goto(f"08 작업지시서 스캔 {n}", f"/pop/work?no={S['job_no']}")
         if "ch-pop" not in s.body_class():
             bad.append(f"스캔 뒤 화면이 {s.body_class()} (POP 유지 안 됨) url={s.page.url}")
         start = "form[action='/pop/work/start']"
@@ -420,9 +424,10 @@ def step08_print(b):
                             where mi.work_result_id = %s and l.lot_no = %s""", (wid, lot))["n"]
             if k != 1:
                 bad.append(f"실적 {wid} 투입 스캔 {lot}: DB {k}건 (포커스 {a['html']} · {r})")
+                LOST_SCANS.append({"where": f"08 자재 투입 실적 {wid}", "value": lot})
                 # API 대체 없이 한 번 더: 스캔칸을 눌러 포커스를 주고 다시
                 s.close_popup()
-                s.page.locator("[data-scan]").click()
+                s.bypass_click_scan(f"08 자재 투입 {lot}")
                 r = s.scan(lot)
         if n == 2:
             # 같은 LOT 중복 스캔 → 422, 건수 그대로
@@ -478,16 +483,21 @@ def step09_splice(b):
     shots, bad = [], []
     s.goto("/rll/finishing")
     r1, r2 = S["print_rolls"]
+    # D-208: 후가공 롤의 Job 은 글자 입력칸이 아니다 — 부모들의 Job 이 다를 때만 **선택칸**이 나온다(한 Job 흐름에서는 없다)
     for i, no in enumerate((r1, r2)):
         r = s.scan(no)
         if not r["focus_on_scan"]:
             bad.append(f"후가공 화면 스캔 {i + 1}번째: 포커스가 스캔칸이 아님 ({r['focus']})")
-            s.page.locator("[data-scan]").click(); s.scan(no)
+            s.bypass_click_scan(f"09 후가공 부모 롤 {i + 1}"); s.scan(no)
     pending = s.page.locator(".pending-rolls li").count()
     if pending != 2:
         bad.append(f"스캔 2번 뒤 쌓인 롤 {pending}개")
     shots.append(s.shot("09-후가공-롤2개스캔.png"))
     form = "form#finish-form"
+    S["finishing_job_field"] = s.page.evaluate("""() => { const e = document.querySelector("form#finish-form [name=job_no]");
+        return e ? e.tagName.toLowerCase() : "없음 (부모 롤이 전부 같은 Job)"; }""")
+    if S["finishing_job_field"] == "input":
+        bad.append("후가공 화면의 Job 칸이 글자 입력칸이다 (D-208 은 선택칸)")
     fill(s.page, form, {"length_m": "3000", "width_mm": "600"})
     res = s.submit(form, "splice")
     row = conn.q1("""select c.roll_no from roll_genealogy g join roll c on c.roll_id = g.child_roll_id join roll p on p.roll_id = g.parent_roll_id
@@ -522,7 +532,7 @@ def step10_slit(b):
     r = s.scan(S["finishing_roll"])
     if not r["focus_on_scan"]:
         bad.append(f"슬리팅 화면: 포커스가 스캔칸이 아님 ({r['focus']})")
-        s.goto(f"/rll/slitting?no={S['finishing_roll']}&device=pop")
+        s.bypass_goto("10 슬리팅 부모 롤", f"/rll/slitting?no={S['finishing_roll']}&device=pop")
     form = "form#slit-form"
     if not s.page.locator(form).count():
         bad.append(f"롤 스캔 뒤 분할 폼 없음 {r}")
@@ -566,23 +576,36 @@ def step10_slit(b):
 
 
 def step11_quality(b):
-    """품질 검사 — 품질: 슬리팅 롤 ①② 합격(ΔE) · ③ 불합격(불량 유형·위치)."""
+    """품질 검사 — 품질: 슬리팅 롤 ①② 합격(ΔE) · ③ 불합격(불량 유형·위치).
+
+    스캔 세 번을 서로 다른 상태에서 쏜다(지난번 결함 DEF-QA3-001 의 두 증상을 둘 다 지난다):
+      ① 화면을 막 연 상태  ② 앞 검사의 저장 알림을 「확인」 으로 **닫은 뒤**(포커스가 스캔칸으로 돌아와야 한다)
+      ③ 앞 검사의 저장 알림이 **떠 있는 채로**(글자가 스캔칸에 들어가야 한다 — 스캐너는 기다려 주지 않는다)."""
     s = Session(b, "qc")
     s.login()
-    shots, bad, wk = [], [], []
+    shots, bad, wk, modes = [], [], [], []
     slit = S["slit_rolls"]
     plan = [(slit[0], "0.8", "합격", None), (slit[1], "1.2", "합격", None), (slit[2], "4.5", "불합격", f"{PREFIX}DF-01")]
     s.goto("/qua/inspections")
+    form = "form#inspection-form"
+
+    def opened(no):
+        return bool(s.page.locator(f"{form} [name=roll_no]").count()) and s.page.locator(f"{form} [name=roll_no]").input_value() == no
+
     for i, (no, de, verdict, defect) in enumerate(plan, 1):
+        pop_open = bool(s.popup())
         r = s.scan(no)
-        if not r["focus_on_scan"]:
-            wk.append(f"검사 결과 화면 {i}번째 롤: 알림을 「확인」으로 닫은 뒤 포커스가 스캔칸으로 돌아오지 않아 스캔 글자가 버려짐 (포커스 {r['focus'][:40]!r}) → 스캔칸을 눌러 다시 스캔")
-            s.page.locator("[data-scan]").click(); s.scan(no)
-        form = "form#inspection-form"
-        val = s.page.locator(f"{form} [name=roll_no]").input_value()
-        if val != no:
-            bad.append(f"롤 {no} 스캔 뒤 검사 폼의 롤 번호 = {val!r}")
-            s.page.fill(f"{form} [name=roll_no]", no)
+        modes.append({"roll": i, "popup_open": pop_open, "focus_on_scan": r["focus_on_scan"], "opened": opened(no)})
+        if not opened(no):
+            LOST_SCANS.append({"where": f"11 품질 검사 롤 {i}", "value": no})
+            wk.append(f"검사 결과 화면 {i}번째 롤: 스캔(타이핑+Enter)만으로 검사 폼이 열리지 않음 — 알림 {'떠 있음' if pop_open else '없음'} · "
+                      f"포커스 {r['focus'][:40]!r} → 스캔칸을 눌러 다시 스캔")
+            if s.popup():
+                s.close_popup()
+            s.bypass_click_scan(f"11 품질 검사 롤 {i}"); s.scan(no)
+        if not opened(no):
+            bad.append(f"롤 {no}: 스캔칸을 누르고 다시 스캔해도 검사 폼이 안 열림")
+            continue
         fill(s.page, form, {"delta_e": de, "result": verdict, "note": f"E2E {MARK}"})
         if defect:
             s.page.locator(f"{form} [name=defect_code]").first.select_option(defect)
@@ -596,27 +619,35 @@ def step11_quality(b):
             bad.append(f"검사 {no}: DB {got} · {res}")
         if i == 3:
             shots.append(s.shot("11-품질검사-등록.png"))
-        s.close_popup()
+        if i != 2:
+            s.close_popup()             # ① 뒤: 「확인」 으로 닫는다 → ② 는 닫은 뒤의 포커스로 스캔 / ② 뒤: 닫지 않는다 → ③ 은 알림이 뜬 채로 스캔
         S[f"qua_focus_after_close_{i}"] = s.active()["html"]
+    S["qua_scan_modes"] = modes
     s.goto("/qua/defect-stats")
     shots.append(s.shot("11-불량집계.png"))
     if f"{PREFIX}DF-01" not in s.text():
         bad.append("불량 유형별 집계에 방금 등록한 불량이 안 보임")
     for x in bad + wk:
         J.finding("11", x)
-    J.step("11", "품질 검사", "qc", "슬리팅 롤 3개를 차례로 스캔 → ΔE·판정(③은 불합격 + 불량 유형·위치) 등록 → 불량 집계",
-           "FAIL" if bad else ("결함(우회)" if wk else "PASS"), shots, note=f"우회 {len(wk)}건 · 알림 닫은 뒤 포커스: {S.get('qua_focus_after_close_1', '')[:60]}")
+    J.step("11", "품질 검사", "qc", "슬리팅 롤 3개를 차례로 스캔(① 새 화면 · ② 알림을 닫은 뒤 · ③ 알림이 뜬 채로) → ΔE·판정(③은 불합격 + 불량 유형·위치) 등록 → 불량 집계",
+           "FAIL" if bad else ("결함(우회)" if wk else "PASS"), shots,
+           note=f"우회 {len(wk)}건 · 스캔 {modes} · 알림 닫은 뒤 포커스: {S.get('qua_focus_after_close_1', '')[:60]}")
     s.close()
 
 
 def step12_shipment(b):
-    """출하 등록·롤 스캔 — 현장(POP): 출하 등록 → 롤 ①② 스캔, ③(불합격)·①(재출하) 422."""
+    """출하 등록·롤 스캔 — 현장(POP): 출하 등록 → 롤 ①② 스캔, ③(불합격)·①(재출하) 422.
+
+    로그인은 주소(`?device=pop`)가 아니라 로그인 화면의 **채널 라디오**로 POP 을 고른다(D-30).
+    롤 ① 은 등록 알림을 「확인」 으로 닫은 뒤, 롤 ②·③·① 재스캔은 **앞 스캔의 알림이 떠 있는 채로** 연달아 쏜다(손을 대지 않는다)."""
     s = Session(b, "field", device="pop", viewport={"width": 1280, "height": 800})
-    s.login()
+    s.login(pick_channel=True)
     shots, bad, wk, obs = [], [], [], {}
     slit = S["slit_rolls"]
     s.goto("/shp/shipments")
     obs["body"] = s.body_class()
+    if "ch-pop" not in obs["body"]:
+        bad.append(f"로그인 화면의 채널 라디오로 POP 을 골랐는데 출하 화면이 {obs['body']}")
     form = "form.form-grid[action='/shp/shipments']"
     fill(s.page, form, {"job_no": S["job_no"], "ship_date": date.today().isoformat(), "note": f"E2E {MARK}"})
     res = s.submit(form)
@@ -638,55 +669,77 @@ def step12_shipment(b):
             # 등록 뒤 그 출하가 열려 있지 않으면 출하 LOT 번호를 스캔해 연다
             if not s.active()["scan"]:
                 wk.append("출하 등록 알림을 닫은 뒤 포커스가 스캔칸이 아님")
-                s.page.locator("[data-scan]").click()
+                s.bypass_click_scan("12 출하 LOT 열기")
             s.scan(ship)
+
         def shipped(no):
             return conn.q1("""select count(*) as n from roll_genealogy g join roll r on r.roll_id = g.parent_roll_id join shipment s on s.shipment_id = g.child_shipment_id
                                where r.roll_no = %s and s.shipment_no = %s""", (no, ship))["n"]
 
-        def human_scan(no, label):
-            """사람이 하듯: 알림이 떠 있으면 「확인」, 포커스가 스캔칸에 없으면 스캔칸을 누르고 스캔."""
+        def rescue(no, label):
+            """스캔만으로 안 됐을 때 사람이 하는 일(= 우회): 알림을 닫고 스캔칸을 눌러 다시 스캔. 부를 때마다 우회 1건."""
             if s.popup():
                 s.close_popup()
-            if not s.active()["scan"]:
-                wk.append(f"{label}: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 {s.active()['html'][:40]!r}) → 스캔칸을 눌러야 한다")
-                s.page.locator("[data-scan]").click()
+            s.bypass_click_scan(label)
             return s.scan(no)
 
-        # 롤 ①: 등록 알림을 「확인」으로 닫고 스캔
-        human_scan(slit[0], "출하 롤 ① 스캔")
+        # 롤 ①: 등록 알림을 「확인」 으로 닫은 뒤 — 포커스가 스캔칸에 돌아와 있어야 한다
+        if not s.active()["scan"]:
+            wk.append(f"출하 롤 ① 스캔: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 {s.active()['html'][:40]!r}) → 스캔칸을 눌러야 한다")
+            s.bypass_click_scan("12 출하 롤 ①")
+        s.scan(slit[0])
         if shipped(slit[0]) != 1:
+            LOST_SCANS.append({"where": "12 출하 롤 ①", "value": slit[0]})
             bad.append(f"출하 롤 스캔 {slit[0]}: 계보 {shipped(slit[0])}행")
         obs["scan1"] = {"popup": s.popup(), "body": s.body_class(), "url": s.page.url}
         # 롤 ②: 스캐너는 기다리지 않는다 — 방금 스캔의 알림이 떠 있는 채로 다음 바코드를 쏜다
         pop_open = bool(s.popup())
         r = s.scan(slit[1])
         obs["scan2_while_popup"] = {"popup_was_open": pop_open, "focus_before": r["focus"][:60], "shipped": shipped(slit[1]), "popup_after": s.popup()}
+        if not pop_open:
+            bad.append("롤 ① 스캔 뒤 알림이 뜨지 않아 「알림이 뜬 채 스캔」 을 재지 못함")
         if shipped(slit[1]) != 1:
-            wk.append(f"출하 롤 ② 스캔: 앞 스캔의 알림이 떠 있는 동안 쏜 바코드가 버려짐 (Enter 가 「확인」만 누름 · 계보 {shipped(slit[1])}행 · 오류 표시 없음) → 다시 스캔")
-            human_scan(slit[1], "출하 롤 ② 재스캔")
+            LOST_SCANS.append({"where": "12 출하 롤 ② (알림이 뜬 채)", "value": slit[1]})
+            wk.append(f"출하 롤 ② 스캔: 앞 스캔의 알림이 떠 있는 동안 쏜 바코드가 버려짐 (계보 {shipped(slit[1])}행) → 다시 스캔")
+            rescue(slit[1], "12 출하 롤 ② 재스캔")
             if shipped(slit[1]) != 1:
                 bad.append(f"출하 롤 스캔 {slit[1]}: 다시 스캔해도 계보 {shipped(slit[1])}행")
         shots.append(s.shot("12-출하-롤스캔.png"))
-        r = human_scan(slit[2], "불합격 롤 ③ 스캔")                 # 불합격 롤
-        obs["fail_roll"] = {"popup": s.popup(), "state": roll_state(slit[2]), "scan_present": s.page.locator("[data-scan]").count(),
+        # 불합격 롤 ③: 롤 ② 의 알림이 떠 있는 채로 — 422 경고가 나와야 하고(조용히 버려지면 안 된다) 롤은 재고로 남는다
+        pop_open = bool(s.popup())
+        r = s.scan(slit[2])
+        obs["fail_roll"] = {"popup_was_open": pop_open, "popup": s.popup(), "state": roll_state(slit[2]), "scan_present": s.page.locator("[data-scan]").count(),
+                            "banner": s.page.evaluate("(() => { const e = document.querySelector('#scan-result'); return e ? {text: e.innerText.trim().slice(0, 120), px: parseFloat(getComputedStyle(e.querySelector('.big') || e).fontSize)} : null; })()"),
                             "err_px": s.page.evaluate("(() => { const e = document.querySelector('#popup-body p'); return e ? parseFloat(getComputedStyle(e).fontSize) : null; })()")}
         shots.append(s.shot("12-출하-불합격롤-422.png"))
         if roll_state(slit[2]) != "재고":
             bad.append(f"불합격 롤이 출하됨: {slit[2]}")
-        if not (obs["fail_roll"]["popup"] and obs["fail_roll"]["popup"]["warn"]):
-            bad.append(f"불합격 롤 스캔에 경고가 안 뜸: {obs['fail_roll']}")
-        r = human_scan(slit[0], "재출하 스캔")                 # 이미 출하된 롤
-        obs["reship"] = {"popup": s.popup(), "scan_present": s.page.locator("[data-scan]").count()}
+        if not (obs["fail_roll"]["popup"] and obs["fail_roll"]["popup"]["warn"] and slit[2] in obs["fail_roll"]["popup"]["body"]):
+            LOST_SCANS.append({"where": "12 불합격 롤 ③ (알림이 뜬 채) — 422 경고가 안 보임", "value": slit[2]})
+            wk.append(f"불합격 롤 ③ 스캔: 알림이 뜬 채 쏜 바코드에 422 경고가 안 뜸 ({obs['fail_roll']}) → 다시 스캔")
+            rescue(slit[2], "12 불합격 롤 ③ 재스캔")
+            if not (s.popup() and s.popup()["warn"]):
+                bad.append(f"불합격 롤 스캔에 경고가 안 뜸: {s.popup()}")
+        # 이미 출하된 롤 ① 재스캔: 422 경고가 떠 있는 채로
+        pop_open = bool(s.popup())
+        r = s.scan(slit[0])
+        obs["reship"] = {"popup_was_open": pop_open, "popup": s.popup(), "scan_present": s.page.locator("[data-scan]").count()}
         shots.append(s.shot("12-출하-재출하-422.png"))
+        if not (obs["reship"]["popup"] and obs["reship"]["popup"]["warn"] and slit[0] in obs["reship"]["popup"]["body"]):
+            LOST_SCANS.append({"where": "12 재출하 스캔 (알림이 뜬 채) — 422 경고가 안 보임", "value": slit[0]})
+            wk.append(f"재출하 스캔: 알림이 뜬 채 쏜 바코드에 422 경고가 안 뜸 ({obs['reship']})")
+            rescue(slit[0], "12 재출하 재스캔")
         s.close_popup()
+        obs["focus_after_last_close"] = s.active()["scan"]
+        if not obs["focus_after_last_close"]:
+            wk.append("마지막 알림을 「확인」 으로 닫은 뒤 포커스가 스캔칸이 아님")
         n = conn.q1("select count(*) as n from roll_genealogy g join shipment s on s.shipment_id = g.child_shipment_id where s.shipment_no = %s", (ship,))["n"]
         if n != 2:
             bad.append(f"출하 계보 {n}행 (기대 2)")
     S["shp_obs"] = obs
     for x in bad + wk:
         J.finding("12", x)
-    J.step("12", "출하 등록·롤 스캔", "field (POP)", "출하 등록 → 슬리팅 롤 ①② 스캔 → 불합격 롤 ③ 스캔(422) → ① 재스캔(422)",
+    J.step("12", "출하 등록·롤 스캔", "field (POP · 채널 라디오로 로그인)", "출하 등록 → 슬리팅 롤 ① 스캔(알림 닫은 뒤) → ② · 불합격 ③(422) · ① 재스캔(422)을 알림이 뜬 채 연달아 스캔",
            "FAIL" if bad else ("결함(우회)" if wk else "PASS"), shots, note=f"출하 LOT {ship} · 우회 {len(wk)}건 · 재출하 {obs.get('reship')}")
     s.close()
 
@@ -764,7 +817,7 @@ def step15_trace(b):
     a = s.active()
     if not a["scan"]:
         bad.append(f"LOT 추적 화면: 포커스가 번호칸이 아님 ({a['html']})")
-        s.page.locator("[data-scan]").click()
+        s.bypass_click_scan("15 LOT 추적 번호칸")
     s.page.keyboard.type(S["shipment_no"])
     with s.page.expect_navigation():
         s.page.click("button:has-text('역방향 추적')")
@@ -869,6 +922,20 @@ def main():
                     J.finding(no, f"단계 실행 중 예외: {type(exc).__name__}: {str(exc)[:300]}")
                     J.step(no, fn.__doc__.split("—")[0].strip() if fn.__doc__ else fn.__name__, "-", "-", "FAIL", [], note="예외로 중단")
         b.close()
+    steps = J.data["steps"]
+    api_sub = [x["no"] for x in steps if x["how"] != "브라우저"]
+    not_pass = [x["no"] for x in steps if x["result"] != "PASS"]
+    full = not args and len(steps) == len(STEPS)
+    ok = full and not not_pass and not BYPASSES and not LOST_SCANS and not api_sub
+    S["bypasses"], S["lost_scans"] = BYPASSES, LOST_SCANS
+    S["scans"] = {"count": len(SCANS), "focus_not_on_scan": [x for x in SCANS if not x["focus_on_scan"]],
+                  "while_popup_open": len([x for x in SCANS if x["popup_open"]])}
+    S["verdict"] = {"G-22": "PASS" if ok else ("FAIL" if full else "부분 실행 — 판정 없음"), "steps": len(steps), "browser_steps": len(steps) - len(api_sub),
+                    "api_substituted": api_sub, "not_pass": not_pass, "bypass_count": len(BYPASSES), "lost_scan_count": len(LOST_SCANS),
+                    "shots": sorted({x for st in steps for x in st["shots"]})}
+    print(f"G-22 {S['verdict']['G-22']} — 단계 {len(steps)} · 브라우저 {len(steps) - len(api_sub)} · API 대체 {len(api_sub)} · PASS 아닌 단계 {not_pass} · "
+          f"우회(스캔칸 직접 누름·주소로 직접 엶) {len(BYPASSES)} · 유실 {len(LOST_SCANS)} · 스캔 {len(SCANS)}회"
+          f"(알림이 뜬 채 {S['scans']['while_popup_open']} · 포커스가 스캔칸이 아니었던 것 {len(S['scans']['focus_not_on_scan'])}) · 캡처 {len(S['verdict']['shots'])}장")
     J.save()
 
 

@@ -193,9 +193,16 @@ def test_denied_writes_change_nothing(world):
 
 
 def test_forbidden_comes_before_validation():
-    """권한이 없는 사람에게 입력값 오류를 먼저 알려 주지 않는다 (api-contract §4: 401 → 403 → 422)."""
-    err(client("현장").post("/bas/items", data={"item_code": ""}), 403, "forbidden")
-    err(client("품질").post("/qua/inspections/abc/delete"), 422, "validation_error")        # 권한 있음 → 경로 값 오류
+    """권한이 없는 사람에게 입력값 오류를 먼저 알려 주지 않는다 (api-contract §4: 401 → 403 → 422).
+
+    재검(웨이브 D 뒤) 정리: 품질 계정의 `POST /qua/inspections/abc/delete` 기대값을 422 → **404** 로 맞췄다. 같은 요청에
+    `test_qa1_errors.py::test_404_non_numeric_path_key`(DEF-QA1-007 — QA1 이 낸 결함)는 404 를 기대해 두 테스트가 동시에 참일 수 없었다.
+    이 테스트가 재는 것은 「순서」 다 — 권한이 있으면 권한 판정을 지나 **그 요청 자체의 오류**(숫자가 아닌 경로 키 = 404)를 받고,
+    권한이 없으면 같은 요청에 403 을, 미로그인은 401 을 먼저 받는다. 「403 이 422 보다 먼저」 의 422 쪽은 같은 본문을
+    권한 있는 역할이 보내는 줄(관리자 → 422)로 따로 남긴다."""
+    err(client("현장").post("/bas/items", data={"item_code": ""}), 403, "forbidden")           # 권한 없음 → 본문 오류보다 403 이 먼저
+    err(client("관리자").post("/bas/items", data={"item_code": ""}), 422, "validation_error")  # 같은 본문 · 권한 있음 → 입력값 오류
+    err(client("품질").post("/qua/inspections/abc/delete"), 404, "not_found")                # 권한 있음 → 경로 키 오류 (DEF-QA1-007: 404)
     err(client("현장").post("/qua/inspections/abc/delete"), 403, "forbidden")               # 권한 없음 → 403 이 먼저
     err(anon().post("/qua/inspections/abc/delete"), 401, "unauthorized")
 

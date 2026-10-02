@@ -343,6 +343,25 @@ def scan_param(path: str) -> str:
     return "add" if path == "/rll/finishing" else "no"
 
 
+def board_refresh_of(html: str) -> dict:
+    """현황판 새로고침 장치(D-27)를 HTML 에서 읽는다 — `<body data-refresh-seconds="N">` + `static/app.js` 적재.
+    `<noscript>` 안의 meta refresh 는 대체물이라 따로 센다(그것만 있으면 통과가 아니다)."""
+    body = re.search(r"<body[^>]*>", html)
+    sec = re.search(r'data-refresh-seconds="(\d+)"', body.group(0)) if body else None
+    without_noscript = re.sub(r"<noscript>.*?</noscript>", "", html, flags=re.S)
+    ns = re.search(r'<noscript>\s*<meta http-equiv="refresh" content="(\d+)"', html)
+    return {"seconds": int(sec.group(1)) if sec and int(sec.group(1)) > 0 else None,
+            "script": bool(re.search(r'<script[^>]+src="/static/app\.js', html)),
+            "noscript_meta": ns.group(1) + "초" if ns else None,
+            "meta_outside_noscript": 'http-equiv="refresh"' in without_noscript}
+
+
+def refresh_script_ok() -> bool:
+    """`static/app.js` 에 주기 속성을 읽어 서버 응답을 확인하고 다시 그리는 코드가 있는가 (정적)."""
+    js = (SRC / "lcomfine" / "app" / "static" / "app.js").read_text(encoding="utf-8")
+    return "refreshSeconds" in js and "location.reload" in js and "/health" in js and "setTimeout" in js
+
+
 def check_channels(w: World) -> None:
     g = "G-13"
     # (1) 같은 앱·같은 DB — 채널 4개의 레이아웃 훅
@@ -387,16 +406,25 @@ def check_channels(w: World) -> None:
         put(g, "POP — 바코드 한 번 = 한 건 (HTTP)", UNVERIFIED, f"임시 데이터를 만들지 못했다 — {w.error}")
 
     # (5) 현황판 — 새로고침 태그와 갱신 시각 (HTTP). 오류 화면으로 떨어졌을 때도 새로고침이 이어지는가
+    # 재검(웨이브 D 뒤 · D-27): 새로고침은 이제 `<meta refresh>` 가 아니라 `static/app.js` 가 한다(`<body data-refresh-seconds>`).
+    # meta 는 `<noscript>` 안의 대체물로만 남았다 — 그것만 보고 통과시키면 스크립트가 빠져도 PASS 가 된다. 그래서 주기 속성 + 스크립트 적재 +
+    # 그 스크립트에 새로고침 코드가 있는지를 본다(실제로 다시 그려지는지는 아래 브라우저 실측 행).
     r = cl("prod").get("/sta/board?device=board", headers=HTML)
-    m = re.search(r'<meta http-equiv="refresh" content="(\d+)"', r.text)
+    br = board_refresh_of(r.text)
     stamp = re.search(r'id="refreshed-at">([^<]+)<', r.text)
     r2 = cl("prod").get("/sta/board", headers=HTML)
-    good = bool(m) and bool(stamp) and "마지막 갱신" in r.text and 'http-equiv="refresh"' not in r2.text
+    br2 = board_refresh_of(r2.text)
+    js_ok = refresh_script_ok()
+    good = (bool(br["seconds"]) and br["script"] and js_ok and bool(stamp) and "마지막 갱신" in r.text
+            and br2["seconds"] is None and not br2["meta_outside_noscript"] and not br["meta_outside_noscript"])
     put(g, "현황판 — ?device=board 에 자동 새로고침 태그 + 마지막 갱신 시각 (HTTP)", ok(good),
-        f"refresh {m.group(1) + '초' if m else '없음'} · 갱신 시각 {stamp.group(1) if stamp else '없음'} · 일반 채널에는 태그 {'없음' if 'http-equiv=\"refresh\"' not in r2.text else '있음'}")
+        f"data-refresh-seconds {str(br['seconds']) + '초' if br['seconds'] else '없음'} · app.js 적재 {br['script']} · app.js 에 새로고침 코드 {js_ok} · "
+        f"noscript 대체 meta {br['noscript_meta'] or '없음'} · 갱신 시각 {stamp.group(1) if stamp else '없음'} · 일반 채널에는 주기 속성 {'없음' if br2['seconds'] is None else '있음'}")
     r3 = cl("prod").get("/sta/board/none?device=board", headers=HTML)      # 현황판 채널의 오류 화면 (404)
-    put(g, "현황판 — 오류 화면으로 떨어져도 자동 새로고침이 이어진다 (HTTP)", ok('http-equiv="refresh"' in r3.text),
-        f"현황판 채널의 오류 화면({r3.status_code})에 refresh 태그 {'있음' if 'http-equiv=\"refresh\"' in r3.text else '없음 — 한 번 오류(일시적 503 포함)가 나면 사람이 누를 때까지 그 화면에 멈춘다'}")
+    br3 = board_refresh_of(r3.text)
+    put(g, "현황판 — 오류 화면으로 떨어져도 자동 새로고침이 이어진다 (HTTP)", ok(bool(br3["seconds"]) and br3["script"] and js_ok),
+        f"현황판 채널의 오류 화면({r3.status_code}) — data-refresh-seconds {str(br3['seconds']) + '초' if br3['seconds'] else '없음'} · app.js 적재 {br3['script']}"
+        + ("" if br3["seconds"] and br3["script"] else " — 한 번 오류(일시적 503 포함)가 나면 사람이 누를 때까지 그 화면에 멈춘다"))
 
     # (6) 모바일 — 뷰포트 메타와 채널 훅 (폭 실측은 브라우저 행)
     r = cl("qc", "mobile").get("/trc/trace", headers=HTML)
@@ -451,8 +479,19 @@ def check_channels_browser(probe: dict | None, why: str) -> None:
         put(g, "모바일 — 폭 390px 가로 스크롤 없음 (브라우저 실측)", UNVERIFIED, f"재지 못했다 — {probe.get('errors', {}).get('mobile', why)}")
     b = probe.get("board")
     if b:
-        put(g, "현황판 — 조작 없이 다시 그려진다 (브라우저 실측)", ok(b["refreshed"] and "ch-board" in b["body_after"] and not b["menu_visible"]),
-            f"갱신 시각 {b['first_stamp']} → {b['second_stamp']} ({b['seconds_until_refresh']}초 뒤 · 설정 {b['meta_refresh']}초) · 새로고침 뒤에도 {b['body_after']} · 메뉴 {'보임' if b['menu_visible'] else '숨김'}")
+        setting = b.get("refresh_setting")        # <body data-refresh-seconds> — 브라우저가 실제로 받은 주기
+        took = b["seconds_until_refresh"]
+        on_time = bool(setting) and took is not None and setting - 2 <= took <= setting + 15   # 설정 주기에 맞게 도는가 (늦어도 +15초)
+        put(g, "현황판 — 조작 없이 다시 그려진다 (브라우저 실측)", ok(b["refreshed"] and on_time and "ch-board" in b["body_after"] and not b["menu_visible"]),
+            f"갱신 시각 {b['first_stamp']} → {b['second_stamp']} ({took}초 뒤 · 설정 {setting}초) · 새로고침 뒤에도 {b['body_after']} · 메뉴 {'보임' if b['menu_visible'] else '숨김'}")
+        e = b.get("error_page")
+        if e:
+            e_ok = e["reloaded"] and bool(e["refresh_setting"]) and "ch-board" in e["body"] and e["status"] >= 400
+            put(g, "현황판 — 오류 화면에서도 조작 없이 다시 그려진다 (브라우저 실측)", ok(e_ok),
+                f"현황판 채널의 오류 화면(HTTP {e['status']} · {e['body']}) — {'다시 그려짐 ' + str(e['seconds_until_reload']) + '초 뒤' if e['reloaded'] else str(e['waited_seconds']) + '초를 기다려도 다시 그려지지 않음'}"
+                f" (설정 {e['refresh_setting']}초 · 그동안 문서 적재 {e['loads']}회)")
+        else:
+            put(g, "현황판 — 오류 화면에서도 조작 없이 다시 그려진다 (브라우저 실측)", UNVERIFIED, "probe 결과에 error_page 없음 (옛 probe.py)")
     else:
         put(g, "현황판 — 조작 없이 다시 그려진다 (브라우저 실측)", UNVERIFIED, f"재지 못했다 — {probe.get('errors', {}).get('board', why)}")
 
@@ -1171,7 +1210,7 @@ for role, p, data in (("admin", "/bas/items", {"item_code": "Q3C-DOWN", "item_na
 r = TestClient(app).get("/health"); out["extra"]["health"] = [r.status_code, r.json().get("status")]
 r = clients["qc"].get("/trc/trace/backward?no=S000", headers=HTML); out["extra"]["trace"] = r.status_code
 r = clients["field"].get("/pop/work?no=J000", headers=HTML); out["extra"]["scan"] = r.status_code
-r = board.get("/sta/board", headers=HTML); out["extra"]["board"] = [r.status_code, 'http-equiv="refresh"' in r.text]
+r = board.get("/sta/board", headers=HTML); out["extra"]["board"] = [r.status_code, bool(re.search(r'<body[^>]*data-refresh-seconds="[1-9]', r.text)) and "/static/app.js" in r.text]
 r = TestClient(app, raise_server_exceptions=False).post("/login", data={"login_id": "admin", "password": "x"}, headers=HTML); out["extra"]["login"] = [r.status_code, "서비스 일시 중단" in r.text]
 r = clients["admin"].get("/erp/status"); out["extra"]["erp"] = r.status_code
 print("RESULT " + json.dumps(out, ensure_ascii=False))
@@ -1193,9 +1232,10 @@ def check_db_down() -> None:
         f"역할 4 × 화면(메인 + 중메뉴 32, 권한 없는 칸 제외) {len(d['pages'])}건 중 503 이 아닌 것 {len(alive)} {alive[:6]}")
     put("QA3-SF", "조용한 실패 — DB 를 끊으면 쓰기·스캔·추적·로그인·/health 도 503 (실측)",
         PASS if (not wr and ex["health"][0] == 503 and ex["trace"] == 503 and ex["scan"] == 503 and ex["login"] == [503, True]) else FAIL,
-        f"쓰기 5종 503 아닌 것 {wr or 0} · /health {ex['health']} · 역추적 {ex['trace']} · 스캔 진입 {ex['scan']} · 로그인 POST {ex['login'][0]} · ERP {ex['erp']}(DB 와 무관 — 501 이 맞다)")
+        f"쓰기 5종 503 아닌 것 {wr or 0} · /health {ex['health']} · 역추적 {ex['trace']} · 스캔 진입 {ex['scan']} · 로그인 POST {ex['login'][0]} · "
+        f"ERP {ex['erp']}(세션 확인이 요청마다 DB 를 본다(D-26) — DB 가 끊기면 ERP 주소도 501 보다 먼저 503 이다. 200 이면 조용한 실패)")
     put("QA3-SF", "현황판 — DB 가 잠깐 끊긴 뒤 스스로 돌아오는가 (503 화면의 새로고침 태그)", PASS if ex["board"][1] else FAIL,
-        f"현황판 채널에서 DB 끊김 → {ex['board'][0]} · 그 화면에 refresh 태그 {'있음' if ex['board'][1] else '없음 — DB 가 돌아와도 현황판은 오류 화면에 멈춘다'}")
+        f"현황판 채널에서 DB 끊김 → {ex['board'][0]} · 그 화면에 새로고침 장치(data-refresh-seconds + app.js) {'있음' if ex['board'][1] else '없음 — DB 가 돌아와도 현황판은 오류 화면에 멈춘다'}")
 
 
 # ═════════════════════════════════════════════════════════════════════════

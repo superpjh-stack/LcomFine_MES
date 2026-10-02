@@ -50,10 +50,15 @@ def test_board_keeps_refreshing_after_an_error_page():
     """현황판은 조작 없이 돌아야 한다. 한 번 오류 화면(일시적 503 · 404)으로 떨어지면 refresh 태그가 없어 거기서 멈춘다 (DEF-QA3-004)."""
     c = cs.cl("prod")
     ok = c.get("/sta/board?device=board", headers=HTML)
-    assert 'http-equiv="refresh"' in ok.text
+    # 재검(웨이브 D 뒤 · D-27): 새로고침은 meta 태그가 아니라 app.js 가 한다(`<body data-refresh-seconds>`). meta 는 noscript 대체물로만 남아
+    # 그것만 보면 스크립트가 빠져도 통과한다 → 주기 속성 + app.js 적재 + 그 스크립트의 새로고침 코드를 본다.
+    assert cs.refresh_script_ok(), "static/app.js 에 현황판 새로고침 코드(주기 속성 · /health 확인 · 다시 그리기)가 없다"
+    normal = cs.board_refresh_of(ok.text)
+    assert normal["seconds"] and normal["script"], f"현황판 화면에 새로고침 장치가 없다: {normal}"
     err = c.get("/sta/board/none?device=board", headers=HTML)
     assert err.status_code == 404
-    assert 'http-equiv="refresh"' in err.text, "현황판 채널의 오류 화면에 자동 새로고침이 없다 — 사람이 누를 때까지 오류 화면에 머문다"
+    on_error = cs.board_refresh_of(err.text)
+    assert on_error["seconds"] and on_error["script"], f"현황판 채널의 오류 화면에 자동 새로고침이 없다 — 사람이 누를 때까지 오류 화면에 머문다: {on_error}"
 
 
 # ── G-13 POP · 모바일 (실제 브라우저) ───────────────────────────────────

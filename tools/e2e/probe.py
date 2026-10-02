@@ -237,6 +237,17 @@ def probe_board(b, world: dict, max_wait: int = 75) -> dict:
     s.goto("/sta/board?device=board")
     out["body"] = s.body_class()
     out["meta_refresh"] = s.page.evaluate("(() => { const m = document.querySelector('meta[http-equiv=refresh]'); return m ? m.content : null; })()")
+    # D-27: 새로고침 주기는 이제 <body data-refresh-seconds> 로 온다(app.js 가 읽는다). meta 는 noscript 대체물이라 스크립트가 켜진 브라우저에는 없다
+    out["refresh_setting"] = s.page.evaluate("parseInt(document.body.dataset.refreshSeconds || '0', 10) || null")
+    # 현황판 채널의 오류 화면(404)을 다른 탭에 같이 띄워 둔다 — 그 화면도 조작 없이 다시 그려지는가 (DEF-QA3-004 의 뿌리)
+    ep = s.ctx.new_page()
+    ep_loads: list[float] = []
+    ep.on("load", lambda _p: ep_loads.append(time.time()))
+    ep_resp = ep.goto(BASE + "/sta/board/none?device=board")
+    ep_t0 = time.time()
+    ep_first = len(ep_loads)
+    err = {"status": ep_resp.status if ep_resp else 0, "body": ep.evaluate("document.body.className"),
+           "refresh_setting": ep.evaluate("parseInt(document.body.dataset.refreshSeconds || '0', 10) || null")}
     out["menu_visible"] = s.page.evaluate("(() => { const e = document.querySelector('nav.side'); return !!e && getComputedStyle(e).display !== 'none'; })()")
     out["body_font_px"] = px(s.page, "body")
     first = s.page.inner_text("#refreshed-at")
@@ -253,6 +264,13 @@ def probe_board(b, world: dict, max_wait: int = 75) -> dict:
         if stamp != first:
             changed_at = time.time() - t0
             break
+    while time.time() - ep_t0 < max_wait and len(ep_loads) <= ep_first:      # 오류 화면 탭이 스스로 다시 적재될 때까지
+        ep.wait_for_timeout(500)
+    err.update({"reloaded": len(ep_loads) > ep_first, "loads": len(ep_loads),
+                "seconds_until_reload": round(ep_loads[ep_first] - ep_t0, 1) if len(ep_loads) > ep_first else None,
+                "waited_seconds": round(time.time() - ep_t0, 1), "url_after": ep.url.replace(BASE, "")})
+    out["error_page"] = err
+    ep.close()
     out["second_stamp"] = stamp
     out["refreshed"] = changed_at is not None
     out["seconds_until_refresh"] = round(changed_at, 1) if changed_at else None

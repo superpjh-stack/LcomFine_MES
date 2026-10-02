@@ -279,3 +279,56 @@ def test_g08_inspection_scan_finds_the_roll_like_the_other_scan_screens(ctx):
     status, body = ctx.api.post("qc", "/qua/inspections", {"roll_no": low, "result": "합격", "delta_e": "1.0"})
     opened = ctx.api.get("qc", "/qua/inspections", {"no": low}).status_code
     assert (status, opened) == (200, 200), f"검사 결과 등록 HTTP {status} {body.get('message')} · 스캔 진입 HTTP {opened} (다른 스캔 화면은 200)"
+
+
+# ── 재검 (웨이브 D 뒤) — 작업 시작과 Job 마감·취소가 겹칠 때 ─────────────────
+@pytest.mark.fn("F-POP-01", "F-JOB-02", "F-JOB-03")
+@pytest.mark.parametrize("closing", ["취소", "완료"])
+def test_g08_work_start_racing_with_job_close_leaves_no_open_work_on_a_closed_job(ctx, closing):
+    """DEF-QA2-004 — 작업 시작(F-POP-01)과 Job 취소(F-JOB-03) · 마감(F-JOB-02 `완료`)을 **동시에** 보내면
+    둘 다 200 이 되어 닫힌 Job 에 열린(`진행`) 작업 실적이 남는다.
+
+    기대값: function-list.md F-JOB-03 「작업 실적·롤이 없는 Job 만 상태 `취소`」 · F-JOB-02 / D-107 「진행 중인 작업 실적이 있는 Job 은
+    `완료` 로 마감할 수 없다」 · F-POP-01 「취소·완료 Job 은 422」. 어느 쪽이 먼저든 둘 중 하나는 422 여야 한다.
+    원인(개발1 이 `progress-dev1.md` §3-8 에 추정으로 적은 것): `routers/pop.py` 의 작업 시작이 Job 상태를 트랜잭션 밖에서 읽고
+    실적을 따로 넣는다 — 그 사이에 마감·취소가 끝난다. 화면의 작업 시작 폼이 보내는 값(Job · 생산 LOT · 설비)을 그대로 보낸다.
+    앱을 건드리지 않고 실제 동시 요청으로 잰다(시도 40회 안에 한 번이라도 어긋나면 실패 — 실측 재현율은 리포트에)."""
+    import threading
+
+    f = ctx.flow()
+    fg, cu = f.item("FG", "제품"), f.customer()
+    eq = ctx.db.v("select equipment_code from equipment order by equipment_id limit 1") or ""
+    starter, closer = ctx.api.new_client("field"), ctx.api.new_client("prod")
+    bad, outcomes = [], {}
+    for attempt in range(1, 41):
+        job = f.job(fg, cu, date.today())
+        lot = f.job_lot(job, 1)
+        got: dict[str, int] = {}
+        gate = threading.Barrier(2)
+
+        def start():
+            gate.wait()
+            got["start"] = starter.post("/pop/work/start", data={"job_no": job, "lot_no": lot, "equipment_code": eq},
+                                        follow_redirects=False).status_code
+
+        def close():
+            gate.wait()
+            if closing == "취소":
+                got["close"] = closer.post(f"/job/orders/{job}/cancel", follow_redirects=False).status_code
+            else:
+                got["close"] = closer.post(f"/job/orders/{job}", data={"status": "완료"}, follow_redirects=False).status_code
+
+        ts = [threading.Thread(target=start), threading.Thread(target=close)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        status = ctx.db.v("select status from job where job_no = %s", (job,))
+        open_works = ctx.db.v("""select count(*) from work_result w join job j on j.job_id = w.job_id
+                                  where j.job_no = %s and w.status <> '완료'""", (job,))
+        key = f"시작 {got.get('start')} · {closing} {got.get('close')} → Job {status} · 열린 실적 {open_works}"
+        outcomes[key] = outcomes.get(key, 0) + 1
+        if status == closing and open_works:
+            bad.append(f"시도 {attempt}: Job {job} — {key}")
+            break
+    assert not bad, f"{closing} 된 Job 에 열린 작업 실적이 생겼다 — {bad[0]} (그때까지의 결과 {outcomes})"

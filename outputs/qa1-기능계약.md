@@ -4,24 +4,38 @@
 > 만든 것: `tools/check_screens.py` · `tests/test_qa1_{support,functions,rbac,errors}.py` · 이 문서.
 > 기대값은 설계도(§5 IA · §6 권한 표)와 goal.md(§2 게이트 · §2.5 · §6)에서 직접 끌어왔다. 앱의 `nav` · `contracts` · `rbac` 와
 > `tools/design_doc.py` 가 스스로 적은 값을 기대값으로 쓰지 않았다(검사기에 파서를 따로 두었다).
+>
+> **재검 (웨이브 D 뒤 · 2026-10-03 05:05~05:40 · QA 1명이 QA1·2·3 을 이어받음)** — 결함 7건을 원래 재현 절차(curl · pytest)로 다시 돌렸다: **7건 전부 해결**.
+> 이 범위의 새 결함 0. QA1 테스트의 내부 모순 1건을 정리했다(§9). 아래 §0 표는 재검 뒤의 값이고, 웨이브 C 의 값은 괄호에 남겼다. **앱은 고치지 않았다.**
 
-## 0. 요약
+## 0. 요약 (재검 · 웨이브 D 뒤)
 
 | 게이트 | 판정 | 실측 | 명령 |
 |---|---|---|---|
-| G-01 메뉴 12 · 32 | **PASS** (다른 방법으로 재확인) | 설계도 자체 파싱 대메뉴 12 · 중메뉴 32 · 기능 94 = 계약의 (대메뉴, 중메뉴) 쌍 32 = 계약에서 끌어낸 화면 경로 32 | `uv run pytest -q tests/test_qa1_functions.py -k "design_doc or one_line"` |
-| G-02 기능 94 + 6 | **PASS** | 검사 7 전부 PASS — 기능 94 전부 실호출(요청 121 · 404·405 0) · 읽기 40/40 · 쓰기 54/54(쓰는 테이블 SQL 확인) · 실행 중인 앱의 OpenAPI = 계약(고아 0 · 누락 0) · 배치 6/6 | `uv run python tools/check_screens.py` |
-| G-03 화면 32 + 공통 3 | **PASS** | 검사 7 전부 PASS — 브라우저 GET 200 32/32 · placeholder 0 · **방금 만든 값이 32 화면에 보임 32/32** · 공통 3 200 | 〃 |
-| G-17 권한 48칸 | **PASS** | 검사 10 전부 PASS — 요청 686 건 · **위반 0**. 괄호 조건 2개 일치. 권한 표는 데이터(새 역할 한 행으로 확인). 검사 뒤 48칸 = 입력 19 · 조회 24 · 없음 5 | 〃 |
-| §2.5 오류 계약 (6행) | **FAIL** | 422 행 FAIL(결함 001 · 002 · 004 · 005 · 007) · 401 행 FAIL(003 · 006) · 403 · 503 · 501 · 500 행 PASS | `uv run pytest -q tests/test_qa1_errors.py` → 130 passed · **26 failed** |
+| G-01 메뉴 12 · 32 | **PASS** | 설계도 자체 파싱 대메뉴 12 · 중메뉴 32 · 기능 94 = 계약의 (대메뉴, 중메뉴) 쌍 32 = 계약에서 끌어낸 화면 경로 32 | `uv run pytest -q tests/test_qa1_functions.py -k "design_doc or one_line"` |
+| G-02 기능 94 + 6 | **PASS** | 검사 7 전부 PASS — 기능 94 전부 실호출(요청 121 · 404·405 0) · 읽기 40/40 · 쓰기 54/54 · **실행 중인 서버의 `/openapi.json`(관리자 세션) 경로·메서드 106 · 업무 모듈 97 ⊇ 계약 94**(고아 0 · 누락 0) · 배치 6/6 | `uv run python tools/check_screens.py` |
+| G-03 화면 32 + 공통 3 | **PASS** | 검사 7 전부 PASS — 브라우저 GET 200 32/32 · placeholder 0 · 방금 만든 값이 32 화면에 보임 32/32 · 공통 3 200 | 〃 |
+| G-17 권한 48칸 | **PASS** | 검사 10 전부 PASS — 요청 686 건 · **위반 0**. 괄호 조건 2개 일치. 권한 표는 데이터. 검사 뒤 48칸 = 입력 19 · 조회 24 · 없음 5 | 〃 |
+| §2.5 오류 계약 (6행) | **PASS** (웨이브 C: FAIL) | 422 · 401 · 403 · 503 · 501 · 500 행 전부 통과 — 결함 001~007 해결 | `uv run pytest -q tests/test_qa1_errors.py` → **156 passed** (웨이브 C: 130 passed · 26 failed) |
 
-| 결함 | 치명 | 중대 | 경미 | 계 |
+| 결함 `DEF-QA1-nnn` | 치명 | 중대 | 경미 | 계 |
 |---|---|---|---|---|
-| `DEF-QA1-nnn` | **0** | **4** (001 · 002 · 003 · 004) | **3** (005 · 006 · 007) | 7 |
+| 웨이브 C 에서 낸 것 | 0 | 4 (001 · 002 · 003 · 004) | 3 (005 · 006 · 007) | 7 |
+| **재검 뒤 남은 것** | **0** | **0** | **0** | **0** |
 
-- `tests/test_qa1_*.py` 는 1,102건이다 — functions 200 passed · rbac 746 passed · errors 130 passed + **26 failed**. 실패 26건은 전부 아래 결함을 드러내는 것이고 `skip`·`xfail` 을 쓰지 않았다(§3 의 대응표). 그래서 **G-21(pytest 전건)은 이 결함들이 고쳐질 때까지 FAIL** 이다.
-- 권한(G-17)과 기능 1:1(G-02) · 화면(G-03)에서는 결함을 찾지 못했다. 결함은 전부 **오류 계약** 쪽이다 — 틀린 입력이 500 이 되는 것 2종, 중지된 계정의 세션, POP 스캔 오류 화면.
-- 「확인 필요」 7건(§4)은 결함으로 세지 않았다 — 설계도·goal.md 에 기대값이 없거나 `가설` 로 정한 것이다.
+| ID | 등급 | 한 줄 | 재검 (웨이브 D 뒤) |
+|---|---|---|---|
+| DEF-QA1-001 | 중대 | 글자 입력에 NUL 이 섞이면 500 | **해결** — 422 `쓸 수 없는 글자(NUL)가 들어 있습니다` (미로그인 `/login` 포함 · 12모듈) |
+| DEF-QA1-002 | 중대 | 컬럼이 담을 수 없는 큰 수 → 500 | **해결** — 422 `<칸>이(가) 너무 큽니다` + 허용 자릿수 (D-209 · D-310) |
+| DEF-QA1-003 | 중대 | 중지·잠금 계정의 살아 있는 세션이 통함 | **해결** — 다음 요청부터 401 · 역할 변경은 다음 요청부터 반영 (D-26) |
+| DEF-QA1-004 | 중대 | POP 검사 결과·출하 화면: 없는 번호 스캔 → 오류 화면 | **해결** — 두 화면 모두 그 화면을 422 로 다시 그림(스캔칸 유지) |
+| DEF-QA1-005 | 경미 | Referer 없는 폼 POST 의 422 → 303 → 405 | **해결** — 303 → 그 화면(`/pop/work`) 200 + 알림 |
+| DEF-QA1-006 | 경미 | API 문서가 로그인 없이 열림 | **해결** — `/docs` · `/redoc` 404 · `/openapi.json` 미로그인 401 · 관리자만 200 |
+| DEF-QA1-007 | 경미 | 검사 결과의 숫자 아닌 경로 키 → 422 + 영문 | **해결** — 404 `대상을 찾을 수 없습니다` |
+
+- `tests/test_qa1_*.py` 는 1,102건이다 — functions 200 · rbac 746 · errors 156, **전부 통과**(`skip`·`xfail` 0). 웨이브 C 에서 실패하던 26건이 전부 통과로 바뀌었다(§3).
+- 전체 `uv run pytest -q` 는 **1588 passed · 6 failed** — 실패 6건은 QA1 범위가 아니다(재검에서 새로 낸 결함 DEF-QA2-004 · DEF-QA3-010 · DEF-QA3-011 을 드러내는 테스트 — `outputs/qa2-계보데이터.md` · `outputs/qa3-채널보안.md`). 그래서 **G-21 은 FAIL** 이다.
+- 「확인 필요」 7건(§4)은 그대로다 — D-401~D-415 로 `decisions.md` 에 옮겨졌다(아키텍트). C-7(`/erp` operation id 경고)은 고쳐졌다.
 
 ## 1. `tools/check_screens.py` — 무엇을 어떻게 쟀나
 
@@ -34,7 +48,7 @@
 5. 권한은 설계도 §6 의 칸 글자에서 기대값을 만들고 역할 4 × (화면 32 · 메뉴 48칸 · 읽기 40 · 쓰기 54) + 미로그인 94 를 **전수**로 두드린다. 쓰기는 **없는 키·빈 본문**으로 보낸다 — 권한이 없으면 403, 있으면 404·422 가 나와야 하고 어느 쪽도 아무것도 쓰지 않는다.
 6. 테스트 데이터는 `Q1-<6자>-…` 접두이고 끝나면 지운다. 시드 역할의 48칸과 시드 계정 4개의 행은 바꾸지 않는다.
 
-`uv run python tools/check_screens.py` 출력 (원문 · 2026-10-03):
+`uv run python tools/check_screens.py` 출력 (원문 · 웨이브 C 2026-10-03 — 재검 때의 출력은 §9):
 
 ```
 G-02 기능 · G-03 화면 · G-17 RBAC (tools/check_screens.py) — 방식: server (포트 8021) · 테스트 데이터 접두 Q1-D2A529
@@ -97,6 +111,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** 422 `validation_error` (goal.md §2.5 1행 — 입력값 오류는 422 · `contracts/api-contract.md` §3 「놓친 경우에도 500 이 되지 않게」).
 - **담당** 아키텍트 — `app/main.py` 가 `psycopg.errors.IntegrityError` 만 422 로 바꾸고 `psycopg.DataError` 는 500 으로 흘린다(한 곳에서 막을 수 있다 · `api-contract.md` §3 도 함께). 라우터 쪽: 개발2 `routers/pop.py` 의 `text_of`(mat·clr·rll 공용) · 개발3 `routers/{qua,shp,trc}.py` · 개발1 의 조회 인자(`bas.contains` 를 타는 GET).
 - **드러내는 테스트** `test_nul_byte_input_is_not_500[login|bas|prt|job|sys|pop|mat|clr|rll|qua|shp|trc]` (12건).
+- **재검 (웨이브 D 뒤)** — **해결.** 위 curl 을 포트 8021 의 실제 서버에 그대로: 미로그인 `POST /login`(`login_id=a%00b`) **422** · `GET /bas/items?code=a%00b` **422** `{"code":"validation_error","message":"입력값을 확인해 주세요","fields":[{"name":"입력","reason":"쓸 수 없는 글자(NUL)가 들어 있습니다"}]}` · `GET /trc/trace/backward?no=a%00b` **422**. `uv run pytest -q tests/test_qa1_errors.py -k nul_byte` → 12 passed. `main.py` 가 `psycopg.DataError` 를 한 곳에서 422 로 바꾼다(D-29).
 
 ### DEF-QA1-002 · 중대 · 컬럼이 담을 수 없는 큰 수 → 500
 
@@ -124,6 +139,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** 422 (goal.md §2.5 1행).
 - **담당** 개발2 — `routers/pop.py` 의 `decimal_of` · `int_of` 에 상한이 없다(mat · clr · rll 이 같이 쓴다. 개발1 의 `bas.decimal_of` 는 `int_digits` 로 막는다). 개발3 — `routers/qua.py` 의 `_delta_e`. (DEF-001 의 핸들러를 넣으면 같이 422 가 되지만 사람이 읽을 문장은 라우터가 줘야 한다.)
 - **드러내는 테스트** `test_out_of_range_number_is_422_not_500[mat|pop|clr|rll|qua]` (5건 · `[job]` `[prt]` 는 통과).
+- **재검 (웨이브 D 뒤)** — **해결.** `POST /mat/receipts` `received_qty=1e15` → **422** `입고 수량이(가) 너무 큽니다` · 사유 `정수부 11자리 · 소수 3자리까지 — 입력 1e15`(사람이 읽을 문장을 라우터가 준다). `-k out_of_range` → 7 passed. 가장자리도 쟀다: `99999999999.9995`(반올림하면 12자리) 422 · `…9994` 200 · `0.0004`(담기면 0) 422 · `NaN` · `Infinity` 422 · 폭 `99999999.995` 422 · ΔE `99999.994` 200 / `99999.995` 422 · 분할 수 `2147483648` 422 — 500 은 한 건도 없었다. 배합비 합의 반올림에 대한 의견은 `outputs/qa2-계보데이터.md` §10-4.
 
 ### DEF-QA1-003 · 중대 · 중지·잠금한 계정의 살아 있는 세션이 계속 통한다 (역할 변경도 반영되지 않는다)
 
@@ -135,6 +151,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** 401 (goal.md §2.5 「인증 실패 401」 · 계약 F-SYS-03 「행을 지우지 않고 상태 `중지`」 는 그 계정을 못 쓰게 한다는 뜻이다).
 - **담당** 아키텍트 — `app/rbac.py`(`current_user` · `require_login`) · `app/auth.py`. 개발1 이 `progress-dev1.md` §3-2 와 D-105 에 같은 요청을 남겼고 `progress.md` 「지금 해야 할 것」 2 에 올라 있다 — 이 리포트는 그것을 실측으로 확인한 것이다.
 - **드러내는 테스트** `test_401_stopped_account_live_session_is_cut` (1건).
+- **재검 (웨이브 D 뒤)** — **해결.** `-k stopped_account_live_session` passed. 임시 계정으로 경계까지 쟀다(포트 8021 실제 서버 · 시드 계정은 로그인만): 중지 뒤 살아 있던 세션 `GET` **401** · 쓰기 **401** · 브라우저 GET **303** · 새 로그인 401 / 잠금 → 401, `정상` 으로 되돌려도 **옛 쿠키는 401**(새 로그인만 200) / 역할 품질 → 현장: 로그인한 채로 다음 요청부터 `/trc/trace` 403 · `/pop/work` 200, 현장 → 관리자: `/sys/users` 200 / 이름만 바꾸면 세션 유지. 상세는 `outputs/qa3-채널보안.md` DEF-QA3-003 의 재검 줄.
 
 ### DEF-QA1-004 · 중대 · 현장 POP 화면 2개(검사 결과 · 출하)에서 없는 번호를 스캔하면 오류 화면으로 빠져 다음 스캔이 막힌다
 
@@ -151,6 +168,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **담당** 개발3 — `routers/qua.py`(`inspections` 의 `?no=`) · `routers/shp.py`(`shipments` 의 `?no=`). 개발2 의 `scan_failure` 방식(D-201)을 쓰면 된다. 공용 규약은 아키텍트 — `api-contract.md` §2 표에 「브라우저 GET 의 422」 줄이 없다(`progress.md` 「지금 해야 할 것」 2 의 세 번째 항목).
 - **같은 뿌리 (POP 채널이 아니라 등급을 올리지 않음)** `/trc/trace/forward?no=` · `/trc/trace/backward?no=` · `/job/orders?no=` · `/job/mapping?no=` · `/mat/inputs?work_id=` 도 브라우저에서 없는 번호면 오류 화면이다(입력하던 화면으로 돌아가지 않는다).
 - **드러내는 테스트** `test_pop_scan_get_422_keeps_the_scan_box[/qua/inspections?no]` · `[/shp/shipments?no]` (2건 · 나머지 7건 통과).
+- **재검 (웨이브 D 뒤)** — **해결.** 위 curl 그대로: `/qua/inspections?no=Q1-NONE&device=pop` **422 · `data-scan` 1개** · `<p class="err big">없는 롤입니다</p>` / `/shp/shipments?no=Q1-NONE&device=pop` **422 · `data-scan` 1개** · `없는 출하 LOT 입니다`. `-k pop_scan_get` → 9 passed(9/9 화면). 실제 브라우저로도 9개 화면 전부 「오류 문장 + 스캔칸 유지 + 다음 스캔 수신」 (`check_security.py` G-13). 같은 뿌리로 적어 둔 것 가운데 LOT 추적 2개(`/trc/trace/forward|backward?no=`)도 그 화면을 422 로 다시 그린다(입력 폼 유지). **남은 것(등급 밖 · POP 채널 아님)**: `/job/orders?no=` · `/job/mapping?no=` · `/mat/inputs?work_id=` 는 여전히 공용 오류 화면이다.
 
 ### DEF-QA1-005 · 경미 · Referer 없는 폼 POST 의 422 가 POST 전용 주소로 303 → 405 (알림을 볼 수 없다)
 
@@ -164,6 +182,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** `api-contract.md` §2 「422(폼 POST): 303 → 원래 화면 + 알림」. 브라우저는 보통 Referer 를 보내므로 경미.
 - **담당** 아키텍트 — `app/main.py` `_back_with_flash`(Referer 가 없으면 `request.url.path` 로 보낸다).
 - **드러내는 테스트** `test_form_post_422_without_referer_lands_on_a_real_page` (1건).
+- **재검 (웨이브 D 뒤)** — **해결.** 위 curl 그대로: `POST /pop/work/start`(Referer 없음) → **303 → `/pop/work`** → GET **200** · 그 화면에 알림(`flash-data`) 1개. `-k without_referer` passed(스캔 POST 5종 전부 열리는 화면으로). 참고: Referer 가 **바깥 주소**면 그 주소로 303 을 보낸다(`Referer: http://evil.example/x` → `303 → http://evil.example/x`) — 세션 쿠키가 SameSite=Lax 라 바깥 사이트의 폼 POST 에는 세션이 실리지 않으므로(그 요청은 401) 결함으로 올리지 않았다. 같은 출처일 때만 Referer 를 따르게 하면 더 단단하다(권고).
 
 ### DEF-QA1-006 · 경미 · API 문서(`/docs` · `/redoc` · `/openapi.json`)가 로그인 없이 열린다
 
@@ -172,6 +191,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** 인증 없이 열리는 것은 `/health` · `/static/*` · 로그인 화면뿐이다(`api-contract.md` §2 · goal.md §2.5 「인증 실패 401」).
 - **담당** 아키텍트 — `app/main.py` 의 `FastAPI(...)`. (QA3 의 보안 범위와 겹칠 수 있다. 닫아도 `check_screens.py` 는 `app.openapi()` 로 내려가 같은 검사를 한다.)
 - **드러내는 테스트** `test_401_api_docs_are_not_open_to_anonymous[/docs|/redoc|/openapi.json]` (3건).
+- **재검 (웨이브 D 뒤)** — **해결.** 미로그인 `/docs` **404** · `/redoc` **404** · `/openapi.json` **401**. 로그인한 관리자 `/openapi.json` 200, 생산·품질·현장 403(시스템 관리 조회 권한이 있는 역할만 — D-29). `-k api_docs` → 3 passed. 이 변경으로 `check_screens.py` 의 「등록된 API = 계약 94」 행이 대체 경로로만 내려가던 것을 바로잡았다(§9).
 
 ### DEF-QA1-007 · 경미 · 검사 결과 수정·삭제의 경로 키가 숫자가 아니면 404 가 아니라 422 + 영문 문구
 
@@ -180,6 +200,7 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - **기대** `api-contract.md` §1 「경로에 박힌 키가 없으면 404」 — 화면마다 같아야 하고 문구는 한국어여야 한다.
 - **담당** 개발3 — `routers/qua.py` 의 `inspection_id: int`. (같은 종류의 영문 문구: `POST /login` 에 비밀번호가 빠지면 `422 … "Field required"` — 아키텍트 `main.py`. 상태코드는 맞다.)
 - **드러내는 테스트** `test_404_non_numeric_path_key[/qua/inspections/abc]` · `[/qua/inspections/abc/delete]` (2건 · 나머지 7건 통과).
+- **재검 (웨이브 D 뒤)** — **해결.** `POST /qua/inspections/abc/delete` · `POST /qua/inspections/abc` · bigint 를 넘는 숫자 키 → 전부 **404** `{"code":"not_found","message":"대상을 찾을 수 없습니다"}`. `-k non_numeric_path_key` → 9 passed. 같이 적었던 영문 문구도 한국어가 됐다: 비밀번호 없는 `POST /login` → 422 `{"name":"password","reason":"필수 항목입니다"}`. 이 수정으로 QA1 의 다른 테스트 한 줄이 같은 요청에 422 를 기대하던 모순이 드러났다 — §9 에서 정리.
 
 ## 3. 실패하는 테스트 ↔ 결함
 
@@ -195,6 +216,8 @@ G-17 판정: PASS (검사 10 · 실패 0)
 | 계 | **26** | |
 
 `test_qa1_functions.py`(200) · `test_qa1_rbac.py`(746) 에는 실패가 없다.
+
+**재검 (웨이브 D 뒤)**: 위 26건이 **전부 통과**한다 — `uv run pytest -q tests/test_qa1_errors.py` → 156 passed. 대신 `test_qa1_rbac.py::test_forbidden_comes_before_validation` 한 건이 실패로 바뀌었는데, 앱의 결함이 아니라 QA1 의 두 테스트가 서로 어긋난 것이었다(§9). 정리 뒤 1,102건 전부 통과.
 
 ## 4. 확인 필요 (결함으로 세지 않았다)
 
@@ -292,3 +315,31 @@ G-17 판정: PASS (검사 10 · 실패 0)
 - 치운 것: `Q1-` 접두의 기준정보 · Job · 원재료 LOT · 실적 · 롤 · 계보 · 검사 · 출하 · 조색 · 이관 로그 · 계정 · 검사 전용 역할과 그 칸 · 그 대상의 `변경` 로그 → 남은 행 0 (`uv run python tools/check_screens.py --purge` 로도 지울 수 있다).
 - 남은 것: 시드 계정으로 낸 접근 로그(`로그인` · `조회`)와 DEF-001 · 002 를 재현하며 생긴 `오류` 로그(실제 500 의 흔적이라 지우지 않았다) · 채번 카운터(`sys_number_seq`)의 소비분. 시드 행은 바꾸지 않았다.
 - 서버: 포트 8021 만 썼고 내렸다(`lsof -iTCP:8021 -sTCP:LISTEN` → 0줄). git 커밋 없음.
+
+## 9. 재검 (웨이브 D 뒤) — QA1 범위에서 바꾼 것
+
+### 9.1 QA1 테스트의 내부 모순 정리 — `tests/test_qa1_rbac.py::test_forbidden_comes_before_validation`
+
+- **무엇이 어긋났나**: 같은 요청 — 품질 계정의 `POST /qua/inspections/abc/delete` — 에 QA1 의 두 테스트가 다른 답을 기대했다.
+  `test_qa1_rbac.py` 198행은 **422 `validation_error`**(「권한 있음 → 경로 값 오류」), `test_qa1_errors.py::test_404_non_numeric_path_key[/qua/inspections/abc/delete]` 는 **404 `not_found`**(DEF-QA1-007 — QA1 이 직접 낸 결함: 「화면마다 같아야 한다 · 다른 7개 화면은 404」).
+  웨이브 C 때는 앱이 422 를 줘서 앞의 것이 통과하고 뒤의 것이 실패했다. 개발3 이 결함 리포트대로 404 로 고치자 반대로 뒤집혔다. 두 기대가 동시에 참일 수 없다.
+- **무엇으로 정했나**: DEF-QA1-007 의 기대값(404)이 맞다 — `api-contract.md` §1 「경로에 박힌 키가 없으면 404」 이고, 198행의 422 는 그 테스트를 쓸 때 **그때의 앱 동작을 받아 적은 값**이었다(그 테스트가 재려던 것은 상태코드 422 자체가 아니라 순서다).
+- **무엇을 바꿨나** (그 테스트 하나 · 다른 QA 테스트의 기대값은 건드리지 않았다):
+  - 198행: 품질 `POST /qua/inspections/abc/delete` 의 기대 `422 validation_error` → **`404 not_found`**.
+  - 한 줄 추가: 관리자 `POST /bas/items`(`item_code=""`) → **422 `validation_error`** — 바로 윗줄(현장 · 같은 본문 → 403)의 짝이다.
+- **테스트의 뜻은 그대로다** — 「권한이 없는 사람에게 입력값 오류를 먼저 알려 주지 않는다(401 → 403 → 422)」:
+  권한 없는 현장은 같은 요청에 **403**, 미로그인은 **401**, 권한 있는 품질은 권한 판정을 지나 **그 요청 자체의 오류**(404)를 받는다. 「403 이 422 보다 먼저」 의 422 쪽이 198행을 바꾸면서 사라지지 않게, 같은 본문을 권한 있는 역할이 보내면 422 라는 줄을 더했다. **기대를 낮춘 것이 아니라 단언이 하나 늘었다**(4줄 → 5줄).
+- 결과: `uv run pytest -q tests/test_qa1_rbac.py` → 746 passed · `tests/test_qa1_errors.py -k non_numeric_path_key` → 9 passed.
+
+### 9.2 `tools/check_screens.py` — 「등록된 API = 계약 94」 행이 실제로 재고 있는가
+
+- **확인한 것**: `/openapi.json` 이 이제 미로그인 401 이라(DEF-QA1-006 의 수정), 이 행은 미로그인 세션으로 읽다가 **늘 대체 경로(`app.openapi()` — 검사기 프로세스가 직접 import 한 앱)** 로 내려가고 있었다. 읽은 경로 수는 0 이 아니었다(106) — 빈 것을 읽고 통과한 것은 아니다(0개를 읽으면 「계약인데 없는 것 94」 로 FAIL 이 난다). 다만 행 이름의 「실행 중인 앱」 은 더는 사실이 아니었다.
+- **고친 것**(더 세게): ① **띄워 둔 서버(8021)에 관리자로 로그인해** `/openapi.json` 을 읽는다(관리자는 200 — D-29). 그 주소를 아예 닫은 경우에만 `app.openapi()` 로 내려가고 그 사실과 상태코드를 실측 칸에 적는다. ② **읽은 양을 판정에 넣었다** — 계약 94 = 94 이고 업무 모듈 경로·메서드가 94 이상이어야 PASS.
+- 재검 실측: `서버의 /openapi.json (관리자 세션 · 미로그인은 401): 경로·메서드 106 (업무 모듈 97) · 계약 94 · 계약에 없는 것 0 · 계약인데 없는 것 0`.
+
+`uv run python tools/check_screens.py` (재검 · 2026-10-03 05:17 · 방식 server 포트 8021): G-02 7/7 · G-03 7/7 · G-17 10/10 PASS — 권한 전수 요청 686 건 · 위반 0 · 검사 뒤 `sys_permission` 48행 = 입력 19 · 조회 24 · 없음 5 · 남은 Q1 행 0.
+
+### 9.3 재지 못한 것 (재검)
+
+- §7 의 것은 그대로다(실제 PostgreSQL 중단 · 워커 여럿 · `LCOMFINE_ENV=prod` 의 500 문구 · 허용 84쌍 중 22쌍의 실제 쓰기 200).
+- 요청 형식 검증의 한국어 문구는 `필수 항목입니다` 한 종류만 봤다 — D-29 가 「표에 없는 종류는 원문 그대로」 라고 적은 나머지 종류(영문이 그대로 나오는 경우)는 낱낱이 세지 않았다.

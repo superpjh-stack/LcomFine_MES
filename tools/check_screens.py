@@ -1082,22 +1082,28 @@ def check_g02(r: Report, flow: Flow, fns: list[Fn], ia: list[dict]) -> None:
     r.add(g, "흐름이 남긴 계보 — 설계도 §3 예시 10행 + 1:1 후가공 2행", ge == want,
           " · ".join(f"{k} {ge.get(k, 0)}" for k in want) + f" = {sum(ge.values())}행 (기대 12)")
     try:
-        resp = flow.http.session().get("/openapi.json")
+        # 재검(웨이브 D 뒤): `/openapi.json` 은 이제 미로그인 401 · 시스템 관리 조회 역할만 200 이다(D-29 · DEF-QA1-006).
+        # 「실행 중인 앱」 을 계속 재려면 **그 서버에 관리자로 로그인해** 읽는다 — 미로그인으로 읽으면 늘 대체 경로(app.openapi())로만 내려간다.
+        anon_status = flow.http.session().get("/openapi.json").status_code
+        resp = flow.c["관리자"].get("/openapi.json")
         if resp.status_code == 200:
-            spec, source = resp.json(), "서버의 /openapi.json"
-        else:                                   # 문서 주소를 닫았으면 같은 앱 객체에서 읽는다
+            spec, source = resp.json(), f"서버의 /openapi.json (관리자 세션 · 미로그인은 {anon_status})"
+        else:                                   # 문서 주소를 아예 닫았으면 같은 앱 객체에서 읽는다
             from lcomfine.app.main import app
 
-            spec, source = app.openapi(), "app.openapi()"
+            spec, source = app.openapi(), f"app.openapi() (서버의 /openapi.json 은 관리자 {resp.status_code} · 미로그인 {anon_status})"
         norm = lambda path: re.sub(r"\{[^}]*\}", "{}", path)  # noqa: E731
         live = {(m.upper(), norm(path)) for path, ops in spec["paths"].items() for m in ops}
         mods = tuple(f"/{x}/" for x in sorted({f.module for f in screen_fns}))
         want_api = {(f.method, norm(f.path)) for f in screen_fns}
         screens = {("GET", path) for path in screen_paths(fns)}
-        orphans = sorted(f"{m} {path}" for m, path in live if path.startswith(mods) and (m, path) not in want_api | screens)
+        in_mods = {x for x in live if x[1].startswith(mods)}
+        orphans = sorted(f"{m} {path}" for m, path in in_mods if (m, path) not in want_api | screens)
         missing = sorted(f"{m} {path}" for m, path in want_api - live)
-        r.add(g, "등록된 API = 계약 94 (고아 0 · 누락 0) — 실행 중인 앱의 OpenAPI", not orphans and not missing,
-              f"{source}: 경로·메서드 {len(live)} · 계약에 없는 것 {len(orphans)} {orphans[:3] if orphans else ''} · 계약인데 없는 것 {len(missing)} {missing[:3] if missing else ''}")
+        # 읽은 양을 판정에 넣는다 — 0개를 읽고 「고아 0」 으로 통과하지 않게 (계약 94개가 전부 읽은 것 안에 있어야 한다)
+        r.add(g, "등록된 API = 계약 94 (고아 0 · 누락 0) — 실행 중인 앱의 OpenAPI",
+              not orphans and not missing and len(want_api) == 94 and len(in_mods) >= 94,
+              f"{source}: 경로·메서드 {len(live)} (업무 모듈 {len(in_mods)}) · 계약 {len(want_api)} · 계약에 없는 것 {len(orphans)} {orphans[:3] if orphans else ''} · 계약인데 없는 것 {len(missing)} {missing[:3] if missing else ''}")
     except Exception as exc:  # noqa: BLE001
         r.add(g, "등록된 API = 계약 94 (고아 0 · 누락 0) — 실행 중인 앱의 OpenAPI", False, f"{type(exc).__name__}: {exc}")
     bad = [f"{k}: {d}" for k, (ok, d) in flow.batch.items() if not ok]

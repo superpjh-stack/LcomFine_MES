@@ -25,6 +25,9 @@ BASE = "http://localhost:8023"
 OUT = ROOT / "outputs" / "e2e"
 PREFIX = "Q3E-"            # E2E 가 만든 기준정보의 코드 접두
 MARK = "(예시) Q3"         # 이름에 붙는 표시
+BYPASSES: list[dict] = []   # 우회(스캔칸 직접 누름 · 주소로 직접 엶) — run_e2e 가 journal 에 옮긴다. 0 이 아니면 G-22 FAIL
+LOST_SCANS: list[dict] = []  # 스캔했는데 DB 에 반영되지 않은(유실된) 바코드
+SCANS: list[dict] = []       # 쏜 스캔 전부(값 · 그때 포커스가 스캔칸이었나 · 알림이 떠 있었나)
 
 
 class Session:
@@ -52,10 +55,16 @@ class Session:
         self.dialogs.append(f"{d.type}: {d.message}")
         d.accept()
 
-    def login(self, shot_before: str | None = None) -> str:
-        """로그인 폼에 실제로 타이핑하고 버튼을 누른다. 로그인 뒤 도착한 주소를 돌려준다."""
+    def login(self, shot_before: str | None = None, pick_channel: bool = False) -> str:
+        """로그인 폼에 실제로 타이핑하고 버튼을 누른다. 로그인 뒤 도착한 주소를 돌려준다.
+
+        pick_channel=True 면 `?device=` 주소를 쓰지 않고 `/login` 을 그냥 열어 **채널 라디오를 눌러** 고른다(D-30)."""
         p = self.page
-        p.goto(BASE + "/login" + (f"?device={self.device}" if self.device else ""))
+        if pick_channel and self.device:
+            p.goto(BASE + "/login")
+            p.locator(f"form#login-form input[type=radio][name=device][value='{self.device}']").check()
+        else:
+            p.goto(BASE + "/login" + (f"?device={self.device}" if self.device else ""))
         if shot_before:
             p.screenshot(path=str(OUT / shot_before), full_page=True)
         p.fill("input[name=login_id]", self.role)
@@ -106,6 +115,7 @@ class Session:
     def scan(self, value: str) -> dict:
         """지금 포커스를 가진 곳에 글자를 치고 Enter. 포커스가 스캔칸이 아니면 그 사실을 돌려준다(고치지 않는다)."""
         before = self.active()
+        SCANS.append({"value": value, "focus_on_scan": before["scan"], "popup_open": bool(self.popup()), "path": self.page.url.replace(BASE, "")})
         self.page.keyboard.type(value, delay=5)
         try:
             with self.page.expect_navigation(timeout=4000):
@@ -114,6 +124,16 @@ class Session:
         except Exception:  # noqa: BLE001 — 화면이 안 넘어간 것이 관찰 결과다
             navigated = False
         return {"focus_on_scan": before["scan"], "focus": before["html"], "navigated": navigated, "url": self.page.url}
+
+    def bypass_click_scan(self, label: str) -> None:
+        """**우회** — 스캔(타이핑+Enter)만으로 진행되지 않아 스캔칸을 손으로 누른다. 한 번이라도 있으면 G-22 는 FAIL 이다."""
+        BYPASSES.append({"kind": "스캔칸 직접 누름", "where": label, "focus_was": self.active()["html"][:80]})
+        self.page.locator("[data-scan]").click()
+
+    def bypass_goto(self, label: str, path: str) -> None:
+        """**우회** — 스캔으로 화면이 안 열려 주소로 직접 연다. 한 번이라도 있으면 G-22 는 FAIL 이다."""
+        BYPASSES.append({"kind": "주소로 직접 엶", "where": label, "focus_was": self.active()["html"][:80]})
+        self.goto(path)
 
     def submit(self, form_selector: str, button_text: str | None = None) -> dict:
         """폼의 제출 버튼을 실제로 누른다. 응답 상태·도착 주소·알림을 돌려준다."""

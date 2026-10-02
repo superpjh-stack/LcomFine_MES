@@ -4,12 +4,25 @@
 
 ## 지금 해야 할 것
 
-1. **웨이브 C 재검 (QA 1명)** — 남은 FAIL 2개가 전부 QA 쪽 판정이다.
-   - G-21: `tests/test_qa1_rbac.py::test_forbidden_comes_before_validation`(198행)이 `POST /qua/inspections/abc/delete` 에 422 를 기대하고, `test_qa1_errors.py::test_404_non_numeric_path_key`(DEF-QA1-007)는 같은 요청에 404 를 기대한다 — QA1 자기 모순. DEF-QA1-007 의 기대값(404)으로 정리.
-   - G-22: **브라우저 한 바퀴 재실행**(`tools/e2e/run_e2e.py`) — 11·12단계가 스캔만으로 진행되는지 보고 리포트의 `G-22` 행 갱신.
-   - 결함 19건 재검 결과를 리포트 3종에 기록. 수정 라운드에서 바뀐 것(Job 마감 규칙 D-107 · 롤이 붙는 Job D-208 · 이관 변경 없음 D-311 · 세션 D-26)에 새 결함이 없는지. 개발1 이 남긴 틈(작업 시작과 마감이 겹칠 때 — `progress-dev1.md` §3-8)의 재현 여부.
-2. 그 뒤 `make gate-full` 전건 PASS + 치명 0 + 연속 2회전 변화 없음 → 종료(goal.md §4.4).
-3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-107 · D-202 · D-208 · D-303/D-309/D-311 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+1. **웨이브 D 3차 — 재검에서 나온 새 결함 3건** (G-21 의 실패 6건이 수용 기준, QA 파일은 고치지 않는다):
+   - **DEF-QA2-004 (중대)** — 작업 시작과 Job 취소·마감을 동시에 보내면 둘 다 200, 닫힌 Job 에 열린 작업 실적이 생긴다(실서버 100회 중 취소 41 · 마감 35 재현). `routers/pop.py` `work_start` 가 Job 상태를 트랜잭션 밖에서 읽는다 → 실적을 넣는 트랜잭션 안에서 Job 행을 잠그고 상태를 다시 본다. 같은 꼴(생산 LOT 붙이기 × 취소·마감, 후가공·슬리팅 × 마감)도 같이 본다.
+   - **DEF-QA3-010 (경미)** — 이관 `load-jobs` 가 취소된 Job 의 수량을 rc 0 으로 갱신(화면의 같은 수정은 422).
+   - **DEF-QA3-011 (경미, 배포에 따라 중대)** — `/health` 가 로그인 없이 DB 접속 문자열(호스트·사용자·DB, 키-값·쿼리 꼴이면 비밀번호까지)을 보인다.
+2. 그 뒤 `make gate-full` 전건 PASS → QA 리포트에 새 결함 3건의 재검 줄 → 연속 2회전 변화 없음 → 종료(goal.md §4.4).
+3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-107 · D-202 · D-208 · D-209(배합비 합의 반올림) · D-303/D-309/D-311 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+
+## 2026-10-03 — QA 재검 완료 (웨이브 D 뒤) · 오케스트레이터 재실측
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 21 · FAIL 1 / 22** — FAIL: G-21(pytest 6건 — 재검에서 나온 새 결함 3건을 드러내는 테스트). **G-22 가 FAIL → PASS** | `make gate-full` (혼자 돌 때 직접 실행) |
+| pytest | **1588 passed · 6 failed** — DEF-QA2-004 2건 · DEF-QA3-010 1건 · DEF-QA3-011 3건. 직전의 QA1 자기 모순 1건은 QA 가 DEF-QA1-007 기대값(404)으로 정리해 통과 | `uv run pytest -q` |
+| G-22 브라우저 한 바퀴 | **PASS** (QA 재검) — 헤드리스 Chromium, 16단계 전부 화면 조작 · API 대체 0 · 스캔 22회 전부 타이핑+Enter(알림이 뜬 채 7회) · **스캔칸 직접 누름(우회) 0 · 유실 0** · 계보 10행 · 역추적이 원재료 LOT ①② 도달 · 캡처 87장 | `outputs/qa3-채널보안.md` 의 `G-22` 행 · `outputs/e2e/` |
+| 웨이브 C 결함 19건 | **전부 해결** (원래 재현 절차로 재검) | `outputs/qa{1,2,3}-*.md` 의 "재검 (웨이브 D 뒤)" 줄 |
+| 새 결함 | **3건 — 치명 0 · 중대 1 · 경미 2**: DEF-QA2-004(작업 시작 × Job 취소·마감 경합) · DEF-QA3-010(이관이 취소 Job 갱신) · DEF-QA3-011(`/health` 의 접속 문자열 노출) | 위 pytest 실패 6건 |
+| 검사기 보강 (QA) | 헐거웠던 4곳을 조임 — `check_screens` OpenAPI 행(관리자 세션으로 서버에서 읽고 읽은 양을 판정에) · `check_security` 현황판 행(noscript 의 meta 만 보고 통과하던 것 → `app.js` 까지) · 현황판 실측 주기 범위 · `check_data` G-08 에 D-208 문장. G-13 검사 14 → 15 | QA 재검 보고 |
+| 앱 무변경 | 재검 동안 `src/` · 계약 · `gate.py` · 개발 테스트 diff 0 | `git diff --stat HEAD -- src contracts tools/gate.py tests/test_dev*.py tests/test_arch_*.py` |
+| 잔여물 | roll 0 · job 0 · work_result 0 · sys_user 4 · sys_permission 48 | `psql -h /tmp -d lcomfine_db -Atc "select count(*) from …"` |
 
 ## 2026-10-03 — 웨이브 D 2차 완료 (개발1 · 개발3) · 오케스트레이터 재실측
 

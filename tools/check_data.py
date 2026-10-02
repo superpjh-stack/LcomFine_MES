@@ -1874,6 +1874,13 @@ def check_g08(ctx: Ctx, rep: Report) -> None:
         "취소된 Job 에 롤이 있다 (내 데이터 제외)": db.v("""
             select count(*) from roll r join job j on j.job_id = r.job_id join item i on i.item_id = j.item_id
              where j.status = '취소' and i.item_code not like 'Q2-%%' and """ + app),
+        # 재검(웨이브 D 뒤 · DEF-QA2-004): 닫힌 Job 에 실적이 남아 있으면 안 된다 (F-JOB-03 「실적 없는 Job 만 취소」 · D-107 「열린 실적이 있으면 마감 불가」)
+        "취소된 Job 에 작업 실적이 있다 (내 데이터 제외)": db.v("""
+            select count(*) from work_result w join job j on j.job_id = w.job_id join item i on i.item_id = j.item_id
+             where j.status = '취소' and i.item_code not like 'Q2-%%' and w.worker in (select login_id from sys_user)"""),
+        "완료된 Job 에 열린(진행·정지) 작업 실적이 있다 (내 데이터 제외)": db.v("""
+            select count(*) from work_result w join job j on j.job_id = w.job_id join item i on i.item_id = j.item_id
+             where j.status = '완료' and w.status <> '완료' and i.item_code not like 'Q2-%%' and w.worker in (select login_id from sys_user)"""),
         "계보 투입 행의 수량 ≠ 투입 스캔의 투입량": db.v("""
             select count(*) from roll_genealogy g join roll r on r.roll_id = g.child_roll_id
               join material_input mi on mi.work_result_id = r.work_result_id and mi.material_lot_id = g.parent_material_lot_id
@@ -1899,9 +1906,21 @@ def check_g08(ctx: Ctx, rep: Report) -> None:
     st_x, _ = api.post("prod", "/rll/finishing/splice", {"roll_no": [a1, a2], "job_no": j_x})
     n_x = db.v("select count(*) from roll r join job j on j.job_id = r.job_id where j.job_no = %s", (j_x,))
     st_b, _ = api.post("prod", "/rll/finishing/splice", {"roll_no": [a3, a4], "job_no": j_b})
-    rep.add("G-08", "[API] 롤의 Job 키를 지킨다 — splice 의 Job 지정으로 취소된 Job 에 롤이 생기지 않는다", st_x == 422 and n_x == 0,
+    n_b = db.v("select count(*) from roll r join job j on j.job_id = r.job_id where j.job_no = %s", (j_b,))
+    # 재검(웨이브 D 뒤): 계약 F-RLL-02 에 문장이 생겼다(D-208 확정) — 「`job_no` 는 부모 롤의 Job 중 하나여야 하고(그 밖의 Job 은 422),
+    # 취소·완료된 Job 은 422」. 그래서 무관한 Job · 마감(`완료`)한 부모 Job 도 판정에 넣는다(전에는 사람 확인으로 적기만 했다).
+    j_d = f2.job(fg2, cu2, date.today())
+    d1 = f2.print_roll(j_d, [lot2])
+    f2.must(api.post("prod", f"/job/orders/{j_d}", {"status": "완료"}), "작업지시 마감")
+    st_d, _ = api.post("prod", "/rll/finishing/splice", {"roll_no": [a3, d1], "job_no": j_d})
+    n_d = db.v("select count(*) from roll r join job j on j.job_id = r.job_id where j.job_no = %s and r.process_type <> '인쇄'", (j_d,))
+    kept = db.v("select count(*) from v_roll_state s join roll r on r.roll_id = s.roll_id where r.roll_no = any(%s) and s.state = '재고'",
+                ([a1, a2, a3, a4, d1],))
+    rep.add("G-08", "[API] 롤의 Job 키를 지킨다 — splice 의 Job 지정으로 취소된 Job 에 롤이 생기지 않는다",
+            st_x == 422 and n_x == 0 and st_b == 422 and n_b == 0 and st_d == 422 and n_d == 0 and kept == 5,
             f"부모 2개(같은 Job) + job_no=취소된 Job → HTTP {st_x} · 취소 Job 의 롤 {n_x}개 (기대 422 · 0개) / "
-            f"부모와 무관한 `등록` Job 지정 → HTTP {st_b} (계약에 문장 없음 — 사람 확인)")
+            f"부모와 무관한 `등록` Job 지정 → HTTP {st_b} · 그 Job 의 롤 {n_b}개 (기대 422 · 0개 — F-RLL-02 · D-208) / "
+            f"부모의 Job 이지만 `완료` 로 마감한 Job 지정 → HTTP {st_d} · 그 Job 의 후가공 롤 {n_d}개 (기대 422 · 0개) / 422 뒤 부모 롤 재고 {kept}/5")
     # ── COA: 그 출하의 롤마다 최신 검사 (D6 → D7 → D8) ──
     f3 = ctx.flow()
     fg3 = f3.item("FG", "제품")

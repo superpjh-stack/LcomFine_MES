@@ -1,43 +1,43 @@
 {
  "state": {
   "browser": "Playwright Chromium 153.0.8010.12 (headless)",
-  "job_no": "J261003-232",
+  "job_no": "J261003-3465",
   "mapping_forms": [
    "post /logout: BUTTON:로그아웃",
    "get null: INPUT:no, INPUT:q, BUTTON:조회",
    "post /job/mapping: INPUT:job_no, INPUT:planned_roll_count, INPUT:planned_length_m, INPUT:note, BUTTON:생산 LOT 붙이기"
   ],
-  "job_lot_no": "L261003-070",
+  "job_lot_no": "L261003-489",
   "job_barcode": [
-   "CODE-128:J261003-232"
+   "CODE-128:J261003-3465"
   ],
   "pop_login_landing": "http://localhost:8023/pop/work",
-  "lot1": "M261003-680",
-  "lot2": "M261003-681",
+  "lot1": "M261003-3835",
+  "lot2": "M261003-3836",
   "lot_label_barcode": [
-   "CODE-128:M261003-680"
+   "CODE-128:M261003-3835"
   ],
   "insp_forms_field": [
    "get /mat/inspections #: input:device=pop, input:no, button:[처리]",
-   "post /mat/inspections #insp-form: input:lot_no=M261003-680, input:note, button:result[합격](disabled), button:result[불합격](disabled)",
+   "post /mat/inspections #insp-form: input:lot_no=M261003-3835, input:note, button:result[합격](disabled), button:result[불합격](disabled)",
    "get null #screen-search: input:device=pop, select:insp_status, button:[조회]"
   ],
   "insp_focus_after_popup_1": "<input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">",
   "insp_focus_after_popup_2": "<input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\" s",
   "clr_forms": [
    "get null #screen-search: input:job_no, input:date_from, input:date_to, button:[조회]",
-   "post /clr/records/216 #record-form: input:color_name, input:color_l, input:color_a, input:color_b, input:note, button:[수정 저장]",
-   "post /clr/records/216/delete #: button:[삭제]",
-   "post /clr/records/216/mix #mix-form: input:component_name, input:ratio_pct, input:component_name, input:ratio_pct, input:component_name, input:ratio_pct, button:[배합비 저장]"
+   "post /clr/records/1007 #record-form: input:color_name, input:color_l, input:color_a, input:color_b, input:note, button:[수정 저장]",
+   "post /clr/records/1007/delete #: button:[삭제]",
+   "post /clr/records/1007/mix #mix-form: input:component_name, input:ratio_pct, input:component_name, input:ratio_pct, input:component_name, input:ratio_pct, button:[배합비 저장]"
   ],
   "clr_links": [
-   "닫기 (새로 등록) -> /clr/records?job_no=J261003-232",
-   "J261003-232 -> /clr/records?job_no=J261003-232",
-   "열기 -> /clr/records?job_no=J261003-232&edit=216#form"
+   "닫기 (새로 등록) -> /clr/records?job_no=J261003-3465",
+   "J261003-3465 -> /clr/records?job_no=J261003-3465",
+   "열기 -> /clr/records?job_no=J261003-3465&edit=1007#form"
   ],
   "print_rolls": [
-   "R261003-3123",
-   "R261003-3124"
+   "R261003-18295",
+   "R261003-18296"
   ],
   "pop_obs": {
    "pop_font_px": 17,
@@ -45,7 +45,7 @@
    "btn_h_px": 52.34375,
    "start_popup_1": {
     "title": "알림",
-    "body": "작업을 시작했습니다 — Job J261003-232",
+    "body": "작업을 시작했습니다 — Job J261003-3465",
     "warn": false
    },
    "bad_scan": {
@@ -55,118 +55,150 @@
      "body": "없는 원재료 LOT 번호입니다\n· LOT 번호: NOPE-0000",
      "warn": true
     },
-    "url": "http://localhost:8023/mat/inputs?work_id=1441",
+    "url": "http://localhost:8023/mat/inputs?work_id=8187",
     "banner": {
      "text": "없는 원재료 LOT 번호입니다\n\nLOT 번호 — NOPE-0000",
      "px": 17
     },
-    "active_after": "<button type=\"button\" class=\"btn\" data-popup-close=\"\">확인</button>"
+    "active_after": "<input type=\"text\" name=\"lot_no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\">"
    },
    "finish_popup_1": {
     "title": "알림",
-    "body": "작업을 종료했습니다 — 인쇄 롤 R261003-3123",
+    "body": "작업을 종료했습니다 — 인쇄 롤 R261003-18295",
     "warn": false
    },
    "print_label_1": [
-    "CODE-128:R261003-3123"
+    "CODE-128:R261003-18295"
    ],
    "start_popup_2": {
     "title": "알림",
-    "body": "작업을 시작했습니다 — Job J261003-232",
+    "body": "작업을 시작했습니다 — Job J261003-3465",
     "warn": false
    },
    "dup_scan": {
     "count_after": 2,
     "popup": {
      "title": "입력값을 확인해 주세요",
-     "body": "이 작업에 이미 스캔한 LOT 입니다\n· M261003-681: 같은 실적에 중복 스캔",
+     "body": "이 작업에 이미 스캔한 LOT 입니다\n· M261003-3836: 같은 실적에 중복 스캔",
      "warn": true
     },
-    "focus_on_scan_before": false
+    "focus_on_scan_before": true
    },
    "finish_popup_2": {
     "title": "알림",
-    "body": "작업을 종료했습니다 — 인쇄 롤 R261003-3124",
+    "body": "작업을 종료했습니다 — 인쇄 롤 R261003-18296",
     "warn": false
    },
    "print_label_2": [
-    "CODE-128:R261003-3124"
+    "CODE-128:R261003-18296"
    ]
   },
   "pop_console": [],
-  "finishing_roll": "R261003-3125",
+  "finishing_job_field": "없음 (부모 롤이 전부 같은 Job)",
+  "finishing_roll": "R261003-18297",
   "splice_reuse": {
    "popup": null,
-   "banner": "이미 소진된 롤은 다시 쓸 수 없습니다\n\nR261003-3123 — 상태 소진",
+   "banner": "이미 소진된 롤은 다시 쓸 수 없습니다\n\nR261003-18295 — 상태 소진",
    "status_class": "ch-pop",
    "scan_present": 1,
    "active": "<input type=\"text\" name=\"add\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">"
   },
   "slit_rolls": [
-   "R261003-3126",
-   "R261003-3127",
-   "R261003-3128"
+   "R261003-18298",
+   "R261003-18299",
+   "R261003-18300"
   ],
   "slit_label_barcodes": [
-   "CODE-128:R261003-3128",
-   "CODE-128:R261003-3127",
-   "CODE-128:R261003-3126"
+   "CODE-128:R261003-18300",
+   "CODE-128:R261003-18299",
+   "CODE-128:R261003-18298"
   ],
   "roll_label_barcode": [
-   "CODE-128:R261003-3126"
+   "CODE-128:R261003-18298"
   ],
-  "qua_focus_after_close_1": "<body class=\"ch-web\" data-device=\"web\" data-grid-page-size=\"10\">\n<header class=\"hdr\">\n  <div class=\"",
-  "qua_focus_after_close_2": "<body class=\"ch-web\" data-device=\"web\" data-grid-page-size=\"10\">\n<header class=\"hdr\">\n  <div class=\"",
-  "qua_focus_after_close_3": "<body class=\"ch-web\" data-device=\"web\" data-grid-page-size=\"10\">\n<header class=\"hdr\">\n  <div class=\"",
-  "shipment_no": "S261003-291",
+  "qua_focus_after_close_1": "<input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">",
+  "qua_focus_after_close_2": "<input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">",
+  "qua_focus_after_close_3": "<input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\" s",
+  "qua_scan_modes": [
+   {
+    "roll": 1,
+    "popup_open": false,
+    "focus_on_scan": true,
+    "opened": true
+   },
+   {
+    "roll": 2,
+    "popup_open": false,
+    "focus_on_scan": true,
+    "opened": true
+   },
+   {
+    "roll": 3,
+    "popup_open": true,
+    "focus_on_scan": true,
+    "opened": true
+   }
+  ],
+  "shipment_no": "S261003-2966",
   "shp_obs": {
    "body": "ch-pop",
-   "after_register_url": "http://localhost:8023/shp/shipments?no=S261003-291",
+   "after_register_url": "http://localhost:8023/shp/shipments?no=S261003-2966",
    "after_register_body": "ch-pop",
-   "focus_after_register_popup": "<body class=\"ch-pop\" data-device=\"pop\" data-grid-page-size=\"10\">\n<header class=\"hdr\">\n  <div class=\"",
+   "focus_after_register_popup": "<input type=\"text\" name=\"roll_no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder",
    "scan1": {
     "popup": {
      "title": "알림",
-     "body": "R261003-3126 을(를) S261003-291 에 담았습니다",
+     "body": "R261003-18298 을(를) S261003-2966 에 담았습니다",
      "warn": false
     },
     "body": "ch-pop",
-    "url": "http://localhost:8023/shp/shipments?no=S261003-291"
+    "url": "http://localhost:8023/shp/shipments?no=S261003-2966"
    },
    "scan2_while_popup": {
     "popup_was_open": true,
-    "focus_before": "<button type=\"button\" class=\"btn\" data-popup-close=\"\">확인</bu",
-    "shipped": 0,
-    "popup_after": null
+    "focus_before": "<input type=\"text\" name=\"roll_no\" data-scan=\"\" autofocus=\"\" ",
+    "shipped": 1,
+    "popup_after": {
+     "title": "알림",
+     "body": "R261003-18299 을(를) S261003-2966 에 담았습니다",
+     "warn": false
+    }
    },
    "fail_roll": {
+    "popup_was_open": true,
     "popup": {
      "title": "입력값을 확인해 주세요",
-     "body": "최신 검사가 불합격인 롤은 출하할 수 없습니다\n· R261003-3128: 검사 판정 불합격",
+     "body": "최신 검사가 불합격인 롤은 출하할 수 없습니다\n· R261003-18300: 검사 판정 불합격",
      "warn": true
     },
     "state": "재고",
     "scan_present": 1,
+    "banner": {
+     "text": "최신 검사가 불합격인 롤은 출하할 수 없습니다\n\nR261003-18300 — 검사 판정 불합격",
+     "px": 26
+    },
     "err_px": 22
    },
    "reship": {
+    "popup_was_open": true,
     "popup": {
      "title": "입력값을 확인해 주세요",
-     "body": "이미 출하된 롤입니다\n· R261003-3126: 이미 출하된 롤",
+     "body": "이미 출하된 롤입니다\n· R261003-18298: 이미 출하된 롤",
      "warn": true
     },
     "scan_present": 1
-   }
+   },
+   "focus_after_last_close": true
   },
   "approve_forms_field": [
-   "post /shp/approvals/S261003-291/approve #: button:[승인](disabled)"
+   "post /shp/approvals/S261003-2966/approve #: button:[승인](disabled)"
   ],
-  "coa_no": "C261003-083",
+  "coa_no": "C261003-1342",
   "approve_dialogs": [
-   "confirm: S261003-291 출하를 승인할까요? COA 가 발행되고 그 뒤에는 취소할 수 없습니다."
+   "confirm: S261003-2966 출하를 승인할까요? COA 가 발행되고 그 뒤에는 취소할 수 없습니다."
   ],
   "coa_barcode": [
-   "CODE-128:S261003-291"
+   "CODE-128:S261003-2966"
   ],
   "coa_has_delta_e": true,
   "trace_search": {
@@ -179,7 +211,81 @@
    "투입": 3,
    "splice": 2
   },
-  "trace_field_status": 403
+  "trace_field_status": 403,
+  "bypasses": [],
+  "lost_scans": [],
+  "scans": {
+   "count": 22,
+   "focus_not_on_scan": [],
+   "while_popup_open": 7
+  },
+  "verdict": {
+   "G-22": "PASS",
+   "steps": 16,
+   "browser_steps": 16,
+   "api_substituted": [],
+   "not_pass": [],
+   "bypass_count": 0,
+   "lost_scan_count": 0,
+   "shots": [
+    "01-로그인.png",
+    "01-메인-관리자.png",
+    "02-기준정보-customers.png",
+    "02-기준정보-defect-codes.png",
+    "02-기준정보-equipment.png",
+    "02-기준정보-items.png",
+    "02-기준정보-processes.png",
+    "02-기준정보-설비수정.png",
+    "02-기준정보-중복422.png",
+    "03-인쇄기준-아니록스.png",
+    "03-인쇄기준-잉크조성.png",
+    "03-인쇄기준-판사양.png",
+    "04-작업지시-등록.png",
+    "04-작업지시-매핑.png",
+    "04-작업지시서.png",
+    "05-POP-로그인직후.png",
+    "05-원재료LOT-라벨.png",
+    "05-입고-등록.png",
+    "06-입고검사-스캔.png",
+    "06-입고검사-합격.png",
+    "06-입고검사-현장계정.png",
+    "07-조색-등록.png",
+    "07-조색-배합비.png",
+    "08-POP-없는LOT스캔-422.png",
+    "08-POP-자재투입스캔.png",
+    "08-POP-작업시작.png",
+    "08-POP-작업종료-인쇄롤1.png",
+    "08-POP-작업종료-인쇄롤2.png",
+    "08-POP-작업지시서스캔.png",
+    "08-인쇄롤1-라벨.png",
+    "08-인쇄롤2-라벨.png",
+    "09-후가공-splice등록.png",
+    "09-후가공-롤2개스캔.png",
+    "09-후가공-소진롤재스캔-422.png",
+    "10-롤-라벨.png",
+    "10-롤이력.png",
+    "10-슬리팅-라벨3장.png",
+    "10-슬리팅-스캔.png",
+    "11-불량집계.png",
+    "11-품질검사-등록.png",
+    "11-품질검사-스캔.png",
+    "12-출하-등록.png",
+    "12-출하-롤스캔.png",
+    "12-출하-불합격롤-422.png",
+    "12-출하-재출하-422.png",
+    "13-출하승인-대기.png",
+    "13-출하승인-완료.png",
+    "13-출하승인-현장계정.png",
+    "14-COA-목록.png",
+    "14-COA-출력.png",
+    "15-LOT검색.png",
+    "15-역추적-출하LOT→원재료LOT.png",
+    "15-정방향-원재료LOT→출하.png",
+    "16-로그-변경.png",
+    "16-매핑-롤과출하.png",
+    "16-실적현황-집계.png"
+   ]
+  }
  },
  "steps": [
   {
@@ -239,7 +345,7 @@
     "04-작업지시서.png"
    ],
    "how": "브라우저",
-   "note": "Job J261003-232 · 생산 LOT L261003-070 · 작업지시서 바코드 디코드 ['CODE-128:J261003-232'] · SVG 1 · 외부 요청 0"
+   "note": "Job J261003-3465 · 생산 LOT L261003-489 · 작업지시서 바코드 디코드 ['CODE-128:J261003-3465'] · SVG 1 · 외부 요청 0"
   },
   {
    "no": "05",
@@ -253,7 +359,7 @@
     "05-원재료LOT-라벨.png"
    ],
    "how": "브라우저",
-   "note": "LOT① M261003-680 · LOT② M261003-681 · 라벨 디코드 ['CODE-128:M261003-680'] · 로그인 뒤 도착 http://localhost:8023/pop/work · body ch-pop"
+   "note": "LOT① M261003-3835 · LOT② M261003-3836 · 라벨 디코드 ['CODE-128:M261003-3835'] · 로그인 뒤 도착 http://localhost:8023/pop/work · body ch-pop"
   },
   {
    "no": "06",
@@ -299,7 +405,7 @@
     "08-인쇄롤2-라벨.png"
    ],
    "how": "브라우저",
-   "note": "인쇄 롤 ['R261003-3123', 'R261003-3124'] · 없는 LOT 스캔 {'focus_on_scan': True, 'popup': {'title': '입력값을 확인해 주세요', 'body': '없는 원재료 LOT 번호입니다\\n· LOT 번호: NOPE-0000', 'warn': True}, 'url': 'http://localhost:8023/mat/inputs?work_id=1441', 'banner': {'text': '없는 원재료 LOT 번호입니다\\n\\nLOT 번호 — NOPE-0000', 'px': 17}, 'active_after': '<button type=\"button\" class=\"btn\" data-popup-close=\"\">확인</button>'} · 중복 스캔 {'count_after': 2, 'popup': {'title': '입력값을 확인해 주세요', 'body': '이 작업에 이미 스캔한 LOT 입니다\\n· M261003-681: 같은 실적에 중복 스캔', 'warn': True}, 'focus_on_scan_before': False}"
+   "note": "인쇄 롤 ['R261003-18295', 'R261003-18296'] · 없는 LOT 스캔 {'focus_on_scan': True, 'popup': {'title': '입력값을 확인해 주세요', 'body': '없는 원재료 LOT 번호입니다\\n· LOT 번호: NOPE-0000', 'warn': True}, 'url': 'http://localhost:8023/mat/inputs?work_id=8187', 'banner': {'text': '없는 원재료 LOT 번호입니다\\n\\nLOT 번호 — NOPE-0000', 'px': 17}, 'active_after': '<input type=\"text\" name=\"lot_no\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\">'} · 중복 스캔 {'count_after': 2, 'popup': {'title': '입력값을 확인해 주세요', 'body': '이 작업에 이미 스캔한 LOT 입니다\\n· M261003-3836: 같은 실적에 중복 스캔', 'warn': True}, 'focus_on_scan_before': True}"
   },
   {
    "no": "09",
@@ -313,7 +419,7 @@
     "09-후가공-소진롤재스캔-422.png"
    ],
    "how": "브라우저",
-   "note": "후가공 롤 R261003-3125 · 부모 상태 소진/소진 · 재스캔 {'popup': None, 'banner': '이미 소진된 롤은 다시 쓸 수 없습니다\\n\\nR261003-3123 — 상태 소진', 'status_class': 'ch-pop', 'scan_present': 1, 'active': '<input type=\"text\" name=\"add\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">'}"
+   "note": "후가공 롤 R261003-18297 · 부모 상태 소진/소진 · 재스캔 {'popup': None, 'banner': '이미 소진된 롤은 다시 쓸 수 없습니다\\n\\nR261003-18295 — 상태 소진', 'status_class': 'ch-pop', 'scan_present': 1, 'active': '<input type=\"text\" name=\"add\" data-scan=\"\" autofocus=\"\" required=\"\" inputmode=\"text\" placeholder=\"\">'}"
   },
   {
    "no": "10",
@@ -328,28 +434,28 @@
     "10-롤이력.png"
    ],
    "how": "브라우저",
-   "note": "슬리팅 롤 ['R261003-3126', 'R261003-3127', 'R261003-3128'] · 라벨 디코드 ['CODE-128:R261003-3128', 'CODE-128:R261003-3127', 'CODE-128:R261003-3126']"
+   "note": "슬리팅 롤 ['R261003-18298', 'R261003-18299', 'R261003-18300'] · 라벨 디코드 ['CODE-128:R261003-18300', 'CODE-128:R261003-18299', 'CODE-128:R261003-18298']"
   },
   {
    "no": "11",
    "name": "품질 검사",
    "role": "qc",
-   "did": "슬리팅 롤 3개를 차례로 스캔 → ΔE·판정(③은 불합격 + 불량 유형·위치) 등록 → 불량 집계",
-   "result": "결함(우회)",
+   "did": "슬리팅 롤 3개를 차례로 스캔(① 새 화면 · ② 알림을 닫은 뒤 · ③ 알림이 뜬 채로) → ΔE·판정(③은 불합격 + 불량 유형·위치) 등록 → 불량 집계",
+   "result": "PASS",
    "shots": [
     "11-품질검사-스캔.png",
     "11-품질검사-등록.png",
     "11-불량집계.png"
    ],
    "how": "브라우저",
-   "note": "우회 2건 · 알림 닫은 뒤 포커스: <body class=\"ch-web\" data-device=\"web\" data-grid-page-size=\""
+   "note": "우회 0건 · 스캔 [{'roll': 1, 'popup_open': False, 'focus_on_scan': True, 'opened': True}, {'roll': 2, 'popup_open': False, 'focus_on_scan': True, 'opened': True}, {'roll': 3, 'popup_open': True, 'focus_on_scan': True, 'opened': True}] · 알림 닫은 뒤 포커스: <input type=\"text\" name=\"no\" data-scan=\"\" autofocus=\"\" requi"
   },
   {
    "no": "12",
    "name": "출하 등록·롤 스캔",
-   "role": "field (POP)",
-   "did": "출하 등록 → 슬리팅 롤 ①② 스캔 → 불합격 롤 ③ 스캔(422) → ① 재스캔(422)",
-   "result": "결함(우회)",
+   "role": "field (POP · 채널 라디오로 로그인)",
+   "did": "출하 등록 → 슬리팅 롤 ① 스캔(알림 닫은 뒤) → ② · 불합격 ③(422) · ① 재스캔(422)을 알림이 뜬 채 연달아 스캔",
+   "result": "PASS",
    "shots": [
     "12-출하-등록.png",
     "12-출하-롤스캔.png",
@@ -357,7 +463,7 @@
     "12-출하-재출하-422.png"
    ],
    "how": "브라우저",
-   "note": "출하 LOT S261003-291 · 우회 5건 · 재출하 {'popup': {'title': '입력값을 확인해 주세요', 'body': '이미 출하된 롤입니다\\n· R261003-3126: 이미 출하된 롤', 'warn': True}, 'scan_present': 1}"
+   "note": "출하 LOT S261003-2966 · 우회 0건 · 재출하 {'popup_was_open': True, 'popup': {'title': '입력값을 확인해 주세요', 'body': '이미 출하된 롤입니다\\n· R261003-18298: 이미 출하된 롤', 'warn': True}, 'scan_present': 1}"
   },
   {
    "no": "13",
@@ -371,7 +477,7 @@
     "13-출하승인-완료.png"
    ],
    "how": "브라우저",
-   "note": "COA C261003-083 · 확인창 ['confirm: S261003-291 출하를 승인할까요? COA 가 발행되고 그 뒤에는 취소할 수 없습니다.'] · 현장 계정 화면 HTTP 200"
+   "note": "COA C261003-1342 · 확인창 ['confirm: S261003-2966 출하를 승인할까요? COA 가 발행되고 그 뒤에는 취소할 수 없습니다.'] · 현장 계정 화면 HTTP 200"
   },
   {
    "no": "14",
@@ -384,7 +490,7 @@
     "14-COA-출력.png"
    ],
    "how": "브라우저",
-   "note": "COA 바코드 디코드 ['CODE-128:S261003-291'] · ΔE 표시 True"
+   "note": "COA 바코드 디코드 ['CODE-128:S261003-2966'] · ΔE 표시 True"
   },
   {
    "no": "15",
@@ -415,34 +521,5 @@
    "note": "실패 0"
   }
  ],
- "findings": [
-  {
-   "key": "11",
-   "text": "검사 결과 화면 2번째 롤: 알림을 「확인」으로 닫은 뒤 포커스가 스캔칸으로 돌아오지 않아 스캔 글자가 버려짐 (포커스 '<body class=\"ch-web\" data-device=\"web\" d') → 스캔칸을 눌러 다시 스캔"
-  },
-  {
-   "key": "11",
-   "text": "검사 결과 화면 3번째 롤: 알림을 「확인」으로 닫은 뒤 포커스가 스캔칸으로 돌아오지 않아 스캔 글자가 버려짐 (포커스 '<body class=\"ch-web\" data-device=\"web\" d') → 스캔칸을 눌러 다시 스캔"
-  },
-  {
-   "key": "12",
-   "text": "출하 롤 ① 스캔: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 '<body class=\"ch-pop\" data-device=\"pop\" d') → 스캔칸을 눌러야 한다"
-  },
-  {
-   "key": "12",
-   "text": "출하 롤 ② 스캔: 앞 스캔의 알림이 떠 있는 동안 쏜 바코드가 버려짐 (Enter 가 「확인」만 누름 · 계보 0행 · 오류 표시 없음) → 다시 스캔"
-  },
-  {
-   "key": "12",
-   "text": "출하 롤 ② 재스캔: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 '<body class=\"ch-pop\" data-device=\"pop\" d') → 스캔칸을 눌러야 한다"
-  },
-  {
-   "key": "12",
-   "text": "불합격 롤 ③ 스캔: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 '<body class=\"ch-pop\" data-device=\"pop\" d') → 스캔칸을 눌러야 한다"
-  },
-  {
-   "key": "12",
-   "text": "재출하 스캔: 알림을 닫은 뒤 포커스가 스캔칸으로 돌아오지 않음 (포커스 '<body class=\"ch-pop\" data-device=\"pop\" d') → 스캔칸을 눌러야 한다"
-  }
- ]
+ "findings": []
 }
