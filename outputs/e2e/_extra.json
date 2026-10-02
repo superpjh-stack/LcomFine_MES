@@ -1,0 +1,40 @@
+{
+ "logout": {
+  "after_click": "/login",
+  "then_open_screen": "/login?next=%2Fjob%2Forders"
+ },
+ "forbidden": {
+  "http": 403,
+  "message": true,
+  "menu_hidden": [
+   "기준정보 관리",
+   "LOT 추적",
+   "시스템 관리"
+  ],
+  "menu_shown_wrongly": []
+ },
+ "board_server_restart": {
+  "first_stamp": "2026-10-03 03:42:00",
+  "while_down": {
+   "url": "chrome-error://chromewebdata/",
+   "stamp": null
+  },
+  "recovered_without_touch": false,
+  "seconds": null,
+  "url_after": "chrome-error://chromewebdata/",
+  "waited_after_restart_s": 75.1
+ },
+ "db_down": {
+  "/bas/items": 503,
+  "message": true,
+  "/trc/trace/backward": 503,
+  "after_recovery": 200
+ },
+ "board_db_down": {
+  "turned_to_error_page": true,
+  "text": "503  서비스 일시 중단  code: db_unavailable  connection is bad: con",
+  "recovered_without_touch": false,
+  "seconds": null,
+  "waited_s": 75.1
+ }
+}

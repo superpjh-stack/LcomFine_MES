@@ -1,0 +1,642 @@
+{
+ "measured_at": "2026-10-03 04:06:48",
+ "world": {
+  "job_no": "J261003-1787",
+  "lot_no": "M261003-2153",
+  "print_roll": "R261003-10257",
+  "roll": "R261003-10261",
+  "shipment_no": "S261003-1588",
+  "probe_shipment_no": "S261003-1590",
+  "probe_rolls": [
+   "R261003-10263",
+   "R261003-10264"
+  ]
+ },
+ "errors": {},
+ "browser": "Playwright Chromium 153.0.8010.12 (headless)",
+ "pop": {
+  "screens": {
+   "/pop/work": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/pop/roll-labels": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/mat/inspections": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/mat/lots": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/clr/records": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[job_no]"
+   },
+   "/rll/finishing": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[add]"
+   },
+   "/rll/slitting": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/rll/history": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/qua/inspections": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   },
+   "/shp/shipments": {
+    "http": 200,
+    "body": "ch-pop",
+    "scan_present": true,
+    "focus_on_scan": true,
+    "scan_value": "",
+    "focus": "INPUT[no]"
+   }
+  },
+  "bad_scan": {
+   "/pop/work": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/pop/work?device=pop&no=Q3-NOPE-0000"
+   },
+   "/pop/roll-labels": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/pop/roll-labels?device=pop&no=Q3-NOPE-0000"
+   },
+   "/mat/inspections": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/mat/inspections?device=pop&no=Q3-NOPE-0000"
+   },
+   "/mat/lots": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/mat/lots?device=pop&no=Q3-NOPE-0000"
+   },
+   "/rll/finishing": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/rll/finishing?rolls=&device=pop&add=Q3-NOPE-0000"
+   },
+   "/rll/slitting": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/rll/slitting?device=pop&no=Q3-NOPE-0000"
+   },
+   "/rll/history": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": true,
+    "focus_on_scan": true,
+    "message_shown": true,
+    "message_px": 26,
+    "popup": false,
+    "next_scan_received": true,
+    "url": "/rll/history?device=pop&no=Q3-NOPE-0000"
+   },
+   "/qua/inspections": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": false,
+    "focus_on_scan": false,
+    "message_shown": true,
+    "message_px": 34,
+    "popup": false,
+    "next_scan_received": false,
+    "url": "/qua/inspections?no=Q3-NOPE-0000"
+   },
+   "/shp/shipments": {
+    "focus_before": true,
+    "http": 422,
+    "scan_present": false,
+    "focus_on_scan": false,
+    "message_shown": true,
+    "message_px": 34,
+    "popup": false,
+    "next_scan_received": false,
+    "url": "/shp/shipments?no=Q3-NOPE-0000"
+   }
+  },
+  "popup": {
+   "/qua/inspections": {
+    "popup_shown": true,
+    "popup_font_px": 22,
+    "typed_while_popup_reaches_scan": false,
+    "typed_value_in_scan": "",
+    "focus_on_scan_after_close": false,
+    "focus_after_close": "BODY"
+   },
+   "/shp/shipments": {
+    "popup_shown": true,
+    "popup_font_px": 22,
+    "typed_while_popup_reaches_scan": false,
+    "typed_value_in_scan": "",
+    "focus_on_scan_after_close": false,
+    "focus_after_close": "BODY"
+   },
+   "/clr/records": {
+    "popup_shown": true,
+    "popup_font_px": 22,
+    "typed_while_popup_reaches_scan": true,
+    "typed_value_in_scan": "ABC123",
+    "focus_on_scan_after_close": true,
+    "focus_after_close": "INPUT[job_no]"
+   }
+  },
+  "landing": "/pop/work",
+  "body_class": "ch-pop",
+  "size": {
+   "body_font_px": 17,
+   "scan_input_h_px": 49.890625,
+   "scan_input_font_px": 18,
+   "button_h_px": 52.34375
+  },
+  "size_web": {
+   "body_font_px": 14,
+   "scan_input_h_px": 49.890625,
+   "button_h_px": 34.140625
+  },
+  "one_scan_one_row": {
+   "open_focus": true,
+   "opened": true,
+   "roll_scan_focus": true,
+   "first_scan_rows": 1,
+   "popup_after_first": true,
+   "second_scan_while_popup_rows": 0,
+   "error_shown_for_lost_scan": false,
+   "focus_on_scan_after_close": false,
+   "rescan_rows": 1,
+   "rescan_warn": true
+  }
+ },
+ "mobile": {
+  "pages": {
+   "mobile": {
+    "/trc/trace": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/sta/summary": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/sta/summary/production": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/sta/summary/quality": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/sta/summary/delivery": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/sta/board": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/trc/trace/backward?no=S261003-1588": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/trc/trace?q=S26100": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    },
+    "/trc/trace/forward?no=M261003-2153": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-mobile",
+     "http": 200
+    }
+   },
+   "web": {
+    "/trc/trace": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/sta/summary": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/sta/summary/production": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/sta/summary/quality": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/sta/summary/delivery": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/sta/board": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [],
+     "over_count": 0,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/trc/trace/backward?no=S261003-1588": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/trc/trace?q=S26100": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    },
+    "/trc/trace/forward?no=M261003-2153": {
+     "vw": 390,
+     "scrollWidth": 390,
+     "bodyScrollWidth": 390,
+     "over": [
+      "code"
+     ],
+     "over_count": 1,
+     "inner_scrollers": [],
+     "body": "ch-web",
+     "http": 200
+    }
+   }
+  },
+  "login": {
+   "vw": 390,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "over": [],
+   "over_count": 0,
+   "inner_scrollers": [],
+   "body": "login-body ch-mobile"
+  }
+ },
+ "outputs": {
+  "작업지시서": {
+   "http": 200,
+   "number": "J261003-1787",
+   "decoded": [
+    "CODE-128:J261003-1787"
+   ],
+   "decoded_print_media": [
+    "CODE-128:J261003-1787"
+   ],
+   "decode_ok": true,
+   "requests": 3,
+   "external_requests": [],
+   "external_count": 0,
+   "svg": 1,
+   "img": 0,
+   "ext_tags": 0,
+   "print_btn": true,
+   "print_media": {
+    "menu": false,
+    "header": false,
+    "contract_panel": false,
+    "svg": true,
+    "buttons": 0
+   },
+   "scan_opens": {
+    "focus_on_scan": true,
+    "navigated": true,
+    "url": "/pop/work?no=J261003-1787",
+    "number_shown": true,
+    "http_ok": true
+   }
+  },
+  "원재료 LOT 라벨": {
+   "http": 200,
+   "number": "M261003-2153",
+   "decoded": [
+    "CODE-128:M261003-2153"
+   ],
+   "decoded_print_media": [
+    "CODE-128:M261003-2153"
+   ],
+   "decode_ok": true,
+   "requests": 3,
+   "external_requests": [],
+   "external_count": 0,
+   "svg": 1,
+   "img": 0,
+   "ext_tags": 0,
+   "print_btn": true,
+   "print_media": {
+    "menu": false,
+    "header": false,
+    "contract_panel": false,
+    "svg": true,
+    "buttons": 0
+   },
+   "scan_opens": {
+    "focus_on_scan": true,
+    "navigated": true,
+    "url": "/mat/lots?no=M261003-2153",
+    "number_shown": true,
+    "http_ok": true
+   }
+  },
+  "인쇄 롤 라벨": {
+   "http": 200,
+   "number": "R261003-10257",
+   "decoded": [
+    "CODE-128:R261003-10257"
+   ],
+   "decoded_print_media": [
+    "CODE-128:R261003-10257"
+   ],
+   "decode_ok": true,
+   "requests": 3,
+   "external_requests": [],
+   "external_count": 0,
+   "svg": 1,
+   "img": 0,
+   "ext_tags": 0,
+   "print_btn": true,
+   "print_media": {
+    "menu": false,
+    "header": false,
+    "contract_panel": false,
+    "svg": true,
+    "buttons": 0
+   },
+   "scan_opens": {
+    "focus_on_scan": true,
+    "navigated": true,
+    "url": "/pop/roll-labels?no=R261003-10257",
+    "number_shown": true,
+    "http_ok": true
+   }
+  },
+  "롤 라벨": {
+   "http": 200,
+   "number": "R261003-10261",
+   "decoded": [
+    "CODE-128:R261003-10261"
+   ],
+   "decoded_print_media": [
+    "CODE-128:R261003-10261"
+   ],
+   "decode_ok": true,
+   "requests": 3,
+   "external_requests": [],
+   "external_count": 0,
+   "svg": 1,
+   "img": 0,
+   "ext_tags": 0,
+   "print_btn": true,
+   "print_media": {
+    "menu": false,
+    "header": false,
+    "contract_panel": false,
+    "svg": true,
+    "buttons": 0
+   },
+   "scan_opens": {
+    "focus_on_scan": true,
+    "navigated": true,
+    "url": "/rll/history?no=R261003-10261",
+    "number_shown": true,
+    "http_ok": true
+   }
+  },
+  "COA": {
+   "http": 200,
+   "number": "S261003-1588",
+   "decoded": [
+    "CODE-128:S261003-1588"
+   ],
+   "decoded_print_media": [
+    "CODE-128:S261003-1588"
+   ],
+   "decode_ok": true,
+   "requests": 3,
+   "external_requests": [],
+   "external_count": 0,
+   "svg": 1,
+   "img": 0,
+   "ext_tags": 0,
+   "print_btn": true,
+   "print_media": {
+    "menu": false,
+    "header": false,
+    "contract_panel": false,
+    "svg": true,
+    "buttons": 0
+   },
+   "scan_opens": {
+    "focus_on_scan": true,
+    "navigated": true,
+    "url": "/shp/shipments?no=S261003-1588",
+    "number_shown": true,
+    "http_ok": true
+   }
+  }
+ },
+ "board": {
+  "landing": "/sta/board",
+  "body": "ch-board",
+  "meta_refresh": "30",
+  "menu_visible": false,
+  "body_font_px": 20,
+  "first_stamp": "2026-10-03 04:07:05",
+  "second_stamp": "2026-10-03 04:07:35",
+  "refreshed": true,
+  "seconds_until_refresh": 30.2,
+  "waited_seconds": 30.2,
+  "url_after": "/sta/board?device=board",
+  "body_after": "ch-board"
+ }
+}
