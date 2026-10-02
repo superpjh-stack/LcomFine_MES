@@ -39,17 +39,17 @@
     <a class="btn" href="{{ nav.path_of('CLR-01') }}?job_no={{ editing.job_no }}">닫기 (새로 등록)</a>
   </div>
 
-  <h2 style="margin-top:16px">배합비 <small>성분·비율(%) — 저장하면 통째로 바뀐다. 합이 100 이어야 한다</small></h2>
+  <h2 style="margin-top:16px">배합비 <small>성분·비율(%) — 저장하면 통째로 바뀐다. 합이 100 이어야 한다. 비율은 소수 셋째 자리까지 저장한다(넘는 자리는 반올림)</small></h2>
   <form method="post" action="{{ nav.path_of('CLR-01') }}/{{ editing.color_record_id }}/mix" id="mix-form">
     <div class="mix-rows">
       <b>성분</b><b>비율 (%)</b>
       {% for m in editing_mix %}
       <input type="text" name="component_name" value="{{ m.component_name }}" aria-label="성분 {{ loop.index }}">
-      <input type="number" name="ratio_pct" value="{{ m.ratio_pct }}" step="any" min="0" max="100" aria-label="비율 {{ loop.index }}">
+      <input type="number" name="ratio_pct" value="{{ m.ratio_pct }}" step="0.001" min="0" max="100" aria-label="비율 {{ loop.index }}">
       {% endfor %}
       {% for n in range(blank_rows) %}
       <input type="text" name="component_name" value="" aria-label="성분 (새 행)">
-      <input type="number" name="ratio_pct" value="" step="any" min="0" max="100" aria-label="비율 (새 행)">
+      <input type="number" name="ratio_pct" value="" step="0.001" min="0" max="100" aria-label="비율 (새 행)">
       {% endfor %}
     </div>
   </form>

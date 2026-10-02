@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 
 from fastapi.testclient import TestClient
@@ -35,6 +36,25 @@ def client(login_id: str | None = None) -> TestClient:
         assert r.status_code == 303, f"{login_id} 로그인 실패 {r.status_code} — 공통 시드와 .env 를 확인한다"
         _clients[login_id] = c
     return c
+
+
+def pause_after(monkeypatch, module, name: str) -> tuple[threading.Event, threading.Event]:
+    """동시 요청 테스트용 — `module.name` 의 **첫 호출**이 끝난 직후(= 그 함수가 잡은 잠금을 쥔 채)에 세워 둔다.
+
+    돌려주는 것은 (들어왔다, 풀어라) 이벤트. 두 번째 호출부터는 그대로 지나간다. 호출자는 `finally` 에서 `풀어라.set()` 을 부른다.
+    앱의 동작을 바꾸지 않는다 — 실제 함수를 그대로 부르고 멈추기만 한다(시간에 기대지 않고 겹치는 순간을 만든다)."""
+    real = getattr(module, name)
+    entered, release = threading.Event(), threading.Event()
+
+    def paused(*args, **kwargs):
+        out = real(*args, **kwargs)
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(30), f"{name} — 30초 동안 풀리지 않았다"
+        return out
+
+    monkeypatch.setattr(module, name, paused)
+    return entered, release
 
 
 def one(sql: str, params=()) -> dict | None:

@@ -102,6 +102,17 @@ numbering.rule("JOB")                # sys_number_rule 행(dict) 또는 None →
 - 작업 시작(F-POP-01)과 마감이 수 ms 차로 엇갈리는 경우(§3-8)는 재현하지 않았다.
 - 마감 422 의 브라우저 화면(알림 팝업의 사유 줄)은 보지 않았다 — JSON 응답과 화면 HTML(진행 중 건수 · `완료` 선택 불가)까지 확인.
 
+## 2-E. 웨이브 D 3차 — DEF-QA2-004 의 같은 꼴 ⓐ·ⓒ (`routers/job.py`) · 2026-10-03 실측 (수정 담당이 혼자 돌며 개발1 파일을 고침)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| ⓐ 생산 LOT 붙이기·계획 수정 × 취소·마감 | 창 있었다(상태를 트랜잭션 밖에서 읽고 `job_lot` 을 넣음 — 취소를 잠금 직후에 세워 두면 FK 를 기다렸다가 200). `share_job`(`for share`) + 재확인으로 닫음 → 기다렸다가 422 · `job_lot` 0 | `uv run pytest -q tests/test_dev1_job.py -k mapping_waits` → 2 passed |
+| ⓒ 품목·수량 변경 × 작업 시작 | 창 있었다(`work_count` 를 트랜잭션 밖에서 읽음 — 작업 시작을 잠금 직후에 세워 두면 UPDATE 가 기다렸다가 200). `lock_job` 뒤 `work_count` 재확인으로 닫음 → 422 · 수량·비고 그대로 | `tests/test_dev1_job.py::test_item_and_quantity_change_waits_for_a_work_start_in_flight_and_then_refuses` |
+| 수정·마감 × 취소 · 취소 × 취소 | 같은 꼴 — 취소된 Job 이 고쳐지거나 되살아남 · 둘 다 200. `lock_job` 이 상태를 돌려주고 `취소` 면 422 | `-k "cancel_in_flight or two_cancels"` → 2 passed |
+| 규칙·문장 | 바꾸지 않았다 — 순차 요청의 결과는 전과 같다(`tests/test_dev1_job.py` 18 passed) | `uv run pytest -q tests/test_dev1_job.py` |
+| 변이 | `share_job` 상수 반환 · `work_count` 0 반환 · `lock_job` 상태 무시 — 각각 해당 테스트 실패 | 스크래치 변이 스크립트 (파일은 그대로) |
+| 테스트 도우미 | 「앞 요청을 잠금 직후에 세워 두기」 는 `test_dev2_helpers.pause_after` 를 가져다 쓴다(한 벌만 둔다 — 개발2 파일 import) | — |
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 1. **[도구 · 아키텍트] `tools/check_trace.py` 가 라우트를 하나도 못 본다 → G-02 「기능 94 ↔ 라우트」 가 항상 0/94.**
@@ -130,7 +141,7 @@ numbering.rule("JOB")                # sys_number_rule 행(dict) 또는 None →
 6. **[계약 · 아키텍트] 내 결정 D-101~D-106 을 `function-list.md` 문장에 반영할지** — 특히 D-103(작업 실적 뒤 잠기는 항목 · `완료` ↔ `등록` 되돌리기) · D-104(`등록` 상태 Job 에만 매핑) · D-106(잠김 방지 범위). 계약에 문장이 없던 곳을 최소로 정한 것이다.
 7. **[계약 · 아키텍트] F-JOB-02 문장에 D-107 한 줄** — 넣을 문장: 「**진행 중인(종료되지 않은 — `진행`·`정지`) 작업 실적이 있는 Job 은 `완료` 로 마감할 수 없다 — 422, 사유에 열려 있는 실적이 보인다. 작업을 종료한 뒤 마감한다(D-107).**」 F-JOB-03 은 문장 그대로 맞다(진행 중 실적만 있어도 「실적이 있으면 422」).
    같이 볼 곳: `db-schema.md` §7 의 `job.status` 줄(「`등록` → `완료`」 에 조건 한마디) · D-208 끝 줄 「막지 않은 것」 은 이 결정으로 닫혔다.
-8. **[개발2 · `routers/pop.py` 작업 시작] Job 상태를 트랜잭션 밖에서 읽는다.** `work_start` 가 `job_of()` 로 상태를 본 뒤 따로 연 트랜잭션에서 실적을 넣는다 — 그 사이(수 ms)에 마감·취소가 끝나면 `완료`·`취소` Job 에 열린 실적이 생길 수 있다(재현하지 않았다 · 내 쪽 잠금으로는 못 막는 방향).
+8. **(해결됨 — 웨이브 D 3차 · D-211, 같은 꼴은 `job.py` 쪽도 D-109)** **[개발2 · `routers/pop.py` 작업 시작] Job 상태를 트랜잭션 밖에서 읽는다.** `work_start` 가 `job_of()` 로 상태를 본 뒤 따로 연 트랜잭션에서 실적을 넣는다 — 그 사이(수 ms)에 마감·취소가 끝나면 `완료`·`취소` Job 에 열린 실적이 생길 수 있다(재현하지 않았다 · 내 쪽 잠금으로는 못 막는 방향).
    실적을 넣는 트랜잭션 안에서 `select status from job where job_id = %s for share` 로 다시 보면 닫힌다(`lineage` 의 D-208 판정과 같은 방식).
 
 (해결됨) 작업지시서 바코드 — 시작할 때는 `app/printing.py` 가 스텁일 수 있어 "준비되면 연결" 로 적을 예정이었으나, 화면을 만들 때 개발2 의 `printing.barcode_svg` 가 이미 구현돼 있어 바로 연결했다. 남은 요청 없음.

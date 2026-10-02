@@ -486,12 +486,69 @@ def test_load_jobs_does_not_revive_a_cancelled_job_or_take_a_raw_material(tmp_pa
     out = capsys.readouterr().out
     assert "취소된 Job 은 되살리지 않는다" in out and "제품 품목만 작업지시할 수 있다" in out
 
-    # 취소된 Job 을 `취소` 그대로 다시 적재하는 것은 된다 (다시 돌려도 같은 결과 — G-15)
-    (folder / "job.csv").write_text(head + f"{P}J001,{P}P01,{P}C01,,,,,1000,m,2001-03-15,취소,(예시)\n", encoding="utf-8")
-    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
-    assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
-    assert _job(P + "J001")["status"] == "취소"
     capsys.readouterr()
+
+
+@pytest.mark.fn("B-MIG-01", "B-MIG-04", "B-MIG-06")
+def test_load_jobs_does_not_change_a_cancelled_job(tmp_path, capsys, clean_db):
+    """DEF-QA3-010 · D-313 — DB 에서 `취소` 인 Job 은 배치도 바꾸지 않는다(화면은 취소된 Job 의 어떤 값도 못 고친다, F-JOB-02).
+    파일의 상태도 `취소` 일 때: 값이 전부 같으면 「변경 없음」(쓰지 않는다 · 다시 돌려도 같다 — G-15), 하나라도 다르면 그 행을
+    건너뛰고 오류 리포트 · 종료코드 1. 읽은 행 = 적재 + 변경 없음 + 오류."""
+    by = P + "cancel"
+    folder = _load_clean(tmp_path, by)
+    conn.x("update job set status = '취소', updated_by = 't3-screen' where job_no = %s", (P + "J001",))   # 화면에서 취소한 Job (실적·롤·출하 없음)
+    stamp = lambda: one("select updated_at, updated_by, xmin::text as version from job where job_no = %s", (P + "J001",))  # noqa: E731
+    before, touched = _job(P + "J001"), stamp()
+    head = CLEAN["job.csv"].splitlines()[0] + "\n"
+    row = f"{P}J001,{P}P01,{P}C01,{P}PL1,{P}AN1,{P}INK1,{P}EQ1,%s,m,2001-03-15,취소,(예시)\n"
+    other = f"{P}J002,{P}P01,{P}C01,,,,,500,m,2001-03-20,완료,(예시)\n"
+    capsys.readouterr()
+
+    # 파일도 `취소` 인데 수량이 다르다 (QA3 의 재현: 1000 → 999) — 그 행만 건너뛰고 오류. 다른 Job 은 그대로 적재된다
+    (folder / "job.csv").write_text(head + row % "999" + other, encoding="utf-8")
+    reason = (f"job.csv 2행 [{P}J001]: 취소된 Job 은 바꾸지 않는다 — 파일과 DB 가 다른 칸: order_qty (파일 '999' ≠ DB '1000.000') "
+              f"(F-JOB-02 · 취소된 작업지시는 수정할 수 없다)")
+    assert migration.COMMANDS["validate"](folder) == 1                      # 검증이 미리 알린다 (쓰지 않는다)
+    assert reason in capsys.readouterr().out
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    out = capsys.readouterr().out
+    assert reason in out and "판정: FAIL — 읽음 3 · 적재 2 · 오류 1 · 변경 없음 0" in out   # job 2행 + job_lot 1행 = 적재 2 + 오류 1
+    assert (_job(P + "J001"), stamp()) == (before, touched)                 # 수량·수정자·행 버전까지 그대로
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (2, 1, 1)
+    assert f"2행 [{P}J001]" in log["error_detail"] and "바꾸지 않는다" in log["error_detail"]
+    assert migration.COMMANDS["report"](None, by=by) == 1                   # 리포트에도 오류로 남는다
+    assert "취소된 Job 은 바꾸지 않는다" in capsys.readouterr().out
+
+    # 인쇄 기준 칸을 비운 것도 다른 값이다 (고치기 전에는 이 행이 rc 0 으로 덮어써졌다)
+    (folder / "job.csv").write_text(head + f"{P}J001,{P}P01,{P}C01,,,,,1000,m,2001-03-15,취소,(예시)\n", encoding="utf-8")
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    assert "다른 칸: plate_code (파일 빈 칸 ≠ DB" in capsys.readouterr().out
+    assert (_job(P + "J001"), stamp()) == (before, touched)
+
+    # 값이 전부 같으면 변경 없음 — 오류가 아니고 쓰지도 않는다. 다시 돌려도 같다
+    (folder / "job.csv").write_text(head + row % "1000.0" + other, encoding="utf-8")
+    assert migration.COMMANDS["validate"](folder) == 0
+    out = capsys.readouterr().out
+    assert "오류 0건 · 변경 없음 1건" in out and f"job.csv 2행 [{P}J001]" in out
+    for _ in range(2):
+        assert migration.COMMANDS["load-jobs"](folder, by=by) == 0
+        out = capsys.readouterr().out
+        assert "판정: PASS — 읽음 3 · 적재 2 · 오류 0 · 변경 없음 1 · sys_migration_log 2줄" in out
+        assert "취소된 Job 이고 파일 값 = DB 값" in out and f"job.csv 2행 [{P}J001]" in out
+        assert (_job(P + "J001"), stamp()) == (before, touched)
+    log = [g for g in logs(by) if g["source_file"] == "job.csv"][-1]
+    assert (log["read_count"], log["loaded_count"], log["error_count"]) == (2, 1, 0)
+    assert log["read_count"] == log["loaded_count"] + 1 + log["error_count"]
+    assert log["error_detail"].startswith("변경 없음 1행") and f"2행 [{P}J001]" in log["error_detail"]
+    assert migration.COMMANDS["report"](folder, by=by) == 0
+    capsys.readouterr()
+
+    # 되살리기(파일의 상태가 `등록`·`완료`)는 여전히 그 사유로 막힌다 (D-309 ②)
+    (folder / "job.csv").write_text(head + (row % "1000").replace(",취소,", ",완료,"), encoding="utf-8")
+    assert migration.COMMANDS["load-jobs"](folder, by=by) == 1
+    assert "취소된 Job 은 되살리지 않는다 — status: '완료'" in capsys.readouterr().out
+    assert (_job(P + "J001"), stamp()) == (before, touched)
 
 
 @pytest.mark.fn("B-MIG-03")

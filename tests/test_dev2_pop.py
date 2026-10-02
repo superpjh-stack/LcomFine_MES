@@ -3,13 +3,18 @@
 기대값은 contracts/function-list.md 의 계약 문장이다. 권한: 생산·현장 = 입력 · 관리자·품질 = 조회 (설계도 §6).
 POP 의 시작·종료·정지는 사람이 누르는 기록이다.
 """
+import threading
+import time
+
 import pytest
 
 from lcomfine.app import nav
+from lcomfine.app.routers import job as job_router
+from lcomfine.app.routers import pop as pop_router
 from lcomfine.db import conn
 
 from test_dev2_helpers import (HTML, World, change_logs, client, count, decode_barcode, err, finish, ok, one,
-                               scan_input, start)
+                               pause_after, scan_input, start)
 
 WORK, STOPS, LABELS = (nav.path_of(s) for s in ("POP-01", "POP-02", "POP-03"))
 
@@ -317,3 +322,131 @@ def test_pop_channel_survives_the_redirect_after_a_write(w):
     assert page.status_code == 200 and 'class="ch-pop"' in page.text and 'id="made"' in page.text
     r = c.post(WORK + "/start", data={"job_no": w.job_no}, headers={**HTML, "referer": f"http://testserver{WORK}"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == WORK                       # 채널 없이 열었으면 그대로
+
+
+# ── 작업 시작과 Job 취소·마감이 겹칠 때 (DEF-QA2-004 · D-211) ────────────
+_CLOSE = {"취소": "C", "완료": "D"}       # Job 번호는 주소에 들어간다 — 접미는 영문으로
+
+
+def _close(closing: str, job_no: str):
+    """F-JOB-03 취소 · F-JOB-02 마감(`완료`) — 작업지시 화면이 부르는 그대로 (생산 역할)."""
+    c = client("prod")
+    if closing == "취소":
+        return c.post(f"{nav.path_of('JOB-01')}/{job_no}/cancel")
+    return c.post(f"{nav.path_of('JOB-01')}/{job_no}", data={"status": "완료"})
+
+
+def _job_state(job_id: int) -> tuple:
+    return (one("select status from job where job_id = %s", (job_id,))["status"],
+            count("select count(*) as n from work_result where job_id = %s", (job_id,)))
+
+
+def _drop_job_logs(w) -> None:
+    """이 묶음의 Job 을 취소·마감하며 남긴 변경 로그 — `World.cleanup` 은 개발1 화면의 로그를 모른다."""
+    conn.x("delete from sys_access_log where log_type = '변경' and target like %s", (f"job:{w.tag}%",))
+
+
+@pytest.mark.fn("F-POP-01")
+@pytest.mark.parametrize("closing", ["취소", "완료"])
+def test_work_start_waits_for_a_cancel_or_close_in_flight_and_then_refuses(w, monkeypatch, closing):
+    """취소·마감이 Job 행을 잠그고 아직 커밋하지 않은 동안 들어온 작업 시작은 **기다렸다가** 바뀐 상태를 보고 422.
+
+    고치기 전에는 트랜잭션 밖에서 읽은 `등록` 을 믿고 실적을 넣어 200 이었다(닫힌 Job 에 열린 실적). 양쪽 다 실제 API 다 —
+    취소·마감을 잠금 직후에 세워 두고(`job.lock_job` 뒤) 그 사이에 작업 시작을 보낸다."""
+    job_id, job_no = w.new_job(f"WAIT{_CLOSE[closing]}")
+    got: dict = {}
+    entered, release = pause_after(monkeypatch, job_router, "lock_job")
+    closer = threading.Thread(target=lambda: got.update(close=_close(closing, job_no)))
+    starter = threading.Thread(target=lambda: got.update(start=client("field").post(
+        WORK + "/start", data={"job_no": job_no, "equipment_code": w.eq_code})))
+    try:
+        closer.start()
+        assert entered.wait(10)                                               # 취소·마감이 Job 행을 잠갔다 (아직 커밋 전)
+        starter.start()
+        time.sleep(1.0)
+        assert starter.is_alive()                                             # 작업 시작은 그 트랜잭션이 끝나기를 기다린다
+        assert _job_state(job_id) == ("등록", 0)                              # 아직 아무것도 커밋되지 않았다
+    finally:
+        release.set()
+        for th in (closer, starter):
+            if th.ident is not None:
+                th.join(timeout=20)
+        _drop_job_logs(w)
+    assert not closer.is_alive() and not starter.is_alive()
+    assert got["close"].status_code == 200, got["close"].text
+    body = err(got["start"])                                                  # 둘 중 하나만 통과한다
+    assert body["message"] == f"{closing} 상태의 Job 은 작업을 시작할 수 없습니다"
+    assert body["fields"] == [{"name": job_no, "reason": f"상태 {closing}"}]
+    assert _job_state(job_id) == (closing, 0)                                 # 닫힌 Job 에 실적이 없다
+
+
+@pytest.mark.fn("F-POP-01")
+@pytest.mark.parametrize("closing", ["취소", "완료"])
+def test_cancel_or_close_waits_for_a_work_start_in_flight_and_then_refuses(w, monkeypatch, closing):
+    """반대 순서 — 작업 시작이 Job 행을 잠그고(`for share`) 실적을 넣는 동안 들어온 취소·마감은 기다렸다가 그 실적을 세고 422."""
+    job_id, job_no = w.new_job(f"HOLD{_CLOSE[closing]}")
+    got: dict = {}
+    entered, release = pause_after(monkeypatch, pop_router, "assert_job_open")
+    starter = threading.Thread(target=lambda: got.update(start=client("field").post(
+        WORK + "/start", data={"job_no": job_no, "equipment_code": w.eq_code})))
+    closer = threading.Thread(target=lambda: got.update(close=_close(closing, job_no)))
+    try:
+        starter.start()
+        assert entered.wait(10)                                               # 작업 시작이 Job 행을 잠갔다 (실적은 아직 커밋 전)
+        closer.start()
+        time.sleep(1.0)
+        assert closer.is_alive()
+    finally:
+        release.set()
+        for th in (starter, closer):
+            if th.ident is not None:
+                th.join(timeout=20)
+        _drop_job_logs(w)
+    assert not closer.is_alive() and not starter.is_alive()
+    ok(got["start"], "작업 시작")
+    body = err(got["close"])
+    assert ("작업 실적" in body["message"]) and _job_state(job_id) == ("등록", 1)
+
+
+@pytest.mark.fn("F-POP-01")
+@pytest.mark.parametrize("closing", ["취소", "완료"])
+def test_work_start_racing_with_cancel_or_close_lets_exactly_one_through(w, closing):
+    """실제 동시 요청 — 화면의 시작 폼이 보내는 값(Job · 생산 LOT · 설비)과 취소·마감을 같이 출발시킨다.
+
+    매번 **정확히 하나만** 200 이어야 한다: 시작이 이기면 Job 은 `등록` · 실적 1건, 취소·마감이 이기면 Job 은 닫히고 실적 0건.
+    교착이 나면 그 요청이 503 이라 여기서 걸린다(`[200, 422]` 가 아니다)."""
+    starter, closer = client("field"), client("prod")
+    outcomes: dict[str, int] = {}
+    try:
+        for n in range(25):
+            job_id, job_no = w.new_job(f"RACE{_CLOSE[closing]}{n}")
+            lot_no = f"{job_no}-L"
+            conn.x("insert into job_lot (job_id, lot_no, created_by) values (%s, %s, 't2-test')", (job_id, lot_no))
+            got: dict[str, int] = {}
+            gate = threading.Barrier(2)
+
+            def go_start():
+                gate.wait()
+                got["start"] = starter.post(WORK + "/start", data={"job_no": job_no, "lot_no": lot_no,
+                                                                   "equipment_code": w.eq_code}).status_code
+
+            def go_close():
+                gate.wait()
+                url = f"{nav.path_of('JOB-01')}/{job_no}"
+                got["close"] = (closer.post(url + "/cancel") if closing == "취소"
+                                else closer.post(url, data={"status": "완료"})).status_code
+
+            threads = [threading.Thread(target=go_start), threading.Thread(target=go_close)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join(timeout=30)
+            assert not any(th.is_alive() for th in threads), f"시도 {n}: 30초 안에 끝나지 않았다 (교착?)"
+            assert sorted(got.values()) == [200, 422], f"시도 {n}: {got} · Job {_job_state(job_id)} · 그때까지 {outcomes}"
+            expected = ("등록", 1) if got["start"] == 200 else (closing, 0)
+            assert _job_state(job_id) == expected, f"시도 {n}: {got}"
+            key = "시작이 먼저" if got["start"] == 200 else f"{closing}가 먼저"
+            outcomes[key] = outcomes.get(key, 0) + 1
+    finally:
+        _drop_job_logs(w)
+    assert sum(outcomes.values()) == 25

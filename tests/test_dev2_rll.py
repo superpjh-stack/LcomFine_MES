@@ -4,13 +4,17 @@
 이미 소진·출하된 롤은 다시 쓸 수 없다(422).
 """
 import re
+import threading
+import time
 
 import pytest
 
 from lcomfine.app import lineage, nav
+from lcomfine.app.routers import job as job_router
 from lcomfine.db import conn
 
 from test_dev2_helpers import (HTML, TEST_BY, World, change_logs, client, count, decode_barcode, err, finishing, ok, one,
+                               pause_after,
                                slit, splice)
 
 FIN, SLT, HIS = (nav.path_of(s) for s in ("RLL-01", "RLL-02", "RLL-03"))
@@ -178,6 +182,43 @@ def test_finishing_and_slitting_are_blocked_for_closed_jobs(w):
     conn.x("update job set status = '등록' where job_id = %s", (job_id,))
     assert 'id="slit-form"' in c.get(SLT, params={"no": p}, headers=HTML).text
     assert len(slit(finishing(p), 2)) == 2 and _state(q) == "재고"
+
+
+@pytest.mark.fn("F-RLL-01", "F-RLL-02", "F-RLL-04")
+def test_finishing_and_slitting_wait_for_a_close_in_flight_and_then_refuse(w, monkeypatch):
+    """마감(F-JOB-02 `완료`)이 Job 행을 잠그고 아직 커밋하지 않은 동안 들어온 후가공·splice·슬리팅은 기다렸다가 422 (D-208 의 `for share`).
+
+    DEF-QA2-004 와 같은 꼴인지 본 것 — 여기는 판정이 롤을 만드는 트랜잭션 **안에** 있어(`lineage._assert_job_open`) 창이 없다.
+    양쪽 다 실제 API 다: 마감을 잠금 직후에 세워 두고 그 사이에 롤 등록을 보낸다. 반대 순서(롤 등록이 먼저)는 둘 다 200 이 맞다 —
+    마감은 롤이 있는 것을 막지 않는다."""
+    orders = nav.path_of("JOB-01")
+    job_id, job_no = w.new_job("INFLIGHT")
+    p, q = (w.print_roll([w.lot], job_no=job_no) for _ in range(2))
+    rolls_before, edges_before = _rolls(w), len(w.genealogy())
+    try:
+        for path, data in ((FIN, {"roll_no": p}), (FIN + "/splice", {"roll_no": [p, q]}), (SLT, {"roll_no": p, "count": "2"})):
+            got: dict = {}
+            entered, release = pause_after(monkeypatch, job_router, "lock_job")
+            closer = threading.Thread(target=lambda: got.update(close=client("prod").post(f"{orders}/{job_no}", data={"status": "완료"})))
+            maker = threading.Thread(target=lambda path=path, data=data: got.update(make=client("field").post(path, data=data)))
+            try:
+                closer.start()
+                assert entered.wait(10)                                                                # 마감이 Job 행을 잠갔다 (아직 커밋 전)
+                maker.start()
+                time.sleep(1.0)
+                assert maker.is_alive(), path                                                          # 롤 등록은 그 트랜잭션이 끝나기를 기다린다
+            finally:
+                release.set()
+                for th in (closer, maker):
+                    if th.ident is not None:
+                        th.join(timeout=20)
+            assert not closer.is_alive() and not maker.is_alive()
+            assert got["close"].status_code == 200, got["close"].text
+            assert err(got["make"])["message"] == "완료 상태의 Job 에는 롤을 만들 수 없습니다", path
+            assert (_rolls(w), len(w.genealogy())) == (rolls_before, edges_before) and (_state(p), _state(q)) == ("재고", "재고")
+            ok(client("prod").post(f"{orders}/{job_no}", data={"status": "등록"}), "마감 되돌리기")       # 다음 경로를 위해 다시 연다
+    finally:
+        conn.x("delete from sys_access_log where log_type = '변경' and target = %s", (f"job:{job_no}",))
 
 
 @pytest.mark.fn("F-RLL-01", "F-RLL-04")

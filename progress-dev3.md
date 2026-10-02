@@ -125,6 +125,14 @@ uv run python -m lcomfine.migration <validate|load-master|load-print-std|load-jo
 - QA 의 `tools/e2e/run_e2e.py`(G-22)는 돌리지 않았다.
 - `job_lot.csv` 는 D-311 의 대상이 아니다 — 롤이 달린 Job 의 생산 LOT 행은 지금처럼 upsert 된다(값이 같아도 `updated_by = migration` 으로 다시 쓴다). 막을지는 정해진 것이 없다(D-309 ⓒ).
 
+## 2-F. 웨이브 D 3차 — DEF-QA3-010 (이관이 취소 Job 갱신) · 2026-10-03 실측 (수정 담당이 혼자 돌며 개발3 파일을 고침)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 취소 Job 의 적재 (D-313) | DB 에서 `취소` 인 Job — 파일 값 전부 같으면 「변경 없음」(쓰지 않음), 하나라도 다르면 그 행 건너뛰고 오류(`취소된 Job 은 바꾸지 않는다 — 파일과 DB 가 다른 칸: …`) · rc 1. 되살리기 사유는 전과 같다. `read = loaded + 변경 없음 + error` 유지 | `uv run pytest -q tests/test_qa3_ops.py::test_migration_does_not_change_a_cancelled_job tests/test_dev3_migration.py` → 19 passed · gate-full G-15 10/10 |
+| 바꾼 개발 테스트 | `test_load_jobs_does_not_revive_…` 의 마지막 블록(「`취소` 그대로 다시 적재하는 것은 된다」 — 인쇄 기준 칸을 비운 파일에 rc 0 기대 = 바로 이 결함의 동작)을 떼어 `test_load_jobs_does_not_change_a_cancelled_job` 로 새 규칙의 기대값으로 | 위와 같음 |
+| 계약 | `function-list.md` B-MIG-04 · `migration-files.md` §1 「덮어쓰지 않는 것」 · §5 #4 에 D-313 문장 | `uv run python tools/gen_contracts.py --check` → 렌더본 = 원본 · `make check-trace` G-01·G-02 PASS |
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 | # | 누구에게 | 무엇 | 왜 |

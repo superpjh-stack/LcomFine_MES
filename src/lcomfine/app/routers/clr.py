@@ -28,6 +28,8 @@ router = APIRouter()
 
 PATH = nav.path_of("CLR-01")
 MIX_TOTAL = Decimal("100")
+#: 합을 어떻게 세는지 — 422 의 사유와 화면 안내에 같은 문장을 쓴다 (D-209: 판정은 저장되는 값으로)
+MIX_RULE = "비율은 소수 셋째 자리까지 저장한다(넘는 자리는 반올림) · 합은 저장되는 값으로 센다"
 MIX_BLANK_ROWS = 3          # 배합비 입력 화면의 빈 행 수
 
 
@@ -140,11 +142,15 @@ def record_create(request: Request, job_no: str = Form(""), color_name: str = Fo
 @router.post(PATH + "/{id}/mix")                                          # F-CLR-02 배합비 등록
 def mix_replace(request: Request, id: str, component_name: list[str] = Form(default=[]),  # noqa: A002 — 계약의 경로 이름
                 ratio_pct: list[str] = Form(default=[]), user: rbac.User = rbac.require_fn("F-CLR-02")):
-    """그 조색 기록의 배합비 행(성분·비율)을 **통째로** 바꿔 넣는다. 비율 합이 100 이 아니면 422."""
+    """그 조색 기록의 배합비 행(성분·비율)을 **통째로** 바꿔 넣는다. 비율 합이 100 이 아니면 422.
+
+    합은 **저장되는 값**(소수 셋째 자리 — 넘는 자리는 반올림, D-209)으로 센다. 그래서 `33.3333 + 33.3333 + 33.3334` 는 99.999 다 —
+    사유에 그 규칙과, 반올림된 행의 「입력 → 저장되는 값」 을 함께 보인다(왜 100 이 아닌지 사용자가 알 수 있게)."""
     rec = _record(path_id(id))
     if len(component_name) != len(ratio_pct):
         raise bad("성분과 비율의 개수가 다릅니다", "배합비", f"성분 {len(component_name)} · 비율 {len(ratio_pct)}")
     mix: list[tuple[str, Decimal]] = []
+    rounded: list[dict] = []                            # 소수 셋째 자리를 넘어 반올림된 행 — 합이 어긋났을 때 사유에 보인다
     for n, (comp, ratio) in enumerate(zip(component_name, ratio_pct), start=1):
         if not (comp or "").strip() and not (ratio or "").strip():
             continue                                    # 화면의 빈 행
@@ -152,10 +158,14 @@ def mix_replace(request: Request, id: str, component_name: list[str] = Form(defa
         pct = decimal_of(ratio, f"{n}행 비율", required=True, positive=True, digits=RATIO)
         if pct > MIX_TOTAL:
             raise bad("비율은 100 이하여야 합니다", f"{n}행 비율", str(pct))
+        typed = ratio.strip().replace(",", "")
+        if Decimal(typed) != pct:                       # `decimal_of` 가 담기는 값으로 바꿔 돌려줬다 (D-209)
+            rounded.append({"name": f"{n}행 비율", "reason": f"입력 {typed[:40]} → 저장되는 값 {pct}"})
         mix.append((name, pct))
     total = sum((p for _, p in mix), Decimal("0"))
     if total != MIX_TOTAL:
-        raise bad("배합비의 합이 100 이 아닙니다", "배합비 합", f"{total} (행 {len(mix)}개)")
+        raise http.validation_error("배합비의 합이 100 이 아닙니다", fields=[
+            {"name": "배합비 합", "reason": f"{total} (행 {len(mix)}개) — {MIX_RULE}"}, *rounded])
     with conn.tx() as cur:
         cur.execute("delete from color_record_mix where color_record_id = %s", (rec["color_record_id"],))
         for seq, (name, pct) in enumerate(mix, start=1):

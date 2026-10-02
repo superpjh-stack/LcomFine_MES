@@ -219,6 +219,30 @@ def job_of(job_no: str | None) -> dict:
     return job
 
 
+JOB_OPEN = "등록"       # job.status — 작업을 시작할 수 있는 Job (취소·완료 Job 은 422, D-202)
+
+
+def closed_job(status: str, job_no: str) -> Exception:
+    """422 — `등록` 이 아닌(취소·완료) Job 에는 작업을 시작하지 못한다."""
+    return bad(f"{status} 상태의 Job 은 작업을 시작할 수 없습니다", job_no, f"상태 {status}")
+
+
+def assert_job_open(cur, job_id: int, job_no: str) -> None:
+    """실적을 넣는 **그 트랜잭션 안에서** Job 행을 `for share` 로 잠그고 상태를 다시 본다(DEF-QA2-004 · D-211).
+
+    바깥에서 읽은 상태는 화면에 보일 문장을 고르는 데만 쓴다 — 그 읽기와 실적 INSERT 사이에 취소·마감이 끝날 수 있다.
+    취소·마감(`routers/job.py` 의 `lock_job`)은 같은 행을 `for update` 로 잠그므로 둘 중 하나만 통과한다:
+    여기가 먼저 잠그면 취소·마감은 이 커밋을 기다렸다가 실적을 세어 422, 취소·마감이 먼저면 여기가 기다렸다가 바뀐 상태를 보고 422.
+    잠금은 쓰기가 아니다(P5 는 D2 에 쓰지 않는다 — G-05). 이 트랜잭션은 이 뒤에 `job` 행을 고치지 않는다(잠금 올리기 없음 — 교착 없음).
+    """
+    cur.execute("select status from job where job_id = %s for share", (job_id,))
+    now = cur.fetchone()
+    if now is None:
+        raise bad("없는 Job 번호입니다", "Job 번호", job_no)
+    if now["status"] != JOB_OPEN:
+        raise closed_job(now["status"], job_no)
+
+
 # ── POP-01 작업 실적 ────────────────────────────────────────────────────
 @router.get(nav.path_of("POP-01"), response_class=HTMLResponse)          # F-POP-03 작업 실적 조회
 def work_list(request: Request, no: str = "", day: str = "", roll: str = "",
@@ -251,8 +275,8 @@ def work_list(request: Request, no: str = "", day: str = "", roll: str = "",
 def work_start(request: Request, job_no: str = Form(""), lot_no: str = Form(""), equipment_code: str = Form(""),
                note: str = Form(""), user: rbac.User = rbac.require_fn("F-POP-01")):
     job = job_of(job_no)
-    if job["status"] != "등록":
-        raise bad(f"{job['status']} 상태의 Job 은 작업을 시작할 수 없습니다", job["job_no"], f"상태 {job['status']}")
+    if job["status"] != JOB_OPEN:                                         # 빠른 거절 — 판정은 아래 트랜잭션 안에서 한 번 더 한다
+        raise closed_job(job["status"], job["job_no"])
     job_lot_id = None
     lot = text_of(lot_no, "생산 LOT")
     if lot:
@@ -268,6 +292,7 @@ def work_start(request: Request, job_no: str = Form(""), lot_no: str = Form(""),
     if eq is None and equipment_id is not None:
         process_id = conn.q1("select process_id from equipment where equipment_id = %s", (equipment_id,))["process_id"]
     with conn.tx() as cur:
+        assert_job_open(cur, job["job_id"], job["job_no"])                # Job 행을 잠그고 상태를 다시 본다 — 취소·마감과 겹쳐도 하나만 통과
         cur.execute(
             """insert into work_result (job_id, job_lot_id, process_id, equipment_id, status, worker, note)
                values (%s, %s, %s, %s, '진행', %s, %s) returning work_result_id""",

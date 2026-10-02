@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import importlib
 import logging
-import re
 import secrets
 from urllib.parse import quote
 
@@ -79,17 +78,20 @@ def create_app() -> FastAPI:
 
     # ── 라우터 include (모듈명 = nav.MODULES) ──
     registered: set[tuple[str, str]] = set()
-    include_errors: list[str] = []
+    include_errors: list[str] = []          # 원문까지 — 서버 쪽(`app.state` · check-routes · 서버 로그)만 본다
+    include_error_names: list[str] = []     # `/health` 에 싣는 것 — 모듈과 예외 종류뿐 (예외 문구는 인증 없는 응답에 싣지 않는다, D-32)
     for module in nav.MODULES:
         try:
             mod = importlib.import_module(f"lcomfine.app.routers.{module}")
-        except Exception as exc:  # noqa: BLE001 — 임포트 실패를 숨기지 않는다: /health 와 게이트에 그대로 나온다
+        except Exception as exc:  # noqa: BLE001 — 임포트 실패를 숨기지 않는다: /health(모듈·예외 종류)와 게이트·서버 로그(원문)에 나온다
             log.exception("라우터 임포트 실패: %s", module)
             include_errors.append(f"{module}: {type(exc).__name__}: {exc}")
+            include_error_names.append(f"{module}: {type(exc).__name__}")
             continue
         r = getattr(mod, "router", None)
         if r is None:
             include_errors.append(f"{module}: router 없음")
+            include_error_names.append(f"{module}: router 없음")
             continue
         app.include_router(r)
         for route in r.routes:
@@ -159,27 +161,27 @@ def create_app() -> FastAPI:
         erp_adapter = erp.adapter()
         return erp_adapter.status() if kind == "status" else erp_adapter.send(kind, {})
 
-    # ── /health (인증 없이 열린다 — 접속 문자열의 비밀번호는 가린다) ──
+    # ── /health (인증 없이 열린다 — 상태값과 건수만 싣는다. 접속 문자열·호스트·사용자·DB 이름은 **가리는 것이 아니라 싣지 않는다**, D-32) ──
     @app.get("/health")
     def health() -> JSONResponse:
         try:
             conn.ping()
             db_ok, db_reason = True, ""
-        except conn.DbUnavailable as exc:   # 원문(소켓 경로·호스트)은 인증 없는 응답에 싣지 않는다 — 서버 로그에만
+        except conn.DbUnavailable as exc:   # 원문(소켓 경로·호스트)은 인증 없는 응답에 싣지 않는다 — 서버 로그에만 (비밀번호는 conn 이 가린다)
             log.error("/health — DB 연결 실패: %s", exc)
             db_ok, db_reason = False, "DB 연결 실패 — 원인은 서버 로그에 있다"
         fns = contracts.functions()
         body = {
             "status": "ok" if db_ok and not include_errors else "degraded",
             "system": nav.SYSTEM_NAME,
-            "db": {"ok": db_ok, "dsn": re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", conn.dsn()), "reason": db_reason},
+            "db": {"ok": db_ok, "reason": db_reason},
             "groups": len(nav.GROUPS),
             "menus": len(nav.MENUS),
             "screens": len(nav.SCREENS),
             "functions": sum(1 for f in fns if not f.is_batch),
             "batch_functions": sum(1 for f in fns if f.is_batch),
             "placeholders": len(app.state.placeholder_paths),
-            "router_include_errors": include_errors,
+            "router_include_errors": include_error_names,
         }
         return JSONResponse(body, status_code=200 if db_ok else 503)
 

@@ -24,6 +24,8 @@ tx()                                # 컨텍스트 매니저 — with conn.tx() 
 ```
 - DSN 은 `LCOMFINE_PG_DSN`(기본 `postgresql:///lcomfine_db`). **DB 연결 실패는 삼키지 않는다** → `DbUnavailable` → 503 `서비스 일시 중단`.
 - 롤 생성 + 계보 행, 출하 승인 + COA 채번처럼 **같이 성공하거나 같이 실패해야 하는 것은 `tx()` 하나**에 넣는다. `numbering.next(..., cur=cur)` · `lineage.*(cur, …)` 가 그 커서를 받는다.
+- **Job 의 상태·실적 수에 기대는 쓰기는 쓰는 트랜잭션 안에서 Job 행을 잠그고 다시 본다**(트랜잭션 밖에서 읽은 값은 화면 문장을 고르는 데만 쓴다). `job` 행을 고치는 쪽(수정·마감·취소 — `routers/job.py` 의 `lock_job`)은 `for update`, 그 Job 에 무엇을 붙이는 쪽(작업 시작 `pop.assert_job_open` · 생산 LOT `job.share_job` · 후가공·슬리팅 `lineage._assert_job_open`)은 `for share`. 겹치면 하나만 통과한다. `for share` 를 잡은 트랜잭션은 `job` 행을 고치지 않는다(잠금 올리기 없음), 한 트랜잭션은 Job 행을 하나만 잠그고 순서는 롤·실적 행 → Job 행 → 채번 카운터다(교착 없음 — D-107 · D-109 · D-208 · D-211).
+- `DbUnavailable` 의 사유 문구는 서버 로그에 남는다 — `conn` 이 접속 문자열의 비밀번호를 가린다(D-32). 접속 문자열을 응답·로그에 직접 찍지 않는다.
 - 제약 위반(`psycopg.errors.IntegrityError`)과 DB 가 담을 수 없는 입력값(`psycopg.DataError` — NUL 글자 · 자릿수 초과)은 잡지 않아도 `main.py` 가 422 로 바꾼다. 다만 사람이 읽을 문장을 주려면 먼저 검사해 `http.validation_error` 를 낸다.
 
 ## 2. 메뉴 · 계약 · 권한 · 렌더 (아키텍트 구현)

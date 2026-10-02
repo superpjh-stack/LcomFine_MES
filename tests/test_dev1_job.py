@@ -13,8 +13,11 @@ from datetime import date, timedelta
 import pytest
 
 from lcomfine.app import numbering
+from lcomfine.app.routers import job as job_router
+from lcomfine.app.routers import pop as pop_router
 from lcomfine.db import conn
 from test_dev1_helpers import TEST_BY, change_logs, cleanup, client, master_ids, tag
+from test_dev2_helpers import pause_after      # 동시 요청 테스트의 「잠금 직후에 세워 두기」 — 한 벌만 둔다
 
 ORDERS, MAPPING = "/job/orders", "/job/mapping"
 
@@ -243,6 +246,78 @@ def test_close_waits_for_a_work_result_being_inserted(t, ids):
     assert _job(job_no)["status"] == "등록"
 
 
+def _overlap(first, second, entered, release) -> tuple:
+    """`first` 가 잠금을 쥔 채 서 있는 동안 `second` 를 보낸다 → (first 응답, second 응답). `second` 가 기다리지 않으면 실패."""
+    got: dict = {}
+    a = threading.Thread(target=lambda: got.update(first=first()))
+    b = threading.Thread(target=lambda: got.update(second=second()))
+    try:
+        a.start()
+        assert entered.wait(10)                                               # 앞 요청이 Job 행을 잠갔다 (아직 커밋 전)
+        b.start()
+        time.sleep(1.0)
+        assert b.is_alive()                                                   # 뒤 요청은 그 트랜잭션이 끝나기를 기다린다
+    finally:
+        release.set()
+        for th in (a, b):
+            if th.ident is not None:
+                th.join(timeout=20)
+    assert not a.is_alive() and not b.is_alive()
+    return got["first"], got["second"]
+
+
+@pytest.mark.fn("F-JOB-02")
+def test_item_and_quantity_change_waits_for_a_work_start_in_flight_and_then_refuses(t, ids, monkeypatch):
+    """「작업 실적이 생기기 전에만 품목·수량을 바꾼다」 — 작업 시작(F-POP-01)이 실적을 넣는 중에 들어온 수량 변경은
+    기다렸다가 그 실적을 세고 422 (D-109). 고치기 전에는 트랜잭션 밖에서 센 0건을 믿고 200 이었다. 양쪽 다 실제 API."""
+    c = client("prod")
+    job_no = _create(c, ids)
+    job_id = _job(job_no)["job_id"]
+    entered, release = pause_after(monkeypatch, pop_router, "assert_job_open")
+    work_id = None
+    try:
+        started, changed = _overlap(lambda: client("field").post("/pop/work/start", data={"job_no": job_no}),
+                                    lambda: c.post(f"{ORDERS}/{job_no}", data={"order_qty": "777", "note": "같이 보낸 비고 (예시)"}),
+                                    entered, release)
+        assert started.status_code == 200, started.text
+        work_id = started.json()["work_id"]
+        assert changed.status_code == 422 and "작업 실적이 있는 작업지시는 품목·수량을 바꿀 수 없습니다" in changed.json()["message"]
+        assert changed.json()["fields"] == [{"name": "지시 수량", "reason": "작업 실적 1건"}]
+        row = _job(job_no)                                                    # 같은 요청의 다른 값도 저장되지 않았다
+        assert str(row["order_qty"]) == "1200.500" and row["note"] == "비고 (예시)" and change_logs("F-JOB-02", f"job:{job_no}") == 0
+        assert conn.q1("select count(*) as n from work_result where job_id = %s", (job_id,))["n"] == 1
+        assert c.post(f"{ORDERS}/{job_no}", data={"note": "실적 뒤 비고 (예시)"}).status_code == 200   # 잠기는 것은 품목·수량뿐이다
+    finally:
+        conn.x("delete from sys_access_log where target = %s", (f"work_result:{work_id}",))
+
+
+@pytest.mark.fn("F-JOB-02", "F-JOB-03")
+def test_update_waits_for_a_cancel_in_flight_and_then_refuses(t, ids, monkeypatch):
+    """취소는 되돌릴 수 없다(D-103) — 취소가 커밋되기 직전에 들어온 수정(마감 포함)이 취소된 Job 을 고치거나 되살리지 않는다 (D-109)."""
+    c = client("prod")
+    for data in ({"status": "완료"}, {"note": "취소와 겹친 비고 (예시)"}):
+        job_no = _create(c, ids)
+        entered, release = pause_after(monkeypatch, job_router, "lock_job")
+        cancelled, updated = _overlap(lambda: client("admin").post(f"{ORDERS}/{job_no}/cancel"),
+                                      lambda: c.post(f"{ORDERS}/{job_no}", data=data), entered, release)
+        assert cancelled.status_code == 200, cancelled.text
+        assert updated.status_code == 422 and updated.json()["message"] == "취소된 작업지시는 수정할 수 없습니다", data
+        row = _job(job_no)
+        assert row["status"] == "취소" and row["note"] == "비고 (예시)" and row["updated_by"] == "admin"
+        assert change_logs("F-JOB-02", f"job:{job_no}") == 0
+
+
+@pytest.mark.fn("F-JOB-03")
+def test_two_cancels_at_once_only_one_goes_through(t, ids, monkeypatch):
+    c = client("prod")
+    job_no = _create(c, ids)
+    entered, release = pause_after(monkeypatch, job_router, "lock_job")
+    first, second = _overlap(lambda: client("admin").post(f"{ORDERS}/{job_no}/cancel"),
+                             lambda: c.post(f"{ORDERS}/{job_no}/cancel"), entered, release)
+    assert first.status_code == 200 and second.status_code == 422 and second.json()["message"] == "이미 취소된 작업지시입니다"
+    assert _job(job_no)["updated_by"] == "admin" and change_logs("F-JOB-03", f"job:{job_no}") == 1
+
+
 @pytest.mark.fn("F-JOB-02")
 def test_closed_job_cannot_get_a_print_roll_through_an_open_work_result(t, ids):
     """개발2 실측(progress-dev2.md §3-10)의 순서를 그대로 밟는다: 실적이 열린 채 마감 → 실적 종료 → 마감된 Job 에 인쇄 롤.
@@ -415,6 +490,45 @@ def test_mapping_attaches_production_lots(t, ids):
     assert c.post(f"{ORDERS}/{other}/cancel").status_code == 200              # 취소된 Job 에는 붙이지 못한다
     assert c.post(MAPPING, data={"job_no": other}).status_code == 422
     assert conn.q1("select count(*) as n from job_lot where job_id = (select job_id from job where job_no = %s)", (other,))["n"] == 0
+
+
+@pytest.mark.fn("F-JOB-06")
+@pytest.mark.parametrize("closing", ["취소", "완료"])
+def test_mapping_waits_for_a_cancel_or_close_in_flight_and_then_refuses(t, ids, monkeypatch, closing):
+    """`등록` 상태의 Job 에만 생산 LOT 을 붙이거나 계획을 고친다(D-104) — 취소·마감이 커밋되기 직전에 들어와도 그렇다 (D-109).
+    고치기 전에는 트랜잭션 밖에서 읽은 `등록` 을 믿고 닫힌 Job 에 생산 LOT 을 붙였다(200). 양쪽 다 실제 API."""
+    c = client("admin")
+
+    def close(job_no: str):
+        closer = client("prod")
+        if closing == "취소":
+            return closer.post(f"{ORDERS}/{job_no}/cancel")
+        return closer.post(f"{ORDERS}/{job_no}", data={"status": "완료"})
+
+    message = f"{closing} 상태의 작업지시에는 생산 LOT 을 붙이거나 계획을 바꿀 수 없습니다"
+
+    job_no = _create(c, ids)                                                  # ① 새 생산 LOT 붙이기
+    entered, release = pause_after(monkeypatch, job_router, "lock_job")
+    closed, mapped = _overlap(lambda: close(job_no), lambda: c.post(MAPPING, data={"job_no": job_no, "planned_roll_count": "3"}),
+                              entered, release)
+    assert closed.status_code == 200, closed.text
+    assert mapped.status_code == 422 and mapped.json()["message"] == message
+    assert _job(job_no)["status"] == closing
+    assert conn.q1("select count(*) as n from job_lot where job_id = %s", (_job(job_no)["job_id"],))["n"] == 0
+    assert conn.q1("select count(*) as n from sys_access_log where function_id = 'F-JOB-06' and detail like %s",
+                   (f"%{job_no}%",))["n"] == 0                                # 붙지 않았고 변경 로그도 없다
+
+    job_no = _create(c, ids)                                                  # ② 이미 붙은 생산 LOT 의 계획 수정
+    lot_no = c.post(MAPPING, data={"job_no": job_no, "planned_roll_count": "3"}).json()["lot_no"]
+    entered, release = pause_after(monkeypatch, job_router, "lock_job")
+    closed, mapped = _overlap(lambda: close(job_no),
+                              lambda: c.post(MAPPING, data={"job_no": job_no, "lot_no": lot_no, "planned_roll_count": "9"}),
+                              entered, release)
+    assert closed.status_code == 200, closed.text
+    assert mapped.status_code == 422 and mapped.json()["message"] == message
+    lot = conn.q1("select planned_roll_count, updated_by from job_lot where lot_no = %s", (lot_no,))
+    assert lot == {"planned_roll_count": 3, "updated_by": None}
+    assert change_logs("F-JOB-06", f"job_lot:{lot_no}") == 1                  # 등록 한 줄뿐
 
 
 # ── F-JOB-07 Job-Lot-Roll 매핑 조회 ─────────────────────────────────────

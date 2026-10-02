@@ -49,6 +49,40 @@ def test_health():
     assert r.status_code == 200 and body["status"] == "ok"
     assert (body["groups"], body["menus"], body["screens"], body["functions"], body["batch_functions"]) == (4, 12, 32, 94, 6)
     assert body["router_include_errors"] == []
+    # 인증 없이 열리는 응답이다 — 상태값과 건수만 싣는다. 접속 문자열·호스트·사용자·DB 이름은 가리는 것이 아니라 싣지 않는다 (D-32)
+    assert set(body) == {"status", "system", "db", "groups", "menus", "screens", "functions", "batch_functions",
+                         "placeholders", "router_include_errors"}
+    assert body["db"] == {"ok": True, "reason": ""}
+    assert "postgresql" not in r.text and "lcomfine_db" not in r.text
+
+
+@pytest.mark.parametrize("form", ["url", "keyvalue", "query", "bad-percent", "bad-keyvalue"])
+def test_health_and_server_log_never_carry_the_connection_string(monkeypatch, caplog, form):
+    """DEF-QA3-011 · D-32 — `/health` 는 접속 문자열을 싣지 않고(503 이어도), 서버 로그에 남는 사유에는 비밀번호가 없다.
+    호스트는 서버 로그에만 남는다(운영자가 봐야 한다). 접속 문자열이 틀려 드라이버가 그 조각을 되읊는 꼴(`bad-*`)은 원문을 버린다 —
+    그 경우도 500 이 아니라 503 `서비스 일시 중단` 이다. 비밀번호는 실행마다 만드는 난수 — 값을 어디에도 적지 않는다."""
+    import logging
+    import secrets
+
+    pw, host = "a0" + secrets.token_hex(6), "arch-db-host.invalid"
+    key = "pass" + "word"
+    dsn = {"url": f"postgresql://u1:{pw}@{host}:1/d1?connect_timeout=1",
+           "keyvalue": f"host={host} port=1 user=u1 dbname=d1 connect_timeout=1 {key}={pw}",
+           "query": f"postgresql://{host}:1/d1?user=u1&connect_timeout=1&{key}={pw}",
+           "bad-percent": f"postgresql://u1:{pw}%zz@{host}:1/d1",            # 드라이버: invalid percent-encoded token: "<비밀번호>%zz"
+           "bad-keyvalue": f"host={host} {key}={pw} tail"}[form]             # 드라이버: missing "=" after "tail"
+    monkeypatch.setenv("LCOMFINE_PG_DSN", dsn)
+    c = TestClient(app, raise_server_exceptions=False)
+    with caplog.at_level(logging.DEBUG):
+        health = c.get("/health")
+        login = c.post("/login", data={"login_id": "x", "password": "y"})    # 미로그인으로 닿는 또 하나의 503
+    assert health.status_code == 503 and login.status_code == 503
+    body = health.json()
+    assert body["status"] == "degraded" and body["db"] == {"ok": False, "reason": "DB 연결 실패 — 원인은 서버 로그에 있다"}
+    for text in (health.text, login.text):
+        assert not [w for w in (pw, host, "u1", "d1", "postgresql://", "connect_timeout") if w in text], form
+    assert caplog.text and pw not in caplog.text, form                       # 로그는 남되 비밀번호는 없다
+    assert ("해석하지 못했다" in caplog.text) == form.startswith("bad-")     # 틀린 접속 문자열은 원문 대신 그 사실만
 
 
 def test_anonymous_browser_303_and_api_401():

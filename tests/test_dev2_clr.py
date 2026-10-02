@@ -6,7 +6,7 @@ import pytest
 
 from lcomfine.app import nav
 
-from test_dev2_helpers import World, change_logs, client, count, err, ok, one
+from test_dev2_helpers import HTML, World, change_logs, client, count, err, ok, one
 
 REC = nav.path_of("CLR-01")
 
@@ -90,6 +90,22 @@ def test_mix_is_replaced_as_a_whole_and_must_sum_to_100(w):
         assert err(c.post(f"{REC}/{rid}/mix", data={"component_name": names, "ratio_pct": ratios}))["fields"][0]["name"] == name
     assert _mix(rid) == [("가", 33.3), ("나", 33.3), ("다", 33.4)]                 # 실패하면 그대로
     err(c.post(f"{REC}/999999999/mix", data={"component_name": ["가"], "ratio_pct": ["100"]}), 404)
+
+    # 왜 99.999 인지 사유가 말한다 (D-209 — 판정 규칙은 그대로, 설명만) — 저장 자릿수와 반올림된 행의 「입력 → 저장되는 값」
+    body = err(c.post(f"{REC}/{rid}/mix", data={"component_name": ["가", "나", "다"], "ratio_pct": ["33.3333", "33.3333", "33.3334"]}))
+    assert body["message"] == "배합비의 합이 100 이 아닙니다"
+    assert body["fields"][0]["reason"].startswith("99.999 (행 3개)")
+    assert "소수 셋째 자리까지 저장한다(넘는 자리는 반올림)" in body["fields"][0]["reason"]
+    assert body["fields"][1:] == [{"name": "1행 비율", "reason": "입력 33.3333 → 저장되는 값 33.333"},
+                                  {"name": "2행 비율", "reason": "입력 33.3333 → 저장되는 값 33.333"},
+                                  {"name": "3행 비율", "reason": "입력 33.3334 → 저장되는 값 33.333"}]
+    body = err(c.post(f"{REC}/{rid}/mix", data={"component_name": ["가", "나"], "ratio_pct": ["60", "30"]}))
+    assert len(body["fields"]) == 1 and body["fields"][0]["reason"].startswith("90 (행 2개)")     # 반올림이 없으면 행 사유도 없다
+    ok(c.post(f"{REC}/{rid}/mix", data={"component_name": ["가", "나"], "ratio_pct": ["33.3334", "66.6666"]}))   # 저장되는 값의 합이 100 이면 된다
+    assert _mix(rid) == [("가", 33.333), ("나", 66.667)]
+    page = c.get(REC, params={"job_no": w.job_no, "edit": rid}, headers=HTML).text                # 입력칸도 셋째 자리까지
+    assert page.count('name="ratio_pct"') >= 2 and page.count('name="ratio_pct"') == page.count('step="0.001" min="0" max="100"')
+    assert "소수 셋째 자리까지 저장한다(넘는 자리는 반올림)" in page
 
 
 @pytest.mark.fn("F-CLR-03")

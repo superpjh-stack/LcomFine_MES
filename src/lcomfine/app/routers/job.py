@@ -94,12 +94,27 @@ def job_of_input(job_no: str | None) -> dict:
     return row
 
 
-def lock_job(cur, job_id: int) -> None:
-    """Job 행을 잠근다 — 마감·취소를 판정하고 상태를 바꾸는 동안 그 Job 에 작업 실적·롤이 새로 붙지 못한다.
+def lock_job(cur, job_id: int) -> str:
+    """Job 행을 잠그고 **지금의 상태**를 돌려준다 — 수정·마감·취소를 판정하고 바꾸는 동안 그 Job 에 작업 실적·롤이 새로 붙지 못한다.
 
-    실적·롤을 넣는 쪽은 `job` 을 가리키는 FK 검사로 이 행에 `for key share` 를 건다. `for update` 는 그것과 부딪히므로
-    아직 커밋되지 않은 실적·롤이 있으면 그 트랜잭션이 끝날 때까지 기다린 뒤에 센다(읽기만 한다 — D5·D6 에 쓰지 않는다)."""
-    cur.execute("select job_id from job where job_id = %s for update", (job_id,))
+    실적·롤을 넣는 쪽은 `job` 을 가리키는 FK 검사로 이 행에 `for key share` 를 걸고, 작업 시작(F-POP-01)·후가공·슬리팅은
+    `for share` 로 잠근 뒤 상태를 본다(D-208 · D-211). `for update` 는 둘 다와 부딪히므로 아직 커밋되지 않은 실적·롤이 있으면
+    그 트랜잭션이 끝날 때까지 기다린 뒤에 센다(읽기만 한다 — D5·D6 에 쓰지 않는다).
+    트랜잭션 밖에서 읽은 상태·건수는 낡았을 수 있다 — 판정은 이 잠금 뒤에 다시 읽은 값으로 한다(D-109)."""
+    cur.execute("select status from job where job_id = %s for update", (job_id,))
+    return cur.fetchone()["status"]
+
+
+def share_job(cur, job_id: int) -> str:
+    """Job 행을 `for share` 로 잠그고 지금의 상태를 돌려준다 — 생산 LOT 을 붙이는 동안 그 Job 이 취소·마감되지 않는다(D-109).
+    `job` 행을 고치지 않는 쓰기(`job_lot`)가 쓴다. 이 잠금을 잡은 트랜잭션은 `job` 행을 고치지 않는다(잠금 올리기 없음)."""
+    cur.execute("select status from job where job_id = %s for share", (job_id,))
+    return cur.fetchone()["status"]
+
+
+def work_count(cur, job_id: int) -> int:
+    cur.execute("select count(*) as n from work_result where job_id = %s", (job_id,))
+    return cur.fetchone()["n"]
 
 
 def open_works(cur, job_id: int) -> list[dict]:
@@ -235,8 +250,9 @@ def create_order(request: Request, user: rbac.User = rbac.require_fn("F-JOB-01")
 def update_order(request: Request, job_no: str, user: rbac.User = rbac.require_fn("F-JOB-02"),
                  form: FormData = Depends(form_data)):
     job = job_of_path(job_no)
+    cancelled = bad("취소된 작업지시는 수정할 수 없습니다", "상태", ST_CANCEL)
     if job["status"] == ST_CANCEL:
-        raise bad("취소된 작업지시는 수정할 수 없습니다", "상태", ST_CANCEL)
+        raise cancelled
     sets: dict[str, Any] = {}
     for spec in REFS:
         if spec[0] in form:                                           # 폼에 없는 항목은 그대로 둔다
@@ -261,15 +277,25 @@ def update_order(request: Request, job_no: str, user: rbac.User = rbac.require_f
         raise http.validation_error("바꿀 값이 없습니다")
     # 작업 실적이 생긴 뒤에는 품목·수량을 못 바꾼다. 진행 여부는 저장하지 않고 D5 에서 읽는다
     locked = [label for key, label in (("item_id", "품목"), ("order_qty", "지시 수량"), ("qty_unit", "수량 단위")) if key in sets]
-    if locked and job["work_count"] > 0:
-        raise http.validation_error("작업 실적이 있는 작업지시는 품목·수량을 바꿀 수 없습니다",
-                                    fields=[{"name": n, "reason": f"작업 실적 {job['work_count']}건"} for n in locked])
+
+    def has_work(n: int) -> Exception:
+        return http.validation_error("작업 실적이 있는 작업지시는 품목·수량을 바꿀 수 없습니다",
+                                     fields=[{"name": name, "reason": f"작업 실적 {n}건"} for name in locked])
+
+    if locked and job["work_count"] > 0:                              # 빠른 거절 — 판정은 아래 트랜잭션 안에서 한 번 더 한다
+        raise has_work(job["work_count"])
     assign = ", ".join(f"{c} = %s" for c in sets)
     with conn.tx() as cur:
+        # 위에서 읽은 상태·실적 수는 낡았을 수 있다(그 사이에 취소·작업 시작이 끝난다) — Job 행을 잠그고 다시 본다 (D-109)
+        if lock_job(cur, job["job_id"]) == ST_CANCEL:
+            raise cancelled
+        if locked:
+            n = work_count(cur, job["job_id"])
+            if n:
+                raise has_work(n)
         if sets.get("status") == ST_DONE:
             # 열린 실적이 있는 채로 마감하면, 그 실적을 종료할 때(F-POP-02) 마감된 Job 에 인쇄 롤이 생긴다.
             # 종료 쪽에서 막으면 열린 실적을 닫을 길이 없으므로 마감 쪽에서 막는다 (D-107 · D-208)
-            lock_job(cur, job["job_id"])
             still_open = open_works(cur, job["job_id"])
             if still_open:
                 raise http.validation_error(
@@ -288,10 +314,12 @@ def update_order(request: Request, job_no: str, user: rbac.User = rbac.require_f
 @router.post(ORDERS + "/{job_no}/cancel")                             # F-JOB-03 작업지시 취소
 def cancel_order(request: Request, job_no: str, user: rbac.User = rbac.require_fn("F-JOB-03")):
     job = job_of_path(job_no)
+    already = bad("이미 취소된 작업지시입니다", "상태", ST_CANCEL)
     if job["status"] == ST_CANCEL:
-        raise bad("이미 취소된 작업지시입니다", "상태", ST_CANCEL)
+        raise already
     with conn.tx() as cur:
-        lock_job(cur, job["job_id"])                                  # 세는 것과 바꾸는 것을 한 트랜잭션에 — 그 사이에 실적이 끼어들지 못한다
+        if lock_job(cur, job["job_id"]) == ST_CANCEL:                 # 세는 것과 바꾸는 것을 한 트랜잭션에 — 그 사이에 실적이 끼어들지 못한다
+            raise already                                             # 같은 취소가 겹쳐 들어왔다 — 뒤쪽은 422
         cur.execute("""select (select count(*) from work_result w where w.job_id = %(id)s) as work_count,
                               (select count(*) from roll r where r.job_id = %(id)s) as roll_count""", {"id": job["job_id"]})
         now = cur.fetchone()                                          # 종료 여부와 무관하다 — 진행 중인 실적 하나만 있어도 취소하지 못한다
@@ -366,8 +394,18 @@ def save_mapping(request: Request, user: rbac.User = rbac.require_fn("F-JOB-06")
     planned_rolls = int_of(form, "planned_roll_count", "계획 롤 수", positive=True)
     planned_length = decimal_of(form, "planned_length_m", "계획 길이 (m)", positive=True)
     note = text_of(form, "note", "비고", max_len=1000)
-    if job["status"] != ST_OPEN:
-        raise bad(f"{job['status']} 상태의 작업지시에는 생산 LOT 을 붙이거나 계획을 바꿀 수 없습니다", "상태", job["status"])
+
+    def not_open(status: str) -> Exception:
+        return bad(f"{status} 상태의 작업지시에는 생산 LOT 을 붙이거나 계획을 바꿀 수 없습니다", "상태", status)
+
+    def assert_open(cur) -> None:
+        """쓰는 트랜잭션 안에서 Job 행을 잠그고 상태를 다시 본다 — 취소·마감과 겹쳐도 닫힌 Job 에 생산 LOT 이 붙지 않는다 (D-109)."""
+        status = share_job(cur, job["job_id"])
+        if status != ST_OPEN:
+            raise not_open(status)
+
+    if job["status"] != ST_OPEN:                                      # 빠른 거절 — 판정은 쓰는 트랜잭션 안에서 한 번 더 한다
+        raise not_open(job["status"])
     back = f"{MAPPING}?no={job['job_no']}"
     if lot_no:                                                        # 계획값 수정
         lot = conn.q1("select job_lot_id, job_id from job_lot where lot_no = %s", (lot_no,))
@@ -383,12 +421,15 @@ def save_mapping(request: Request, user: rbac.User = rbac.require_fn("F-JOB-06")
         if not sets:
             raise http.validation_error("바꿀 값이 없습니다")
         assign = ", ".join(f"{c} = %s" for c in sets)
-        conn.x(f"update job_lot set {assign}, updated_at = now(), updated_by = %s where job_lot_id = %s",
-               [*sets.values(), user.login_id, lot["job_lot_id"]])
+        with conn.tx() as cur:
+            assert_open(cur)
+            cur.execute(f"update job_lot set {assign}, updated_at = now(), updated_by = %s where job_lot_id = %s",
+                        [*sets.values(), user.login_id, lot["job_lot_id"]])
         audit.log_change(request, user, "F-JOB-06", f"job_lot:{lot_no}", f"매핑 계획 수정 (Job {job['job_no']})")
         return http.saved(request, f"생산 LOT {lot_no} 의 계획을 수정했습니다", back=back,
                           data={"job_no": job["job_no"], "lot_no": lot_no, "created": False})
     with conn.tx() as cur:
+        assert_open(cur)                                              # Job 행 → 채번 카운터 순서로 잠근다
         lot_no = numbering.next(numbering.JOB_LOT, cur=cur)
         cur.execute("""insert into job_lot (job_id, lot_no, planned_roll_count, planned_length_m, note, created_by)
                        values (%s, %s, %s, %s, %s, %s)""",

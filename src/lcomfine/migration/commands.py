@@ -10,9 +10,9 @@
 - 적재는 업무 코드 기준 upsert — 다시 돌려도 행 수가 같다(G-15).
 - 실행 × 파일마다 `sys_migration_log` 한 줄(읽은 수 · 적재 수 · 오류 수 · 오류 내용). `validate` · `report` 는 아무 테이블에도 쓰지 않는다.
 - 형식이 틀리거나 참조 코드가 없는 행은 **그 행만** 건너뛰고 오류 목록에 남긴다. 오류가 하나라도 있으면 종료코드 1.
-- **화면이 422 로 막는 변경은 배치도 하지 않는다**(D-309 · D-311 · `_check_rules`): 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 —
-  파일 값이 DB 값과 같으면 **변경 없음**(오류 아님 · 쓰지 않는다), 하나라도 다르면 그 행은 건너뛰고 오류로 리포트
-  (줄 번호·키·다른 칸·사유), 종료코드 1. `validate` 도 같은 기준으로 미리 알린다.
+- **화면이 422 로 막는 변경은 배치도 하지 않는다**(D-309 · D-311 · D-313 · `_check_rules`): 작업 실적·롤·출하가 있는 Job 과
+  **DB 에서 `취소` 인 Job** 은 덮어쓰지 않는다 — 파일 값이 DB 값과 같으면 **변경 없음**(오류 아님 · 쓰지 않는다), 하나라도 다르면
+  그 행은 건너뛰고 오류로 리포트(줄 번호·키·다른 칸·사유), 종료코드 1. `validate` 도 같은 기준으로 미리 알린다.
 - 건수: 읽은 행 = 적재 + 변경 없음 + 오류 행. `sys_migration_log` 의 `loaded_count` · `error_count` 에는 변경 없음을 넣지 않고,
   그 수와 키는 `error_detail` 첫 줄 `변경 없음 n행 — …` 로 남긴다(컬럼이 따로 없다).
 - 오류를 삼키지 않는다. 예상하지 못한 예외(DB 연결 실패 등)는 그대로 올라간다.
@@ -39,7 +39,7 @@ DECISION_HISTORY = "D-01"
 NOT_COLLECTED = "미수집"
 #: 로그·화면에 낱낱이 적는 오류 줄 수의 상한 (나머지는 "외 n건" 으로 센다 — 숨기지 않는다)
 MAX_ERROR_LINES = 100
-#: 적재하지 않았지만 오류도 아닌 행 (D-311) — 출력의 열 이름이고 `sys_migration_log.error_detail` 첫 줄의 머리말
+#: 적재하지 않았지만 오류도 아닌 행 (D-311 · D-313) — 출력의 열 이름이고 `sys_migration_log.error_detail` 첫 줄의 머리말
 UNCHANGED = "변경 없음"
 _UNCHANGED_LINE = re.compile(rf"^{UNCHANGED} (\d+)행")
 
@@ -140,7 +140,9 @@ def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = 
     job.csv (F-JOB-01~03 · D-103)
       ① 작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다(D-309 · D-311). 파일의 값이 DB 의 값과 **전부 같으면 변경 없음** —
          오류가 아니고 쓰지도 않는다(`res.unchanged`). 하나라도 다르면 오류 — 사유에 다른 칸을 적는다
-      ② 취소된 Job 을 `등록`·`완료` 로 되살리지 않는다(취소는 되돌릴 수 없다)
+      ② DB 에서 `취소` 인 Job 은 바꾸지 않는다(D-313 — 화면은 취소된 Job 의 어떤 값도 못 고친다, F-JOB-02). ① 과 같은 방식이다:
+         값이 전부 같으면 변경 없음, 하나라도 다르면 오류. 파일의 상태가 `등록`·`완료` 면 되살리기다(취소는 되돌릴 수 없다) —
+         파일의 상태도 `취소` 인데 다른 칸(수량 등)이 다르면 사유에 그 칸을 적는다
       ③ 품목이 `제품` 이 아니면 작업지시할 수 없다
     anilox.csv (F-PRT-05·06)
       ④ 선수·셀 용적은 0 보다 커야 한다
@@ -156,15 +158,19 @@ def _check_rules(res: FileResult, query, *, item_types: dict[str, str] | None = 
             used = [f"{label} {have[key]}{unit}" for key, label, unit in
                     (("works", "작업 실적", "건"), ("rolls", "롤", "개"), ("shipments", "출하", "건")) if have and have[key]]
             item_type = item_types.get(v["item_code"])
+            cancelled = bool(have) and have["status"] == CANCELLED
+            different = _differences(res.spec, v, have) if used or cancelled else []
+            if (used or cancelled) and not different:  # 값이 같다 — 변경 없음. 적재하지 않는다(수정 일시·수정자도 그대로)
+                res.unchanged.append(row)
+                continue
             if used:
-                different = _differences(res.spec, v, have)
-                if not different:                      # 값이 같다 — 변경 없음. 적재하지 않는다(수정 일시·수정자도 그대로)
-                    res.unchanged.append(row)
-                    continue
                 reason = (f"작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — {' · '.join(used)} · "
                           f"파일과 DB 가 다른 칸: {', '.join(different)} (F-JOB-02)")
-            elif have and have["status"] == CANCELLED and v["status"] != CANCELLED:
+            elif cancelled and v["status"] != CANCELLED:
                 reason = f"취소된 Job 은 되살리지 않는다 — status: {v['status']!r} (F-JOB-02 · 취소는 되돌릴 수 없다)"
+            elif cancelled:                            # 파일의 상태도 `취소` — 다른 칸을 고치려는 행 (D-313)
+                reason = (f"취소된 Job 은 바꾸지 않는다 — 파일과 DB 가 다른 칸: {', '.join(different)} "
+                          f"(F-JOB-02 · 취소된 작업지시는 수정할 수 없다)")
             elif item_type is not None and item_type != PRODUCT:
                 reason = f"item_code: {PRODUCT} 품목만 작업지시할 수 있다 — {v['item_code']!r} 는 {item_type} (F-JOB-01)"
             else:
@@ -194,7 +200,7 @@ def _unchanged_note(spec: FileSpec, rows: list[Row]) -> str:
         return ""
     lines = _unchanged_lines(spec, rows)
     more = f" … 외 {len(lines) - MAX_ERROR_LINES}건" if len(lines) > MAX_ERROR_LINES else ""
-    return (f"{UNCHANGED} {len(rows)}행 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님): "
+    return (f"{UNCHANGED} {len(rows)}행 — 작업 실적·롤·출하가 있거나 취소된 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님): "
             f"{', '.join(lines[:MAX_ERROR_LINES])}{more}")
 
 
@@ -255,7 +261,7 @@ def validate(directory: Path, *, by: str | None = None) -> int:
             for e in res.errors:
                 print(f"  {res.spec.filename} {e.text()}")
     if unchanged:
-        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (적재해도 덮어쓰지 않는다 · 오류 아님)")
+        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있거나 취소된 Job 이고 파일 값 = DB 값 (적재해도 덮어쓰지 않는다 · 오류 아님)")
         for res in results:
             for line in _unchanged_lines(res.spec, res.unchanged):
                 print(f"  {res.spec.filename} {line}")
@@ -325,7 +331,7 @@ def _load_file(command: str, spec: FileSpec, directory: Path, by: str | None) ->
                 cur.execute("select job_id from job where job_no = any(%s) order by job_id for update",
                             ([row.values["job_no"] for row in res.rows],))
             _check_rules(res, lambda sql, params: cur.execute(sql, params).fetchall())
-            out.unchanged = list(res.unchanged)                   # 값이 같은 「실적 있는 Job」 — 쓰지 않는다
+            out.unchanged = list(res.unchanged)                   # 값이 같은 「실적 있는 Job」 · 「취소된 Job」 — 쓰지 않는다
             for row in res.rows:
                 params = [ids[c.ref][row.values[c.name]] if c.ref and row.values[c.name] is not None
                           else row.values[c.name] for c in spec.cols]
@@ -361,7 +367,7 @@ def _print_load(command: str, title: str, directory: Path, results: list[LoadRes
             for e in r.errors:
                 print(f"  {r.spec.filename} {e.text()}")
     if unchanged:
-        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있는 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님)")
+        print(f"\n{UNCHANGED} {unchanged}건 — 작업 실적·롤·출하가 있거나 취소된 Job 이고 파일 값 = DB 값 (덮어쓰지 않았다 · 오류 아님)")
         for r in results:
             for line in _unchanged_lines(r.spec, r.unchanged):
                 print(f"  {r.spec.filename} {line}")

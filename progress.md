@@ -4,12 +4,66 @@
 
 ## 지금 해야 할 것
 
-1. **웨이브 D 3차 — 재검에서 나온 새 결함 3건** (G-21 의 실패 6건이 수용 기준, QA 파일은 고치지 않는다):
-   - **DEF-QA2-004 (중대)** — 작업 시작과 Job 취소·마감을 동시에 보내면 둘 다 200, 닫힌 Job 에 열린 작업 실적이 생긴다(실서버 100회 중 취소 41 · 마감 35 재현). `routers/pop.py` `work_start` 가 Job 상태를 트랜잭션 밖에서 읽는다 → 실적을 넣는 트랜잭션 안에서 Job 행을 잠그고 상태를 다시 본다. 같은 꼴(생산 LOT 붙이기 × 취소·마감, 후가공·슬리팅 × 마감)도 같이 본다.
-   - **DEF-QA3-010 (경미)** — 이관 `load-jobs` 가 취소된 Job 의 수량을 rc 0 으로 갱신(화면의 같은 수정은 422).
-   - **DEF-QA3-011 (경미, 배포에 따라 중대)** — `/health` 가 로그인 없이 DB 접속 문자열(호스트·사용자·DB, 키-값·쿼리 꼴이면 비밀번호까지)을 보인다.
-2. 그 뒤 `make gate-full` 전건 PASS → QA 리포트에 새 결함 3건의 재검 줄 → 연속 2회전 변화 없음 → 종료(goal.md §4.4).
-3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-107 · D-202 · D-208 · D-209(배합비 합의 반올림) · D-303/D-309/D-311 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+1. **QA 마무리 재검** — 웨이브 D 3차에서 고친 새 결함 3건(DEF-QA2-004 · DEF-QA3-010 · DEF-QA3-011)을 원래 재현 절차로 다시 돌려 리포트에 "재검" 줄을 넣고 요약 표를 갱신한다. 경합 수정이 같은 꼴 ⓐ~ⓓ 에 남긴 틈이 없는지(워커 1개 기준) 본다. 앱은 고치지 않는다.
+2. **종료 판정** — `make gate-full` 전건 PASS 상태로 **연속 2회전 변화 없음**을 확인하면 최종 보고를 쓰고 멈춘다(goal.md §4.4). 변화가 있으면 그 원인부터.
+3. 사람이 정해야 풀리는 것: D-01~D-07 · D-10 · D-12 · D-14 · D-16 · D-17 · D-18 · D-25/D-301 · D-107 · D-109 · D-202 · D-208 · D-209 · D-211 · D-303/D-309/D-311/D-313 · D-401~D-415. Docker 는 데몬이 꺼져 있어 **빌드·기동 미확인**(D-31).
+
+## 2026-10-03 — 웨이브 D 3차 · 오케스트레이터 재실측 (수정 담당 보고와 별도로 직접 실행)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 22 · FAIL 0 · 미검증 0 / 22** — 처음으로 전건 PASS | `make gate-full` (혼자 돌 때 직접 실행 06:3x) |
+| pytest | **1612 passed · 0 failed** | `uv run pytest -q` |
+| QA 파일 무변경 | 수정 라운드 동안 `tests/test_qa*.py` · `tools/check_*.py` · `tools/e2e/` diff 0 | `git diff --stat HEAD -- tests/test_qa*.py tools/check_*.py tools/e2e` |
+| 잔여물 · 교착 | job 0 · roll 0 · work_result 0 · sys_user 4 · sys_permission 48 · `pg_stat_database.deadlocks` 0 | `psql -h /tmp -d lcomfine_db -Atc …` |
+
+## 2026-10-03 — 웨이브 D 3차 완료 (수정 담당 1명 — 개발1·2·3·아키텍트 파일을 차례로) · 직접 실측
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 22 · FAIL 0 · WARN 0 · BLOCKED 0 · 미검증 0 / 22** — G-21 FAIL → PASS | `make gate-full` (06:06 직접 실행 — 원문 아래) |
+| pytest | **1612 passed · 0 failed** (직전 1588 · 6). 새 테스트 18건(개발1 6 · 개발2 10 · 개발3 1 · 아키텍트 1·5꼴) · QA 테스트·검사기 무변경 | `uv run pytest -q` |
+| DEF-QA2-004 (중대) | `routers/pop.py` 작업 시작이 실적을 넣는 트랜잭션 안에서 Job 행 `for share` + 상태 재확인(D-211). 취소·마감(`for update`)과 겹치면 하나만 200. QA 테스트 30번 + 경합 테스트 25번 = 경합 5,650쌍 전부 통과 · 실서버 8021 에 400쌍(0~8ms 늦춤 포함) 둘 다 200 인 것 **0** · 두 순서 다 나옴 · 5xx 0 · `pg_stat_database.deadlocks` 0 | `tests/test_qa2_lineage.py::test_g08_work_start_racing_…` · `tests/test_dev2_pop.py -k "in_flight or racing"` · 스크래치 실서버 스크립트 |
+| 같은 꼴 ⓐ~ⓓ | ⓐ 생산 LOT × 취소·마감 **창 있었음 → 닫음**(D-109 `share_job`) · ⓒ 품목·수량 변경 × 작업 시작 **창 있었음 → 닫음**(D-109 `lock_job` 뒤 재확인; 수정 × 취소 · 취소 × 취소도 함께) · ⓑ 후가공·슬리팅 × 마감 **창 없음**(D-208 — 테스트로 확인) · ⓓ 자재 투입·작업 종료 × 취소 **창 없음**(커밋된 실적이 전제 · 실적 있는 Job 의 취소는 422) | `tests/test_dev1_job.py -k "in_flight or two_cancels"` · `tests/test_dev2_rll.py -k in_flight` |
+| DEF-QA3-010 (경미) | `load-jobs` — DB 에서 `취소` 인 Job 은 값이 전부 같으면 「변경 없음」, 하나라도 다르면 그 행 오류 · rc 1 (D-313). 계약 B-MIG-04 · `migration-files.md` §1·§5 반영 | `tests/test_qa3_ops.py::test_migration_does_not_change_a_cancelled_job` · `tests/test_dev3_migration.py` 19 passed · `gen_contracts.py --check` 렌더본 = 원본 |
+| DEF-QA3-011 (경미) | `/health` 에서 `db.dsn` 을 **뺐다**(상태값·건수만, D-32) · `router_include_errors` 는 모듈·예외 종류만 · `conn` 이 `DbUnavailable` 사유에서 비밀번호를 가리고, 틀린 접속 문자열(드라이버가 조각을 되읊음)은 원문 없이 503. 접속 문자열 7꼴에서 응답에 비밀번호·호스트·사용자·DB 이름 0 · 서버 로그에 비밀번호 0 | `tests/test_qa3_ops.py -k health` 3 passed · `tests/test_arch_smoke.py -k health` 6 passed |
+| D-209 배합비 사유 | 422 사유에 저장 자릿수 규칙 + 반올림된 행의 「입력 → 저장되는 값」 · 입력칸 `step="0.001"` · 판정 규칙 그대로 | `tests/test_dev2_clr.py` 9 passed |
+| 변이 확인 | 잠금·재확인을 프로세스 안에서 빼면(변이 4종) 새 테스트가 각각 실패 — QA 2건 · 개발 11건 | 스크래치 변이 스크립트 (파일은 그대로) |
+| 결정 | D-109(개발1) · D-211(개발2) · D-313(개발3) · D-32(아키텍트) 추가 · D-209 에 설명 한 줄 — 전부 가설, 차단 0 (D 항목 80) | `grep -c "^## D-" decisions.md` |
+| 잔여물 | job 0 · roll 0 · work_result 0 · shipment 0 · job_lot 0 · sys_user 4 · sys_permission 48 · 포트 8021~8023 비어 있음 | `psql -h /tmp -d lcomfine_db -Atc "select count(*) from …"` · `lsof -iTCP:8021` |
+| 미확인 | 워커 여러 개(D-415)에서의 경합 · Docker 컨테이너 로그(D-31) · PostgreSQL 서버 쪽 로그의 접속 정보 | — |
+
+`make gate-full` 판정표 (원문):
+
+```
+게이트 판정 — 엘컴화인 MES · 2026-10-03 06:06 · 시드 재실행 포함
+
+G-01  메뉴 — 묶음 4 · 대메뉴 12 · 중메뉴 32 (nav = 설계도)      PASS  검사 9 전부 PASS
+G-02  기능 — 94 + 이관 6 · 계약 = API = 테스트 · 고아 0       PASS  검사 7 전부 PASS
+G-03  화면 — 중메뉴 32 + 공통 3 전부 200 · placeholder 0    PASS  검사 7 전부 PASS
+G-04  저장소 — D1~D8 ↔ 계약 ↔ 실제 DB                     PASS  검사 15 전부 PASS
+G-05  쓰기 경계 — 프로세스별 쓰는 저장소 · P9·P10 쓰기 0           PASS  검사 9 전부 PASS
+G-06  계보 재현 — §3 예시 roll_genealogy 10행 (API)       PASS  검사 6 전부 PASS
+G-07  추적 — 역방향·정방향 재귀 조회 · 분기 5단 이상                PASS  검사 8 전부 PASS
+G-08  키 연결 — 롤 번호 → 지시·조색·실적·검사·출하 · 채번 한 곳        PASS  검사 9 전부 PASS
+G-09  시드 멱등 — 2회 실행 행 수 diff 0 · (예시) 표기           PASS  검사 3 전부 PASS
+G-10  집계 — 생산·품질·납기 = 독립 SQL 재계산                   PASS  검사 6 전부 PASS
+G-11  빈 화면 — 미수집 / 미확정 (D-nn)                      PASS  검사 14 전부 PASS
+G-12  범위 밖 0 — PLC 수집 · 비전 · AI 없음                 PASS  검사 4 전부 PASS
+G-13  4채널 — POP 스캔 · 모바일 390px · 현황판 새로고침          PASS  검사 15 전부 PASS
+G-14  출력물 5종 — 작업지시서 · 라벨 3 · COA · 바코드            PASS  검사 8 전부 PASS
+G-15  이관 배치 6 — Import 파일 · 멱등 · 리포트               PASS  검사 10 전부 PASS
+G-16  ERP — 어댑터 + 501 명시 · 조용한 폴백 0                PASS  검사 4 전부 PASS
+G-17  RBAC — 48칸 (입력 19 · 조회 24 · 없음 5) · 괄호 조건 2  PASS  검사 10 전부 PASS
+G-18  접근 로그 — 로그인 · 조회 · 변경 · 로그 화면                PASS  검사 7 전부 PASS
+G-19  비밀 — 저장소·문서에 비밀 값 없음                         PASS  검사 8 전부 PASS
+G-20  백업 — make backup · restore-check             PASS  검사 2 전부 PASS
+G-21  빌드 — pytest 전건 · check-routes · /health 200  PASS  pytest passed 1612 · failed 0 · check-routes PASS · /health 200
+G-22  브라우저 한 바퀴 — outputs/e2e 캡처                   PASS  검사 1 전부 PASS · 출처 outputs/qa3-채널보안.md · outputs/e2e 파일 90개
+
+PASS 22 · FAIL 0 · WARN 0 · BLOCKED 0 · 미검증 0 / 전체 22
+※ WARN·미검증은 통과가 아니다. BLOCKED 는 decisions.md 에 D-번호와 사유가 있어야 종료 조건(goal.md §4.4)을 만족한다.
+```
 
 ## 2026-10-03 — QA 재검 완료 (웨이브 D 뒤) · 오케스트레이터 재실측
 

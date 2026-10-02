@@ -170,6 +170,19 @@ svg = printing.barcode_svg(coa_no, height=40, show_text=False)   # height = 막�
 - 전체 `uv run pytest -q` · `make gate` · `check_security.py` · `check_screens.py` 는 돌리지 않았다(병렬 작업 규칙). 돌린 것은 위 표의 명령과 `tests/test_qa1_{functions,errors}.py` · `tests/test_dev3_*.py` · `tests/test_arch_*.py` · `tests/test_dev1_job.py`(456 passed)다.
 - Job 행 잠금(`for share`)이 실제 동시 요청(마감과 슬리팅이 같은 순간)에서 기다리는지는 재지 않았다 — 순차 요청만 쟀다.
 
+## 2-E. 웨이브 D 3차 — DEF-QA2-004 (작업 시작 × Job 취소·마감 경합) · 2026-10-03 실측 (수정 담당이 혼자 돌며 개발2 파일을 고침)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 작업 시작의 잠금 (D-211) | `routers/pop.py` `assert_job_open` — 실적 INSERT 와 같은 트랜잭션에서 Job 행 `for share` + 상태 재확인. 취소·마감(`for update`)과 겹치면 둘 중 하나만 200 | `uv run pytest -q tests/test_dev2_pop.py -k "in_flight or racing"` → 6 passed · QA `tests/test_qa2_lineage.py::test_g08_work_start_racing_…` 2 passed |
+| 반복 | QA 테스트(40회 × 2) 30번 + QA·개발 경합 테스트(130쌍) 25번 = 55번 전부 통과(경합 5,650쌍) · 실서버 8021 에 400쌍(취소·마감을 0~8ms 늦춘 것 포함) — 둘 다 200 인 것 0 · 5xx 0 · 두 순서 다 나옴(시작이 먼저 77·76 / 취소·마감이 먼저 23·24) | 반복 셸 루프 · 스크래치 스크립트(실서버) · 서버는 내렸다 |
+| 교착 | `pg_stat_database.deadlocks` 0 → 0 (전 과정) · 503 0 | `psql -Atc "select deadlocks from pg_stat_database where datname='lcomfine_db'"` |
+| 같은 꼴 ⓑ 후가공·splice·슬리팅 × 마감 | 창 없음(D-208 의 `for share` 가 롤을 만드는 트랜잭션 안) — 마감을 잠금 직후에 세워 두고 보낸 롤 등록 3종이 기다렸다가 422, 롤·계보·부모 상태 그대로 | `tests/test_dev2_rll.py::test_finishing_and_slitting_wait_for_a_close_in_flight_and_then_refuse` |
+| 같은 꼴 ⓓ 자재 투입·작업 종료 × 취소 | 창 없음 — 둘 다 커밋된 실적이 전제이고 실적 1건이라도 있는 Job 의 취소는 잠근 뒤 세어 422(D-107 · `test_dev1_job.py -k cancel`). 코드를 읽어 판단, 별도 경합 테스트는 두지 않았다 | 코드 읽기 |
+| 변이 | `pop.assert_job_open` 을 프로세스 안에서 빈 함수로 바꾸면 QA 2건 + 개발 6건 실패 | 스크래치 변이 스크립트 (파일은 그대로) |
+| 배합비 사유 (D-209 보강) | 422 사유에 「소수 셋째 자리까지 저장한다(넘는 자리는 반올림)」 + 반올림된 행마다 「입력 → 저장되는 값」 · 입력칸 `step="0.001"` · 판정 규칙 그대로 | `uv run pytest -q tests/test_dev2_clr.py` → 9 passed |
+| 테스트 도우미 | `test_dev2_helpers.pause_after` — 실제 함수의 첫 호출이 끝난 직후(잠금을 쥔 채) 세워 두는 도구. 개발1 테스트도 가져다 쓴다(한 벌만) | — |
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 스키마 변경 요청은 없다. 아래는 아키텍트 소유 파일에 대한 것이다 — 전부 우회해 두었고 막힌 것은 없다.
