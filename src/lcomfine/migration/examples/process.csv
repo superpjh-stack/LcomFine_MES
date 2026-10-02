@@ -1,0 +1,4 @@
+process_code,process_name,process_type,sort_no,use_yn
+IMP-PR1,인쇄 (예시),인쇄,1,Y
+IMP-PR2,후가공 (예시),후가공,2,Y
+IMP-PR3,슬리팅 (예시),슬리팅,3,Y

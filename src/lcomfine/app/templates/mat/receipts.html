@@ -1,0 +1,57 @@
+{# MAT-01 입고 — F-MAT-02 입고 조회 · F-MAT-01 입고 등록 (입고 1건 = 원재료 LOT 1개) #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash) }}
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ pui.keep(device) }}
+    {{ ui.field('입고일 (부터)', 'date_from', f.date_from, type='date') }}
+    {{ ui.field('입고일 (까지)', 'date_to', f.date_to, type='date') }}
+    {{ ui.select('품목', 'item_code', item_options, f.item_code, blank='전체') }}
+    {{ ui.field('공급처', 'supplier', f.supplier) }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel" id="form">
+  <h2>입고 등록 <small>원재료 LOT 번호는 저장할 때 발번된다{% if not rule %} — 채번 형식 {{ ui.undecided('D-05') }}{% endif %}</small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('MAT-01') }}" id="receipt-form">
+    {{ ui.select('원재료 품목', 'item_code', item_options, '', required=true) }}
+    {{ ui.field('공급처', 'supplier_name') }}
+    {{ ui.field('공급사 LOT', 'supplier_lot_no') }}
+    {{ ui.field('입고 수량', 'received_qty', '', type='number', required=true, step='any') }}
+    {{ ui.field('단위 (비우면 품목의 단위)', 'qty_unit') }}
+    {{ ui.field('비고', 'note') }}
+  </form>
+  <div class="form-actions">{{ ui.write_button('입고 등록', can_create, form='receipt-form') }}</div>
+  {% if not item_options %}<p class="empty">원재료 품목이 없다 — 기준정보 관리 &gt; 품목 관리에서 구분 `원재료` 품목을 먼저 등록한다.</p>{% endif %}
+</section>
+
+<section class="panel grid-panel">
+  <h2>입고 목록 <small>{{ rows|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>원재료 LOT</th><th>품목</th><th>공급처</th><th>공급사 LOT</th><th>입고 수량</th><th>입고 일시</th><th>등록자</th><th>검사 상태</th><th>라벨</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('MAT-03') }}?no={{ r.lot_no }}"><code>{{ r.lot_no }}</code></a></td>
+        <td>{{ r.item_name }} <code>{{ r.item_code }}</code></td>
+        <td>{{ r.supplier_name|txt }}</td><td>{{ r.supplier_lot_no|txt }}</td>
+        <td class="num">{{ r.received_qty|num(3) }} {{ r.qty_unit }}</td>
+        <td>{{ r.received_at|dt }}</td><td>{{ r.received_by }}</td>
+        <td>{{ pui.state(r.insp_status) }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('MAT-03') }}/{{ r.lot_no }}/label">라벨</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['입고하면 검사 상태는 `대기` 다. 입고검사에서 `합격` 한 LOT 만 투입할 수 있다.', '공급처는 마스터가 없어 글자로 받는다 (D-18).']) }}
+</section>
+{% endblock %}

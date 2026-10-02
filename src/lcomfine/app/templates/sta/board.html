@@ -1,0 +1,83 @@
+{# STA-02 현황판 — F-STA-04 (개발3 · P10 — 읽기만 한다). 오늘의 생산 · 품질 · 납기 요약. 값은 stats.board() = 집계 화면과 같은 함수.
+   `?device=board` 로 열면 조작 없이 자동 새로고침되고(base.html 의 meta refresh · 주기 LCOMFINE_BOARD_REFRESH_SECONDS) 마지막 갱신 시각이 보인다(G-13 · D-19). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "sta/_tables.html" as st %}
+{% set t = board.totals %}
+
+{% block head %}
+{{ st.style() }}
+<style>
+  .board-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px}
+  .board-head h2{margin:0}
+  .board-head .stamp{font-size:.85em;color:var(--muted)}
+  .board-head .stamp b{color:var(--ink)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+  .tile{min-width:0}
+  .tile h2{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .kpis{display:flex;flex-wrap:wrap;gap:8px 20px;margin:4px 0 12px}
+  .kpi{display:flex;flex-direction:column;min-width:0}
+  .kpi span{font-size:.8em;color:var(--muted)}
+  .kpi b{font-size:2em;line-height:1.15;color:var(--head);font-variant-numeric:tabular-nums}
+  .kpi.warn b{color:var(--warn)}
+  .kpi.none b{font-size:1.3em;color:var(--muted);font-weight:400}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel">
+  <div class="board-head">
+    <h2>오늘의 현황 <small>{{ board.today }}</small></h2>
+    <span class="stamp">마지막 갱신 <b>{{ now }}</b>
+      {% if device == 'board' %} · {{ settings.board_refresh_seconds }}초마다 자동 새로고침
+      {% else %} · 자동 새로고침은 현황판 채널에서 켜진다 <a class="btn btn-sm" href="{{ screen.path }}?device=board">현황판으로 열기</a>{% endif %}</span>
+  </div>
+</section>
+
+<div class="tiles">
+  <section class="panel tile">
+    <h2>생산 <small>오늘 종료된 완료 실적</small></h2>
+    {% if t.production %}
+    <div class="kpis">
+      <div class="kpi"><span>실적 건수</span><b>{{ t.production.work_count|num }}</b></div>
+      <div class="kpi"><span>실적 수량</span><b>{{ t.production.output_qty|num(1) }}</b></div>
+      <div class="kpi{% if t.production.scrap_qty %} warn{% endif %}"><span>폐기 수량</span><b>{{ t.production.scrap_qty|num(1) }}</b></div>
+    </div>
+    {% else %}
+    <div class="kpis"><div class="kpi none"><span>오늘 실적</span><b>{{ NOT_COLLECTED }}</b></div></div>
+    {% endif %}
+    {{ st.production(board.production, none) }}
+  </section>
+
+  <section class="panel tile">
+    <h2>품질 <small>오늘 검사</small></h2>
+    {% if t.quality %}
+    <div class="kpis">
+      <div class="kpi"><span>검사 수</span><b>{{ t.quality.inspection_count|num }}</b></div>
+      <div class="kpi{% if t.quality.fail_count %} warn{% endif %}"><span>불합격 수</span><b>{{ t.quality.fail_count|num }}</b></div>
+      <div class="kpi"><span>불합격률</span><b>{{ st.pct(t.quality.fail_rate) }}</b></div>
+      <div class="kpi"><span>평균 ΔE</span><b>{{ t.quality.avg_delta_e|num(2) }}</b></div>
+    </div>
+    {% else %}
+    <div class="kpis"><div class="kpi none"><span>오늘 검사</span><b>{{ NOT_COLLECTED }}</b></div></div>
+    {% endif %}
+    {{ st.quality(board.quality, none) }}
+  </section>
+
+  <section class="panel tile">
+    <h2>납기 <small>오늘이 납기인 Job</small></h2>
+    {% if t.delivery %}
+    <div class="kpis">
+      <div class="kpi"><span>Job 수</span><b>{{ t.delivery.job_count|num }}</b></div>
+      <div class="kpi"><span>준수</span><b>{{ t.delivery.on_time|num }}</b></div>
+      <div class="kpi{% if t.delivery.late %} warn{% endif %}"><span>지연</span><b>{{ t.delivery.late|num }}</b></div>
+      <div class="kpi"><span>미출하</span><b>{{ t.delivery.pending|num }}</b></div>
+      <div class="kpi"><span>준수율</span><b>{{ st.pct(t.delivery.on_time_rate) }}</b></div>
+    </div>
+    {% else %}
+    <div class="kpis"><div class="kpi none"><span>오늘 납기</span><b>{{ NOT_COLLECTED }}</b></div></div>
+    {% endif %}
+    {{ st.delivery(board.delivery, none) }}
+  </section>
+</div>
+{% endblock %}

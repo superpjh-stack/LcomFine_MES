@@ -1,0 +1,5 @@
+item_code,item_name,item_type,spec,unit,use_yn
+IMP-P01,제품 A (예시),제품,,m,Y
+IMP-P02,제품 B (예시),제품,,m,Y
+IMP-R01,원재료 필름 (예시),원재료,,m,Y
+IMP-R02,원재료 잉크 (예시),원재료,,kg,Y

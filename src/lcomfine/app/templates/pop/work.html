@@ -1,0 +1,111 @@
+{# POP-01 작업 실적 — F-POP-03 조회 · F-POP-01 작업 시작 · F-POP-02 작업 종료.
+   작업지시서 바코드(Job 번호)를 스캔하면 그 Job 의 시작 칸이 열린다. 종료하면 인쇄 롤 1개 + 라벨. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash, scan_error) }}
+
+<section class="panel">
+  <h2>작업지시서 스캔 <small>Job 번호 → 작업 시작</small></h2>
+  {{ ui.scan_box(nav.path_of('POP-01'), name='no', label='Job 번호 (작업지시서 바코드)', method='get',
+                 hidden=({'device': device} if device != 'web' else {})) }}
+</section>
+
+{% if job %}
+<section class="panel" id="start">
+  <h2>작업 시작 <small><code>{{ job.job_no }}</code></small></h2>
+  <dl class="kv">
+    <dt>품목</dt><dd>{{ job.item_name }} <code>{{ job.item_code }}</code></dd>
+    <dt>고객</dt><dd>{{ job.customer_name }}</dd>
+    <dt>지시 수량</dt><dd>{{ job.order_qty|num(3) }} {{ job.qty_unit }}</dd>
+    <dt>납기</dt><dd>{{ job.due_date|dt }}</dd>
+    <dt>Job 상태</dt><dd>{{ pui.state(job.status) }}</dd>
+  </dl>
+  {% if job.status == '등록' %}
+  <form class="form-grid" method="post" action="{{ nav.path_of('POP-01') }}/start" id="start-form">
+    <input type="hidden" name="job_no" value="{{ job.job_no }}">
+    <label>생산 LOT
+      <select name="lot_no">
+        <option value="">지정 안 함</option>
+        {% for l in job_lots %}<option value="{{ l.lot_no }}">{{ l.lot_no }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ ui.select('설비', 'equipment_code', equipment_options, job.equipment_code or '', blank='Job 의 계획 설비') }}
+    {{ ui.field('비고', 'note') }}
+  </form>
+  <div class="form-actions">{{ ui.write_button('작업 시작', can_start, form='start-form') }}</div>
+  {% else %}
+  <p class="err big">{{ job.status }} 상태의 Job 은 작업을 시작할 수 없습니다</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if made_label %}
+<section class="panel" id="made">
+  <h2>방금 만든 인쇄 롤 <small><code>{{ made_roll }}</code></small></h2>
+  <div class="form-actions">
+    <a class="btn btn-primary" href="{{ nav.path_of('POP-03') }}/{{ made_roll }}/print">라벨 인쇄</a>
+    <a class="btn" href="{{ nav.path_of('RLL-03') }}?no={{ made_roll }}">롤 이력</a>
+  </div>
+  <div class="label-sheet">{{ made_label }}</div>
+</section>
+{% endif %}
+
+<section class="panel" id="running">
+  <h2>진행 중인 작업 <small>{{ rows|rejectattr('status', 'equalto', '완료')|list|length }}건</small></h2>
+  <div class="work-cards">
+  {% for r in rows if r.status != '완료' %}
+    <div class="work-card">
+      <h3><span>실적 {{ r.work_result_id }} · <code>{{ r.job_no }}</code></span>{{ pui.state(r.status) }}</h3>
+      <dl class="kv">
+        <dt>품목</dt><dd>{{ r.item_name }}</dd>
+        <dt>생산 LOT · 설비</dt><dd>{{ r.job_lot_no|txt }} · {{ r.equipment_name|txt }}</dd>
+        <dt>시작</dt><dd>{{ r.started_at|dt }} · {{ r.worker }}</dd>
+        <dt>투입 LOT</dt><dd>{{ r.input_count }}건</dd>
+      </dl>
+      <div class="row-actions">
+        <a class="btn" href="{{ nav.path_of('MAT-04') }}?work_id={{ r.work_result_id }}">자재 투입</a>
+        <a class="btn" href="{{ nav.path_of('POP-02') }}?work_id={{ r.work_result_id }}">정지 · 폐기</a>
+      </div>
+      <form class="form-grid finish-form" method="post" action="{{ nav.path_of('POP-01') }}/{{ r.work_result_id }}/finish">
+        {{ ui.field('실적 수량', 'output_qty', '', type='number', required=true, step='any') }}
+        {{ ui.field('길이 (m)', 'length_m', '', type='number', step='any') }}
+        {{ ui.field('폭 (mm)', 'width_mm', '', type='number', step='any') }}
+        <label>&nbsp;{{ ui.write_button('작업 종료 · 인쇄 롤 생성', can_finish) }}</label>
+      </form>
+    </div>
+  {% else %}
+    <p class="empty">{{ NOT_COLLECTED }} — 진행 중인 작업이 없다. 작업지시서를 스캔해 시작한다.</p>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="panel grid-panel">
+  <h2>완료한 작업 <small>{{ day|dt }} — {{ rows|selectattr('status', 'equalto', '완료')|list|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>실적</th><th>Job</th><th>품목</th><th>인쇄 롤 · 라벨</th><th>실적 수량</th><th>투입 LOT</th><th>설비</th><th>시작</th><th>종료</th></tr></thead>
+    <tbody>
+    {% for r in rows if r.status == '완료' %}
+      <tr>
+        <td>{{ r.work_result_id }}</td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td>{% if r.roll_no %}<a href="{{ nav.path_of('POP-03') }}/{{ r.roll_no }}/print"><code>{{ r.roll_no }}</code> 라벨</a>{% else %}-{% endif %}</td>
+        <td class="num">{{ r.output_qty|num(3) }} {{ r.qty_unit|txt('') }}</td>
+        <td><a href="{{ nav.path_of('MAT-04') }}?work_id={{ r.work_result_id }}">{{ r.input_count }}건</a></td>
+        <td>{{ r.equipment_name|txt }}</td>
+        <td>{{ r.started_at|dt }}</td>
+        <td>{{ r.ended_at|dt }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['작업 실적 1건 = 인쇄 롤 1개 (D-13). 한 Job 에서 롤이 여러 개면 롤마다 시작·종료한다.',
+               '종료하려면 자재 투입 스캔이 1건 이상 있어야 한다 — 투입 LOT 마다 계보 `투입` 한 줄이 생긴다.',
+               '시작·종료·정지는 사람이 누르는 기록이다.']) }}
+</section>
+{% endblock %}

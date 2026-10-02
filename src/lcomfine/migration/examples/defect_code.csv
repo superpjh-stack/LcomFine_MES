@@ -1,0 +1,3 @@
+defect_code,defect_name,defect_group,use_yn
+IMP-D01,불량 유형 A (예시),,Y
+IMP-D02,불량 유형 B (예시),,Y

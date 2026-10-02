@@ -1,0 +1,66 @@
+{# 실적 현황의 표 3종 — 집계 화면(STA-01)과 현황판(STA-02)이 같이 쓴다. 값은 전부 app/stats.py 가 준 것이다 (개발3)
+   rows 가 비면 `미수집`. 분모가 0 인 비율(None)은 `-` — 0% 로 지어내지 않는다.
+   {% import "sta/_tables.html" as st %} #}
+
+{% macro pct(v) %}{% if v is none %}-{% else %}{{ (v * 100)|num(1) }}%{% endif %}{% endmacro %}
+
+{% macro item(r) %}<code>{{ r.item_code }}</code> {{ r.item_name }}{% endmacro %}
+
+{% macro production(rows, total) %}
+<table class="grid plain fit">
+  <thead><tr><th>품목</th><th>실적 건수</th><th>실적 수량</th><th>폐기 수량</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ item(r) }}</td><td class="num">{{ r.work_count|num }}</td><td class="num">{{ r.output_qty|num(1) }}</td><td class="num">{{ r.scrap_qty|num(1) }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="empty">{{ NOT_COLLECTED }}</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if total %}
+  <tfoot><tr><th>합계</th><td class="num">{{ total.work_count|num }}</td><td class="num">{{ total.output_qty|num(1) }}</td><td class="num">{{ total.scrap_qty|num(1) }}</td></tr></tfoot>
+  {% endif %}
+</table>
+{% endmacro %}
+
+{% macro quality(rows, total) %}
+<table class="grid plain fit">
+  <thead><tr><th>품목</th><th>검사 수</th><th>불합격 수</th><th>불합격률</th><th>평균 ΔE</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ item(r) }}</td><td class="num">{{ r.inspection_count|num }}</td><td class="num">{{ r.fail_count|num }}</td><td class="num">{{ pct(r.fail_rate) }}</td><td class="num">{{ r.avg_delta_e|num(2) }}</td></tr>
+  {% else %}
+    <tr><td colspan="5" class="empty">{{ NOT_COLLECTED }}</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if total %}
+  <tfoot><tr><th>합계</th><td class="num">{{ total.inspection_count|num }}</td><td class="num">{{ total.fail_count|num }}</td><td class="num">{{ pct(total.fail_rate) }}</td><td class="num">{{ total.avg_delta_e|num(2) }}</td></tr></tfoot>
+  {% endif %}
+</table>
+{% endmacro %}
+
+{% macro delivery(rows, total) %}
+<table class="grid plain fit">
+  <thead><tr><th>품목</th><th>Job 수</th><th>준수</th><th>지연</th><th>미출하</th><th>준수율</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ item(r) }}</td><td class="num">{{ r.job_count|num }}</td><td class="num">{{ r.on_time|num }}</td><td class="num">{{ r.late|num }}</td><td class="num">{{ r.pending|num }}</td><td class="num">{{ pct(r.on_time_rate) }}</td></tr>
+  {% else %}
+    <tr><td colspan="6" class="empty">{{ NOT_COLLECTED }}</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if total %}
+  <tfoot><tr><th>합계</th><td class="num">{{ total.job_count|num }}</td><td class="num">{{ total.on_time|num }}</td><td class="num">{{ total.late|num }}</td><td class="num">{{ total.pending|num }}</td><td class="num">{{ pct(total.on_time_rate) }}</td></tr></tfoot>
+  {% endif %}
+</table>
+{% endmacro %}
+
+{# 표가 폭 390px 안에 들어가게 줄을 바꾼다 (G-13) #}
+{% macro style() %}
+<style>
+  table.grid.fit{table-layout:auto}
+  table.grid.fit th,table.grid.fit td{white-space:normal;overflow-wrap:anywhere;padding:6px 6px}
+  table.grid.fit td.num,table.grid.fit thead th:not(:first-child){text-align:right;white-space:nowrap}
+  table.grid.fit tfoot th,table.grid.fit tfoot td{border-top:2px solid var(--line);border-bottom:none;font-weight:700;background:#fafafb}
+  table.grid.fit tfoot th{text-align:left}
+</style>
+{% endmacro %}

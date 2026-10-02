@@ -1,0 +1,90 @@
+{# 현장(POP) 화면 공용 조각 — 개발2 의 pop · mat · clr · rll 템플릿이 import 한다 (D-22: templates/pop/ 은 개발2 소유).
+   {% import "pop/_ui.html" as pui %}
+   · pui.assets()                  화면 한 번: 결과 배너·상태 표시 스타일 + "알림이 떠 있어도 다음 스캔을 막지 않는" 스크립트
+   · pui.result(flash, scan_error) 방금 처리한 결과를 본문에 큰 글씨로 (POP 은 26px). 알림 팝업이 닫혀도 남는다
+   · pui.state(text)               상태 낱말 표시 (재고·소진·출하 · 대기·합격·불합격 · 진행·정지·완료)
+   · pui.keep(device)              GET 폼이 채널(?device=)을 잃지 않게 #}
+
+{% macro assets() %}
+<style>
+.scan-result{border-left:6px solid var(--warn)}
+.scan-result.ok{border-left-color:#1d7a46}
+.scan-result p{margin:0}
+.ok-msg{color:#1d7a46;font-weight:700;font-size:17px}
+body.ch-pop .ok-msg{font-size:26px}
+.scan-result .notes{margin:6px 0 0}
+body.ch-pop .scan-result .notes{font-size:18px}
+.st{display:inline-block;padding:1px 8px;border-radius:10px;border:1px solid var(--line);font-size:.88em;white-space:nowrap}
+.st-ok{background:#e8f5ec;border-color:#9fd0b0;color:#14592f}
+.st-warn{background:#fdecec;border-color:#e3a5a5;color:#8a1c1c}
+.st-wait{background:#fff6dd;border-color:#e2cc86;color:#6b5200}
+.st-off{background:#eeeef0;color:#55555c}
+.form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.work-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.work-card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
+.work-card h3{margin:0 0 6px;font-size:1em;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.work-card dl.kv{grid-template-columns:90px minmax(0,1fr);margin-bottom:8px}
+.work-card .form-grid{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.work-card .form-grid label{flex:1 1 110px}
+.work-card .form-grid input{width:100%}
+.pending-rolls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;padding:0;list-style:none}
+.pending-rolls li{border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:#fff}
+.label-sheet{margin-top:10px}
+.mix-rows{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:6px 10px;max-width:520px}
+@media print{.label-sheet{margin:0}}
+</style>
+<script>
+/* 알림 팝업이 떠 있는 동안 스캐너가 다음 번호를 쏘면: 팝업을 닫고 그 글자를 스캔칸이 받는다 (다음 스캔을 막지 않는다).
+   결과 문장은 본문의 배너(pui.result)에 큰 글씨로 남아 있다. */
+document.addEventListener("keydown", function (e) {
+  var layer = document.getElementById("popup-layer");
+  var scan = document.querySelector("[data-scan]");
+  if (!layer || layer.hidden || !scan) return;
+  if (!e.key || e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+  var close = layer.querySelector("[data-popup-close]");
+  if (close) close.click();
+  scan.focus();
+}, true);
+/* 알림을 「확인」·바깥 누르기·Esc 로 닫은 뒤에도 스캔칸이 포커스를 되찾는다.
+   (공용 app.js 의 focusScan 은 방금 누른 「확인」 버튼이 아직 포커스를 쥐고 있어 그냥 돌아간다 — progress-dev2.md §3) */
+function lcomfineBackToScan() {
+  var layer = document.getElementById("popup-layer");
+  var scan = document.querySelector("[data-scan]");
+  if (!layer || !scan) return;
+  setTimeout(function () { if (layer.hidden) scan.focus(); }, 0);
+}
+document.addEventListener("click", function (e) {
+  var layer = document.getElementById("popup-layer");
+  if (layer && e.target && (e.target === layer || (e.target.closest && e.target.closest("[data-popup-close]")))) lcomfineBackToScan();
+}, true);
+document.addEventListener("keydown", function (e) {
+  var layer = document.getElementById("popup-layer");
+  if (layer && !layer.hidden && (e.key === "Escape" || e.key === "Enter" || e.key === " ")) lcomfineBackToScan();
+}, true);
+</script>
+{% endmacro %}
+
+{% macro result(flash, scan_error=None) %}
+{% if scan_error %}
+<section class="panel scan-result" role="alert" id="scan-result">
+  <p class="err big">{{ scan_error.message }}</p>
+  {% if scan_error.fields %}<ul class="notes">{% for f in scan_error.fields %}<li>{{ f.name }} — {{ f.reason }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% elif flash %}
+<section class="panel scan-result{% if flash.kind != 'warn' %} ok{% endif %}" role="{{ 'alert' if flash.kind == 'warn' else 'status' }}" id="scan-result">
+  <p class="{{ 'err big' if flash.kind == 'warn' else 'ok-msg' }}">{{ flash.message }}</p>
+  {% if flash.fields %}<ul class="notes">{% for f in flash.fields %}<li>{{ f.name }} — {{ f.reason }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+{% endmacro %}
+
+{% macro state(text) %}
+{% set cls = {'재고': 'st-ok', '합격': 'st-ok', '진행': 'st-ok', '등록': 'st-ok',
+              '불합격': 'st-warn', '정지': 'st-warn', '취소': 'st-warn',
+              '대기': 'st-wait',
+              '소진': 'st-off', '출하': 'st-off', '완료': 'st-off', '승인': 'st-off'}.get(text, '') %}
+<span class="st {{ cls }}">{{ text }}</span>
+{% endmacro %}
+
+{% macro keep(device) %}{% if device and device != 'web' %}<input type="hidden" name="device" value="{{ device }}">{% endif %}{% endmacro %}

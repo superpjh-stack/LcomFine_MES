@@ -1,0 +1,77 @@
+{# F-JOB-05 작업지시서 출력 — 인쇄용 화면(출력물 5종의 하나, G-14). 바코드가 담는 값은 Job 번호 글자 그대로다
+   (`printing.barcode_svg`) — 작업지시 화면·POP 스캔칸에 넣으면 이 Job 이 열린다. 값이 없는 칸은 `-` 다(지어내지 않는다). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel no-print">
+  <div class="row-actions">
+    {{ ui.print_button('작업지시서 인쇄') }}
+    <a class="btn" href="{{ nav.path_of('JOB-01') }}?no={{ job.job_no }}">작업지시로 돌아가기</a>
+  </div>
+</section>
+
+<section class="panel sheet" data-print="작업지시서" data-job-no="{{ job.job_no }}">
+  <header class="sheet-head">
+    <div>
+      <h1>작업지시서</h1>
+      <p class="sheet-no">Job 번호 <strong>{{ job.job_no }}</strong> <span class="sheet-status">{{ job.status }}</span></p>
+    </div>
+    <div class="sheet-barcode">{{ barcode }}</div>
+  </header>
+
+  <table class="sheet-table">
+    <tbody>
+      <tr><th>품목</th><td><code>{{ job.item_code }}</code> {{ job.item_name }}</td><th>규격</th><td>{{ job.item_spec|txt }}</td></tr>
+      <tr><th>고객</th><td><code>{{ job.customer_code }}</code> {{ job.customer_name }}</td><th>납기</th><td>{{ job.due_date|dt }}</td></tr>
+      <tr><th>지시 수량</th><td>{{ job.order_qty|num(3) }} {{ job.qty_unit }}</td><th>계획 설비</th><td>{% if job.equipment_code %}<code>{{ job.equipment_code }}</code> {{ job.equipment_name }}{% else %}-{% endif %}</td></tr>
+      <tr><th>판사양</th><td>{% if job.plate_code %}<code>{{ job.plate_code }}</code> {{ job.plate_name }}{% else %}-{% endif %}</td><th>도수 · 사양 메모</th><td>{{ job.color_count|txt }} · {{ job.spec_note|txt }}</td></tr>
+      <tr><th>아니록스</th><td>{% if job.anilox_code %}<code>{{ job.anilox_code }}</code> {{ job.anilox_name }}{% else %}-{% endif %}</td><th>선수 · 셀 용적</th><td>{{ job.line_count|txt }} · {{ job.cell_volume|txt }}</td></tr>
+      <tr><th>잉크조성</th><td>{% if job.ink_code %}<code>{{ job.ink_code }}</code> {{ job.ink_name }}{% else %}-{% endif %}</td><th>색 이름 · 기준 색상값 (L / a / b)</th><td>{{ job.color_name|txt }} · {{ job.target_l|txt }} / {{ job.target_a|txt }} / {{ job.target_b|txt }}</td></tr>
+      <tr><th>비고</th><td colspan="3">{{ job.note|txt }}</td></tr>
+    </tbody>
+  </table>
+
+  <h3>잉크조성의 조성 행</h3>
+  <table class="sheet-table">
+    <thead><tr><th>순번</th><th>성분</th><th>비율 (%)</th></tr></thead>
+    <tbody>
+    {% for c in components %}
+      <tr><td>{{ c.seq_no }}</td><td>{{ c.component_name }}</td><td>{{ c.ratio_pct|num(3) }}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>생산 LOT (Job-Lot-Roll 매핑)</h3>
+  <table class="sheet-table">
+    <thead><tr><th>생산 LOT 번호</th><th>계획 롤 수</th><th>계획 길이 (m)</th><th>비고</th></tr></thead>
+    <tbody>
+    {% for l in lots %}
+      <tr><td><code>{{ l.lot_no }}</code></td><td>{{ l.planned_roll_count|txt }}</td><td>{{ l.planned_length_m|num(3) }}</td><td>{{ l.note|txt }}</td></tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="sheet-foot">등록 {{ job.created_at|dt }} · {{ job.created_by }} · 출력 {{ now }} · {{ user.user_name }}</p>
+</section>
+
+<style>
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sheet{margin-top:12px;color:#000}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px}
+.sheet-head h1{margin:0 0 6px;font-size:22px}
+.sheet-no{margin:0;font-size:14px}
+.sheet-no strong{font-size:18px;font-family:monospace}
+.sheet-status{margin-left:8px;border:1px solid #000;padding:0 6px;font-size:12px}
+.sheet h3{margin:14px 0 6px;font-size:13px}
+.sheet-table{width:100%;border-collapse:collapse;font-size:13px}
+.sheet-table th,.sheet-table td{border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:top}
+.sheet-table th{background:#f1f1f1;white-space:nowrap;width:1%}
+.sheet-table thead th{width:auto}
+.sheet-foot{margin:12px 0 0;font-size:11px;color:#333}
+@media print{.sheet{margin:0}.sheet-table th{background:#fff}}
+</style>
+{% endblock %}

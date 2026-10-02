@@ -1,0 +1,79 @@
+{# MAT-03 원재료 LOT — F-MAT-05 조회(잔량 = 입고량 − 투입량) · F-MAT-06 라벨 출력. `?no=` 는 라벨 바코드 스캔 진입 #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash, scan_error) }}
+
+<section class="panel">
+  <h2>원재료 LOT 스캔 <small>라벨 바코드 → 그 LOT 이 열린다</small></h2>
+  {{ ui.scan_box(nav.path_of('MAT-03'), name='no', label='원재료 LOT 번호', method='get',
+                 hidden=({'device': device} if device != 'web' else {})) }}
+</section>
+
+{% if opened %}
+<section class="panel" id="opened">
+  <h2>원재료 LOT <small><code>{{ opened.lot_no }}</code></small></h2>
+  <dl class="kv">
+    <dt>품목</dt><dd>{{ opened.item_name }} <code>{{ opened.item_code }}</code></dd>
+    <dt>공급처 · 공급사 LOT</dt><dd>{{ opened.supplier_name|txt }} · {{ opened.supplier_lot_no|txt }}</dd>
+    <dt>입고</dt><dd>{{ opened.received_qty|num(3) }} {{ opened.qty_unit }} · {{ opened.received_at|dt }} · {{ opened.received_by }}</dd>
+    <dt>검사 상태</dt><dd>{{ pui.state(opened.insp_status) }}{% if opened.insp_at %} {{ opened.insp_at|dt }} · {{ opened.insp_by }}{% endif %}{% if opened.insp_note %} — {{ opened.insp_note }}{% endif %}</dd>
+    <dt>투입량 · 잔량</dt><dd>{{ opened.input_qty|num(3) }} · <b>{{ opened.remaining_qty|num(3) }}</b> {{ opened.qty_unit }} (투입 {{ opened.input_count }}건)</dd>
+  </dl>
+  <div class="form-actions">
+    {% if can_label %}<a class="btn btn-primary" href="{{ nav.path_of('MAT-03') }}/{{ opened.lot_no }}/label">라벨 인쇄</a>{% endif %}
+    <a class="btn" href="{{ nav.path_of('MAT-02') }}?no={{ opened.lot_no }}#form">입고검사</a>
+  </div>
+  <div class="label-sheet">{{ preview }}</div>
+  <h2 style="margin-top:14px">이 LOT 의 투입 <small>{{ opened_inputs|length }}건</small></h2>
+  <table class="grid plain">
+    <thead><tr><th>실적</th><th>Job</th><th>투입량</th><th>스캔 시각</th><th>스캔한 사람</th><th>인쇄 롤</th></tr></thead>
+    <tbody>
+    {% for i in opened_inputs %}
+      <tr><td>{{ i.work_result_id }}</td><td><code>{{ i.job_no }}</code></td>
+          <td class="num">{{ i.input_qty|num(3) }} {{ i.qty_unit|txt('') }}</td><td>{{ i.scanned_at|dt }}</td><td>{{ i.scanned_by }}</td>
+          <td>{% if i.roll_no %}<a href="{{ nav.path_of('RLL-03') }}?no={{ i.roll_no }}"><code>{{ i.roll_no }}</code></a>{% else %}-{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ pui.keep(device) }}
+    {{ ui.field('LOT 번호 (일부)', 'lot', f.lot) }}
+    {{ ui.select('품목', 'item_code', item_options, f.item_code, blank='전체') }}
+    {{ ui.select('검사 상태', 'insp_status', status_options, f.insp_status, blank='전체') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>원재료 LOT 목록 <small>{{ rows|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>원재료 LOT</th><th>품목</th><th>검사 상태</th><th>입고 수량</th><th>투입량</th><th>잔량</th><th>단위</th><th>입고 일시</th><th>라벨</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('MAT-03') }}?no={{ r.lot_no }}"><code>{{ r.lot_no }}</code></a></td>
+        <td>{{ r.item_name }} <code>{{ r.item_code }}</code></td>
+        <td>{{ pui.state(r.insp_status) }}</td>
+        <td class="num">{{ r.received_qty|num(3) }}</td><td class="num">{{ r.input_qty|num(3) }}</td>
+        <td class="num">{{ r.remaining_qty|num(3) }}</td><td>{{ r.qty_unit }}</td>
+        <td>{{ r.received_at|dt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('MAT-03') }}/{{ r.lot_no }}/label">라벨</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['잔량은 저장하지 않고 계산한다 — 입고 수량 − 투입량 합 (뷰 v_material_lot_stock, D-13). 투입량을 비워 스캔한 건은 0 으로 센다.']) }}
+</section>
+{% endblock %}

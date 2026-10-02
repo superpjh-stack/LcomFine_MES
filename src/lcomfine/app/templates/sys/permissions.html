@@ -1,0 +1,73 @@
+{# SYS-02 권한 — 조회(F-SYS-05) · 한 칸 수정(F-SYS-06). 역할 × 대메뉴 권한 표를 DB(`sys_permission`)에서 그대로 보여 준다.
+   칸을 바꾸면 곧바로 반영된다(rbac.invalidate). 표기는 설계도 그대로: 입력 · 입력 (입고검사) · 입력 (승인) · 조회 · 없음. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  <h2>권한 표 <small>역할 {{ roles|length }} × 대메뉴 {{ matrix|length }} = {{ counts['전체'] }}칸 — 입력 {{ counts['입력'] }} · 조회 {{ counts['조회'] }} · 없음 {{ counts['없음'] }}</small></h2>
+  <dl class="kv">
+    <dt>없음</dt><dd>메뉴에서 숨기고 화면·기능 모두 403</dd>
+    <dt>조회</dt><dd>화면은 열리고 쓰기 기능은 403</dd>
+    <dt>입력</dt><dd>칸의 범위에 들어 있는 쓰기 기능만 된다 — 괄호 없는 `입력` 은 범위 `{{ SCOPE_GENERAL }}` (D-14)</dd>
+  </dl>
+</section>
+
+<section class="panel grid-panel">
+  <table class="grid plain perm">
+    <thead>
+      <tr><th>묶음</th><th>대메뉴</th>{% for r in roles %}<th>{{ r.name }} <small><code>{{ r.code }}</code></small></th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+    {% for row in matrix %}
+      {% set m = row.menu %}
+      <tr>
+        <td>{{ m.group }}</td>
+        <td>{{ m.name }} <small><code>{{ m.code }}</code></small></td>
+        {% for cell in row.cells %}
+          {% set r = roles[loop.index0] %}
+          {% set stamp = stamps.get((r.code, m.code)) %}
+          {% set locked = (r.code, m.code) == guarded %}
+          <td class="perm-cell lv-{{ loop.index0 }}" data-role="{{ r.code }}" data-menu="{{ m.code }}" data-level="{{ cell.level }}">
+            <strong class="perm-label">{{ cell.label }}</strong>
+            {% if can_write %}
+            <form method="post" action="{{ nav.path_of('SYS-02') }}" class="perm-form">
+              <input type="hidden" name="role_code" value="{{ r.code }}">
+              <input type="hidden" name="menu_code" value="{{ m.code }}">
+              <select name="level" aria-label="{{ r.name }} × {{ m.name }}"{% if locked %} disabled title="잠김 방지 — 이 칸은 내릴 수 없다"{% endif %}>
+                {% for lv in levels %}<option value="{{ lv }}"{% if lv == cell.level %} selected{% endif %}>{{ lv }}</option>{% endfor %}
+              </select>
+              {% if menu_scopes.get(m.code, [])|length > 1 %}
+              <span class="perm-scopes">
+                {% for sc in menu_scopes[m.code] %}
+                <label><input type="checkbox" name="write_scope" value="{{ sc }}"{% if sc in cell.scopes %} checked{% endif %}> {{ sc }}</label>
+                {% endfor %}
+              </span>
+              {% endif %}
+              <button type="submit" class="btn btn-sm"{% if locked %} disabled{% endif %}>저장</button>
+            </form>
+            {% endif %}
+            {% if stamp and stamp.updated_by %}<small class="perm-stamp">{{ stamp.updated_by }} · {{ stamp.updated_at|dt }}</small>{% endif %}
+            {% if locked %}<small class="perm-stamp">잠김 방지 칸</small>{% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ roles|length + 2 }}" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['범위 체크칸은 그 대메뉴에 `일반` 밖의 쓰기 범위(입고검사 · 승인)가 있을 때만 나온다. `입력` 인데 아무것도 고르지 않으면 `일반` 이다.',
+               '관리자의 시스템 관리 칸은 `입력` 아래로 내릴 수 없다(잠김 방지). 자기 역할의 시스템 관리 칸도 내릴 수 없다.',
+               '역할을 더 둘지는 미확정 (D-06) — 역할은 `sys_role` 의 행이라 늘어나면 이 표에 열이 생긴다.']) }}
+</section>
+<style>
+table.perm td.perm-cell{vertical-align:top;min-width:120px}
+.perm-label{display:block;margin-bottom:4px}
+.perm-form{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.perm-form select{padding:2px 4px;font-size:12px}
+.perm-scopes{display:flex;gap:6px;font-size:12px;flex-basis:100%}
+.perm-scopes label{display:inline-flex;gap:3px;align-items:center}
+.perm-stamp{display:block;color:var(--muted);margin-top:3px}
+td.perm-cell[data-level="없음"] .perm-label{color:var(--muted)}
+</style>
+{% endblock %}

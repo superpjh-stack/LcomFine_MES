@@ -1,0 +1,83 @@
+{# SHP-03 COA 출력 — F-SHP-07 (출력물 5종의 하나, G-14). 인쇄용 화면 — 브라우저 인쇄(D-04).
+   내용은 그 출하의 롤마다 최신 검사(D7)에서 만든다. 검사가 없는 롤은 `미수집`. 양식은 받은 적이 없다 → 가설(D-18 · D-305). (개발3) #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+
+{% block head %}
+<style>
+  .coa{width:100%;min-width:0;max-width:860px;margin:0 auto}
+  .coa-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;border-bottom:2px solid var(--head);padding-bottom:10px;margin-bottom:12px}
+  .coa-head h1{margin:0;font-size:22px;color:var(--head)}
+  .coa-head .sub{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+  .coa-code{text-align:right}
+  .coa-code svg{max-width:100%;height:auto}
+  .coa dl.kv{grid-template-columns:110px minmax(0,1fr) 110px minmax(0,1fr);margin-bottom:14px}
+  @media (max-width:640px){.coa dl.kv{grid-template-columns:110px minmax(0,1fr)}}
+  .coa table.grid td.wrap{white-space:normal}
+  .verdict-fail{color:var(--warn);font-weight:700}
+  .coa-foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:12.5px}
+  .coa-actions{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px}
+  @media print{.coa{max-width:none}.coa table.grid th,.coa table.grid td{white-space:normal}}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel coa">
+  <div class="coa-actions no-print">
+    <a class="btn" href="{{ screen.path }}">COA 목록</a>
+    {{ ui.print_button('COA 인쇄') }}
+  </div>
+  <div class="coa-head">
+    <div>
+      <h1>COA <small>검사 성적서</small></h1>
+      <p class="sub">COA 번호 <code>{{ s.coa_no }}</code> · 발행 {{ s.coa_issued_at|dt }}</p>
+    </div>
+    <div class="coa-code">{{ barcode }}<p class="sub">출하 LOT 번호</p></div>
+  </div>
+
+  <dl class="kv">
+    <dt>고객</dt><dd>{{ s.customer_name }}</dd>
+    <dt>출하 LOT</dt><dd><code>{{ s.shipment_no }}</code></dd>
+    <dt>품목</dt><dd><code>{{ s.item_code }}</code> {{ s.item_name }}</dd>
+    <dt>Job 번호</dt><dd><code>{{ s.job_no }}</code></dd>
+    <dt>규격</dt><dd>{{ s.spec|txt(NOT_COLLECTED) }}</dd>
+    <dt>출하일</dt><dd>{{ s.ship_date }}</dd>
+  </dl>
+
+  <div class="grid-panel">
+  <table class="grid plain">
+    <thead><tr><th>#</th><th>롤 번호</th><th>공정</th><th>길이 (m)</th><th>폭 (mm)</th><th>ΔE</th><th>판정</th><th>불량 유형 · 위치</th><th>검사 일시</th></tr></thead>
+    <tbody>
+    {% for r in rolls %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><code>{{ r.roll_no }}</code></td>
+        <td>{{ r.process_type }}</td>
+        <td class="num">{{ r.length_m|num(1, NOT_COLLECTED) }}</td>
+        <td class="num">{{ r.width_mm|num(1, NOT_COLLECTED) }}</td>
+        {% if r.inspection %}
+        <td class="num">{{ r.inspection.delta_e|num(2, NOT_COLLECTED) }}</td>
+        <td{% if r.inspection.result == '불합격' %} class="verdict-fail"{% endif %}>{{ r.inspection.result }}</td>
+        <td class="wrap">{{ r.inspection.defects|txt('없음') }}</td>
+        <td>{{ r.inspection.inspected_at|dt }}</td>
+        {% else %}
+        <td>{{ NOT_COLLECTED }}</td><td>{{ NOT_COLLECTED }}</td><td>{{ NOT_COLLECTED }}</td><td>{{ NOT_COLLECTED }}</td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="coa-foot">
+    <span>롤 {{ summary.total }}개 — 합격 {{ summary.passed }} · 불합격 {{ summary.failed }} · 검사 결과 {{ NOT_COLLECTED }} {{ summary.uninspected }}</span>
+    <span>승인 {{ s.approved_by }} · {{ s.approved_at|dt }}</span>
+  </div>
+  <ul class="notes no-print">
+    <li>각 롤의 값은 그 롤의 최신 검사 결과다. 검사가 없는 롤은 {{ NOT_COLLECTED }} 으로 나온다 (D-17).</li>
+    <li>성적서 양식(항목 · 기준값 · 서명란)은 현업 양식을 받은 뒤 정한다 — {{ ui.undecided('D-18') }}</li>
+  </ul>
+</section>
+{% endblock %}

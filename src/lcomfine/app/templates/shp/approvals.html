@@ -1,0 +1,71 @@
+{# SHP-02 출하 승인 — F-SHP-05 (관리자만 · 범위 `승인`, D-14). 승인이 곧 COA 발행이다 (D-17) (개발3) #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+
+{% block head %}
+<style>
+  .verdict-fail{color:var(--warn);font-weight:700}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel grid-panel">
+  <h2>승인 대기 <small>{{ waiting|length }}건 — 롤이 1개 이상 담긴 `등록` 출하를 승인한다{% if not number_rule %} · COA 채번 형식 {{ ui.undecided('D-05') }}{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>출하 LOT</th><th>Job</th><th>품목</th><th>고객</th><th>출하일</th><th>롤 수</th><th>검사 (합격 · 불합격 · 미검사)</th><th>등록</th><th>승인</th></tr></thead>
+    <tbody>
+    {% for r in waiting %}
+      <tr>
+        <td><a href="{{ nav.path_of('SHP-01') }}?no={{ r.shipment_no|urlencode }}#opened"><code>{{ r.shipment_no }}</code></a></td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td>{{ r.customer_name }}</td>
+        <td>{{ r.ship_date }}</td>
+        <td class="num">{{ r.roll_count }}</td>
+        <td>{{ r.summary.passed }} · <span{% if r.summary.failed %} class="verdict-fail"{% endif %}>{{ r.summary.failed }}</span> · {{ r.summary.uninspected }}</td>
+        <td>{{ r.registered_by }} · {{ r.registered_at|dt }}</td>
+        <td>
+          <form method="post" action="{{ screen.path }}/{{ r.shipment_no }}/approve" class="inline" data-confirm="{{ r.shipment_no }} 출하를 승인할까요? COA 가 발행되고 그 뒤에는 취소할 수 없습니다.">
+            <button type="submit" class="btn btn-sm btn-primary"{% if not user.can('F-SHP-05') %} disabled title="출하 승인은 관리자만 한다"{% elif r.roll_count == 0 %} disabled title="롤이 담기지 않았다"{% elif r.summary.failed %} disabled title="최신 검사가 불합격인 롤이 있다"{% endif %}>승인</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">승인 대기 출하 {{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['출하 승인은 관리자만 한다 — 권한 표의 출하 칸이 `입력 (승인)` 인 역할 (D-14).',
+               '롤이 0개이거나, 담긴 롤 가운데 최신 검사가 불합격인 것이 있으면 승인되지 않는다 (D-17 · D-305). 미검사 롤은 승인되고 COA 에 ' ~ NOT_COLLECTED ~ ' 으로 나온다.']) }}
+</section>
+
+<section class="panel grid-panel">
+  <h2>최근 승인 <small>{{ done|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>출하 LOT</th><th>COA 번호</th><th>Job</th><th>고객</th><th>출하일</th><th>롤 수</th><th>승인자</th><th>승인 일시</th><th>COA</th></tr></thead>
+    <tbody>
+    {% for r in done %}
+      <tr>
+        <td><a href="{{ nav.path_of('SHP-01') }}?no={{ r.shipment_no|urlencode }}#opened"><code>{{ r.shipment_no }}</code></a></td>
+        <td><code>{{ r.coa_no }}</code></td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.customer_name }}</td>
+        <td>{{ r.ship_date }}</td>
+        <td class="num">{{ r.roll_count }}</td>
+        <td>{{ r.approved_by }}</td>
+        <td>{{ r.approved_at|dt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('SHP-03') }}/{{ r.shipment_no }}/print">출력</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,137 @@
+{# QUA-01 검사 결과 — F-QUA-01 등록 · F-QUA-02 수정 · F-QUA-03 삭제 · F-QUA-04 조회 (개발3)
+   롤 라벨의 바코드를 스캔칸에 넣으면(`?no=`) 그 롤이 열리고 등록칸에 번호가 채워진다. 롤마다 최신 검사가 그 롤의 판정이다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+
+{% macro defect_inputs(existing) %}
+<div class="defect-rows">
+  <p class="row-title">불량 행 <small>불량 유형 · 위치 — 없으면 비워 둔다</small></p>
+  {% if not defect_codes %}
+  <p class="empty">불량코드 {{ NOT_COLLECTED }} — 기준정보 관리 &gt; 불량코드 관리에서 먼저 등록한다</p>
+  {% else %}
+  {% for i in range([existing|length + 2, 3]|max) %}
+  {% set cur = existing[i] if i < existing|length else none %}
+  <div class="defect-row">
+    <label>불량 유형 {{ i + 1 }}
+      <select name="defect_code">
+        <option value="">없음</option>
+        {% for d in defect_codes %}{% if d.use_yn == 'Y' or (cur and cur.defect_code == d.defect_code) %}
+        <option value="{{ d.defect_code }}"{% if cur and cur.defect_code == d.defect_code %} selected{% endif %}>{{ d.defect_code }} {{ d.defect_name }}{% if d.use_yn != 'Y' %} (미사용){% endif %}</option>
+        {% endif %}{% endfor %}
+      </select>
+    </label>
+    <label>위치 {{ i + 1 }}
+      <input type="text" name="position" value="{{ cur.position if cur and cur.position else '' }}">
+    </label>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% block head %}
+<style>
+  .defect-rows{flex:1 1 100%}
+  .defect-rows .row-title{margin:4px 0 6px;font-size:12px;color:var(--muted);font-weight:700}
+  .defect-row{display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:6px}
+  .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .verdict-fail{color:var(--warn);font-weight:700}
+  .roll-info{margin-top:10px}
+  td.wrap{white-space:normal}
+  .badge{font-size:11px;font-weight:700;border-radius:3px;padding:0 6px;background:var(--tag-bg);color:var(--tag);border:1px solid #e8cf9a}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel">
+  <h2>롤 스캔 <small>롤 라벨의 바코드 — 그 롤의 검사 이력이 열린다</small></h2>
+  {{ ui.scan_box(screen.path, name='no', label='롤 번호', method='get') }}
+  {% if scanned %}
+  <dl class="kv roll-info">
+    <dt>롤 번호</dt><dd><code>{{ scanned.roll_no }}</code> {{ scanned.process_type }} 롤 · 상태 {{ scanned.state }}</dd>
+    <dt>Job · 품목</dt><dd><code>{{ scanned.job_no }}</code> {{ scanned.item_name }}</dd>
+  </dl>
+  {% endif %}
+</section>
+
+<section class="panel" id="form">
+  {% if editing %}
+  <h2>검사 결과 수정 <small><code>{{ editing.roll_no }}</code> · Job <code>{{ editing.job_no }}</code> — 롤은 바꿀 수 없다</small></h2>
+  <form class="form-grid" method="post" action="{{ screen.path }}/{{ editing.inspection_id }}" id="inspection-form" autocomplete="off">
+    {{ ui.field('롤 번호', 'roll_no_shown', editing.roll_no, readonly=true) }}
+    {{ ui.field('ΔE', 'delta_e', editing.delta_e, type='number', step='0.01') }}
+    {{ ui.select('판정', 'result', [(results[0], results[0]), (results[1], results[1])], editing.result, required=true) }}
+    {{ ui.field('비고', 'note', editing.note) }}
+    {{ defect_inputs(editing.defects) }}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('수정 저장', user.can('F-QUA-02'), form='inspection-form') }}
+    <a class="btn" href="{{ screen.path }}">취소 (새로 등록)</a>
+  </div>
+  {% else %}
+  <h2>검사 결과 등록 <small>롤 번호 · ΔE · 판정 · 불량 유형과 위치</small></h2>
+  <form class="form-grid" method="post" action="{{ screen.path }}" id="inspection-form" autocomplete="off">
+    {{ ui.field('롤 번호', 'roll_no', scanned.roll_no if scanned else '', required=true) }}
+    {{ ui.field('ΔE', 'delta_e', '', type='number', step='0.01') }}
+    {{ ui.select('판정', 'result', [(results[0], results[0]), (results[1], results[1])], '', required=true) }}
+    {{ ui.field('비고', 'note', '') }}
+    {{ defect_inputs([]) }}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('검사 결과 등록', user.can('F-QUA-01'), form='inspection-form') }}
+  </div>
+  {% endif %}
+  {{ ui.notes(['롤마다 최신 검사가 그 롤의 판정이다. 최신 판정이 불합격인 롤은 출하 스캔에서 막힌다 (D-17).',
+               '출하 승인된 롤의 검사는 등록·수정·삭제할 수 없다 — COA 가 발행된 뒤에 바뀌지 않게 한다 (D-304).']) }}
+</section>
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('롤 번호', 'roll_no', q.roll_no) }}
+    {{ ui.field('Job 번호', 'job_no', q.job_no) }}
+    {{ ui.field('검사일 시작', 'date_from', q.date_from, type='date') }}
+    {{ ui.field('검사일 끝', 'date_to', q.date_to, type='date') }}
+    {{ ui.select('판정', 'result', [(results[0], results[0]), (results[1], results[1])], q.result, blank='전체') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>검사 결과 <small>{{ rows|length }}건{% if rows|length >= limit %} — 상한 {{ limit }}건까지만 보인다. 조회 조건을 좁힌다{% endif %}{% if scanned %} · 롤 <code>{{ scanned.roll_no }}</code> 의 이력{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>검사 일시</th><th>롤 번호</th><th>공정</th><th>Job</th><th>품목</th><th>ΔE</th><th>판정</th><th>불량 유형 · 위치</th><th>검사자</th><th>비고</th><th>수정 · 삭제</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.inspected_at|dt }}</td>
+        <td><a href="{{ screen.path }}?no={{ r.roll_no|urlencode }}"><code>{{ r.roll_no }}</code></a></td>
+        <td>{{ r.process_type }}</td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td class="num">{{ r.delta_e|num(2, NOT_COLLECTED) }}</td>
+        <td{% if r.result == '불합격' %} class="verdict-fail"{% endif %}>{{ r.result }}{% if r.is_latest %} <span class="badge" title="이 롤의 최신 검사 = 이 롤의 판정">최신</span>{% endif %}</td>
+        <td class="wrap">{{ r.defects|txt }}</td>
+        <td>{{ r.inspected_by }}</td>
+        <td class="wrap">{{ r.note|txt }}</td>
+        <td>
+          <a class="btn btn-sm" href="{{ screen.path }}?edit={{ r.inspection_id }}#form">수정</a>
+          <form method="post" action="{{ screen.path }}/{{ r.inspection_id }}/delete" class="inline" data-confirm="{{ r.roll_no }} 의 검사 결과를 삭제할까요?">
+            <button type="submit" class="btn btn-sm"{% if not user.can('F-QUA-03') %} disabled title="이 역할은 입력 권한이 없다"{% endif %}>삭제</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+/* 삭제 확인 — 취소하면 보내지 않는다 */
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+{% endblock %}

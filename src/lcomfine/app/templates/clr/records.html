@@ -1,0 +1,102 @@
+{# CLR-01 조색 기록 — F-CLR-05 조회 · F-CLR-01 등록 · F-CLR-03 수정 · F-CLR-02 배합비 · F-CLR-04 삭제.
+   Job 번호(작업지시서 바코드)를 스캔하면 그 Job 의 조색 기록이 차수 순으로 열린다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash) }}
+
+<section class="panel search">
+  <h2>조회 조건 <small>Job 번호는 작업지시서 바코드를 스캔해도 된다</small></h2>
+  <form class="search-form" method="get" id="screen-search" autocomplete="off">
+    {{ pui.keep(device) }}
+    <label>Job 번호
+      <input type="text" name="job_no" value="{{ f.job_no }}"{% if not editing %} data-scan autofocus{% endif %}>
+    </label>
+    {{ ui.field('기록일 (부터)', 'date_from', f.date_from, type='date') }}
+    {{ ui.field('기록일 (까지)', 'date_to', f.date_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+  {% if f.job_no and not job %}<p class="err big">없는 Job 번호입니다 — {{ f.job_no }}</p>{% endif %}
+</section>
+
+<section class="panel" id="form">
+  {% if editing %}
+  <h2>조색 기록 수정 <small><code>{{ editing.job_no }}</code> · {{ editing.seq_no }}차 — Job 과 차수는 바꿀 수 없다</small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('CLR-01') }}/{{ editing.color_record_id }}" id="record-form">
+    {{ ui.field('색 이름', 'color_name', editing.color_name, required=true) }}
+    {{ ui.field('색상값 L', 'color_l', editing.color_l, type='number', step='any') }}
+    {{ ui.field('색상값 a', 'color_a', editing.color_a, type='number', step='any') }}
+    {{ ui.field('색상값 b', 'color_b', editing.color_b, type='number', step='any') }}
+    {{ ui.field('비고', 'note', editing.note) }}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('수정 저장', can.update, form='record-form') }}
+    <form method="post" action="{{ nav.path_of('CLR-01') }}/{{ editing.color_record_id }}/delete" class="inline" data-confirm="이 조색 기록과 배합비를 삭제할까요?">
+      {{ ui.write_button('삭제', can.delete, kind='plain') }}
+    </form>
+    <a class="btn" href="{{ nav.path_of('CLR-01') }}?job_no={{ editing.job_no }}">닫기 (새로 등록)</a>
+  </div>
+
+  <h2 style="margin-top:16px">배합비 <small>성분·비율(%) — 저장하면 통째로 바뀐다. 합이 100 이어야 한다</small></h2>
+  <form method="post" action="{{ nav.path_of('CLR-01') }}/{{ editing.color_record_id }}/mix" id="mix-form">
+    <div class="mix-rows">
+      <b>성분</b><b>비율 (%)</b>
+      {% for m in editing_mix %}
+      <input type="text" name="component_name" value="{{ m.component_name }}" aria-label="성분 {{ loop.index }}">
+      <input type="number" name="ratio_pct" value="{{ m.ratio_pct }}" step="any" min="0" max="100" aria-label="비율 {{ loop.index }}">
+      {% endfor %}
+      {% for n in range(blank_rows) %}
+      <input type="text" name="component_name" value="" aria-label="성분 (새 행)">
+      <input type="number" name="ratio_pct" value="" step="any" min="0" max="100" aria-label="비율 (새 행)">
+      {% endfor %}
+    </div>
+  </form>
+  <div class="form-actions">{{ ui.write_button('배합비 저장', can.mix, form='mix-form') }}</div>
+  {% else %}
+  <h2>조색 기록 등록</h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('CLR-01') }}" id="record-form">
+    {{ ui.field('Job 번호', 'job_no', f.job_no, required=true) }}
+    {{ ui.field('색 이름', 'color_name', '', required=true) }}
+    {{ ui.field('차수 (비우면 다음 차수)', 'seq_no', '', type='number', step='1') }}
+    {{ ui.field('색상값 L', 'color_l', '', type='number', step='any') }}
+    {{ ui.field('색상값 a', 'color_a', '', type='number', step='any') }}
+    {{ ui.field('색상값 b', 'color_b', '', type='number', step='any') }}
+    {{ ui.select('기준 잉크조성', 'ink_code', ink_options, '', blank='선택 안 함') }}
+    {{ ui.field('비고', 'note') }}
+  </form>
+  <div class="form-actions">{{ ui.write_button('등록', can.create, form='record-form') }}</div>
+  {% endif %}
+</section>
+
+<section class="panel grid-panel">
+  <h2>조색 기록 <small>{{ rows|length }}건 — Job · 색 · 차수 순</small></h2>
+  <table class="grid">
+    <thead><tr><th>Job</th><th>색 이름</th><th>차수</th><th>L</th><th>a</th><th>b</th><th>기준 잉크조성</th><th>배합비</th><th>기록 일시</th><th>기록자</th><th>비고</th><th>수정 · 배합비</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('CLR-01') }}?job_no={{ r.job_no }}"><code>{{ r.job_no }}</code></a></td>
+        <td>{{ r.color_name }}</td><td class="num">{{ r.seq_no }}</td>
+        <td class="num">{{ r.color_l|num(2) }}</td><td class="num">{{ r.color_a|num(2) }}</td><td class="num">{{ r.color_b|num(2) }}</td>
+        <td>{% if r.ink_code %}{{ r.ink_name }} <code>{{ r.ink_code }}</code>{% else %}-{% endif %}</td>
+        <td>{% for m in mixes.get(r.color_record_id, []) %}{{ m.component_name }} {{ m.ratio_pct|num(3) }}%{% if not loop.last %} · {% endif %}{% else %}{{ NOT_COLLECTED }}{% endfor %}</td>
+        <td>{{ r.recorded_at|dt }}</td><td>{{ r.recorded_by }}</td><td>{{ r.note|txt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('CLR-01') }}?job_no={{ r.job_no }}&edit={{ r.color_record_id }}#form">열기</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="12" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['색상값은 L·a·b 로 받는다 — 가설 컬럼 (D-18). 기준값·허용 범위는 받은 적이 없어 화면이 판정하지 않는다.',
+               '재조색하면 같은 색 이름으로 다시 등록한다 — 차수가 하나 올라간다.']) }}
+</section>
+
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+{% endblock %}

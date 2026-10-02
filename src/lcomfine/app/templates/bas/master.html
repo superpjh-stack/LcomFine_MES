@@ -1,0 +1,97 @@
+{# 마스터 4기능 화면 한 벌 — 기준정보 5종과 인쇄 기준 3종이 같이 쓴다 (routers/bas.py 의 Master).
+   조회 조건 · 목록(0건이면 미수집) · 등록/수정 폼. 쓰기 버튼은 그 기능을 할 수 없는 역할에게 비활성이다(서버도 403). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field(m.code_label, 'code', f.code) }}
+    {{ ui.field(m.name_label, 'name', f.name) }}
+    {{ ui.select('사용 여부', 'use_yn', use_yn_options, f.use_yn, blank='전체') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>{{ m.label }} 목록 <small>{{ rows|length }}건{% if capped %} — 상한 {{ limit }}건까지만 보인다. 조회 조건을 좁힌다{% endif %}</small></h2>
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>{{ m.code_label }}</th><th>{{ m.name_label }}</th>
+        {% for head, key in m.columns %}<th>{{ head }}</th>{% endfor %}
+        <th>사용 여부</th><th>수정 · 삭제</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><code>{{ r.code }}</code></td>
+        <td>{{ r.name }}</td>
+        {% for head, key in m.columns %}<td>{{ r[key]|txt }}</td>{% endfor %}
+        <td>{{ '사용' if r.use_yn == 'Y' else '미사용' }}</td>
+        <td>
+          <a class="btn btn-sm" href="{{ m.path }}?edit={{ r.id }}#form">수정</a>
+          <form method="post" action="{{ m.path }}/{{ r.id }}/delete" class="inline" data-confirm="{{ r.code }} 을(를) 삭제할까요?">
+            <button type="submit" class="btn btn-sm"{% if not can.delete %} disabled title="이 역할은 입력 권한이 없다"{% endif %}>삭제</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ m.columns|length + 4 }}" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" id="form">
+  {% if editing %}
+  <h2>{{ m.label }} 수정 <small><code>{{ editing[m.code_col] }}</code> — {{ m.code_label }}는 바꿀 수 없다</small></h2>
+  <form class="form-grid" method="post" action="{{ m.path }}/{{ editing[m.pk] }}" id="master-form">
+    {{ ui.field(m.code_label, m.code_col, editing[m.code_col], readonly=true) }}
+    {{ ui.field(m.name_label, m.name_col, editing[m.name_col], required=true) }}
+    {% for fd in m.fields %}{{ master_field(fd, editing[fd.name]) }}{% endfor %}
+    {{ ui.select('사용 여부', 'use_yn', use_yn_options, editing.use_yn, required=true) }}
+    {% block extra_fields %}{% endblock %}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('수정 저장', can.update, form='master-form') }}
+    <a class="btn" href="{{ m.path }}">취소 (새로 등록)</a>
+  </div>
+  {% else %}
+  <h2>{{ m.label }} 등록</h2>
+  <form class="form-grid" method="post" action="{{ m.path }}" id="master-form">
+    {{ ui.field(m.code_label, m.code_col, '', required=true) }}
+    {{ ui.field(m.name_label, m.name_col, '', required=true) }}
+    {% for fd in m.fields %}{{ master_field(fd, '') }}{% endfor %}
+    {{ self.extra_fields() }}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('등록', can.create, form='master-form') }}
+  </div>
+  {% endif %}
+  {{ ui.notes(m.notes) }}
+</section>
+
+<script>
+/* 삭제 확인 — 취소하면 보내지 않는다 */
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+<style>.form-actions{display:flex;gap:8px;margin-top:10px}
+/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
+.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+{% endblock %}
+
+{% macro master_field(fd, value) %}
+  {% if fd.kind in ('choice', 'ref') %}
+    {{ ui.select(fd.label, fd.name, options[fd.name], value, required=fd.required) }}
+  {% elif fd.kind == 'int' %}
+    {{ ui.field(fd.label, fd.name, value, type='number', required=fd.required, step='1') }}
+  {% elif fd.kind == 'decimal' %}
+    {{ ui.field(fd.label, fd.name, value, type='number', required=fd.required, step=fd.step or 'any') }}
+  {% else %}
+    {{ ui.field(fd.label, fd.name, value, required=fd.required) }}
+  {% endif %}
+{% endmacro %}

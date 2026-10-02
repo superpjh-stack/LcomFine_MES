@@ -50,6 +50,21 @@ def norm_path(path: str) -> str:
     return re.sub(r"\{[^}]*\}", "{}", path)
 
 
+def all_routes(routes, prefix: str = ""):
+    """등록된 라우트를 (경로, 메서드들) 로 편다.
+
+    FastAPI 는 `include_router` 한 라우터를 `app.routes` 에 풀지 않고 한 덩어리(`original_router`)로 둔다.
+    덩어리를 건너뛰면 기능 ↔ 라우트가 0 으로 세어지고 고아 검사도 빈 집합으로 통과한다.
+    """
+    for rt in routes:
+        inner = getattr(rt, "original_router", None)
+        if inner is not None:
+            ctx = getattr(rt, "include_context", None)
+            yield from all_routes(inner.routes, prefix + (getattr(ctx, "prefix", "") or ""))
+        elif getattr(rt, "methods", None):
+            yield prefix + getattr(rt, "path", ""), rt.methods
+
+
 def write_roles(access: dict, menu_name: str, scope: str) -> list[str]:
     """설계도 §6 에서 그 대메뉴의 그 범위 기능을 입력할 수 있는 역할 (D-14)."""
     row = next(r for r in access["rows"] if r["menu"] == menu_name)
@@ -160,8 +175,8 @@ def check_functions(r: Report, ia: dict, access: dict, procs: dict) -> None:
     try:
         from lcomfine.app.main import app
         placeholder = set(app.state.placeholder_paths)
-        routes = {(m, norm_path(getattr(rt, "path", ""))) for rt in app.routes for m in (getattr(rt, "methods", None) or ())
-                  if not (m == "GET" and getattr(rt, "path", "") in placeholder)}
+        routes = {(m, norm_path(path)) for path, methods in all_routes(app.routes) for m in methods
+                  if not (m == "GET" and path in placeholder)}
         linked = [f for f in screen_fns if (f.method, norm_path(f.path)) in routes]
         miss = [f.id for f in screen_fns if f not in linked]
         r.add(g, "기능 94 ↔ 라우트 (API 열의 메서드·경로가 등록됨)", len(linked) == 94,

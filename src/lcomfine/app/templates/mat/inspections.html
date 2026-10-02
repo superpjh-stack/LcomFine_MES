@@ -1,0 +1,66 @@
+{# MAT-02 입고검사 — F-MAT-04 조회(대기 먼저) · F-MAT-03 결과 등록(품질만, D-14). LOT 라벨을 스캔하면 판정 칸이 열린다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash, scan_error) }}
+
+<section class="panel">
+  <h2>원재료 LOT 스캔 <small>라벨 바코드 → 판정</small></h2>
+  {{ ui.scan_box(nav.path_of('MAT-02'), name='no', label='원재료 LOT 번호', method='get',
+                 hidden=({'device': device} if device != 'web' else {})) }}
+</section>
+
+{% if lot %}
+<section class="panel" id="form">
+  <h2>입고검사 결과 등록 <small><code>{{ lot.lot_no }}</code></small></h2>
+  <dl class="kv">
+    <dt>품목</dt><dd>{{ lot.item_name }} <code>{{ lot.item_code }}</code></dd>
+    <dt>입고</dt><dd>{{ lot.received_qty|num(3) }} {{ lot.qty_unit }} · {{ lot.received_at|dt }} · {{ lot.supplier_name|txt }}</dd>
+    <dt>현재 판정</dt><dd>{{ pui.state(lot.insp_status) }}{% if lot.insp_at %} {{ lot.insp_at|dt }} · {{ lot.insp_by }}{% endif %}</dd>
+    <dt>투입 기록</dt><dd>{{ lot.input_count }}건{% if lot.input_count %} — 이미 투입된 LOT 의 판정은 바꿀 수 없다{% endif %}</dd>
+  </dl>
+  <form class="form-grid" method="post" action="{{ nav.path_of('MAT-02') }}" id="insp-form">
+    <input type="hidden" name="lot_no" value="{{ lot.lot_no }}">
+    {{ ui.field('비고', 'note', lot.insp_note) }}
+  </form>
+  <div class="form-actions">
+    <button type="submit" form="insp-form" name="result" value="합격" class="btn btn-primary"{% if not can_inspect %} disabled title="입고검사 결과는 품질 역할만 등록한다"{% endif %}>합격</button>
+    <button type="submit" form="insp-form" name="result" value="불합격" class="btn"{% if not can_inspect %} disabled title="입고검사 결과는 품질 역할만 등록한다"{% endif %}>불합격</button>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ pui.keep(device) }}
+    {{ ui.select('검사 상태', 'insp_status', status_options, insp_status, blank='전체') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>입고검사 <small>{{ rows|length }}건 — 대기 먼저</small></h2>
+  <table class="grid">
+    <thead><tr><th>원재료 LOT</th><th>품목</th><th>입고 수량</th><th>입고 일시</th><th>검사 상태</th><th>검사 일시</th><th>검사자</th><th>비고</th><th>판정</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('MAT-03') }}?no={{ r.lot_no }}"><code>{{ r.lot_no }}</code></a></td>
+        <td>{{ r.item_name }}</td>
+        <td class="num">{{ r.received_qty|num(3) }} {{ r.qty_unit }}</td>
+        <td>{{ r.received_at|dt }}</td>
+        <td>{{ pui.state(r.insp_status) }}</td>
+        <td>{{ r.insp_at|dt }}</td><td>{{ r.insp_by|txt }}</td><td>{{ r.insp_note|txt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('MAT-02') }}?no={{ r.lot_no }}#form">판정</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['입고검사 결과는 품질 역할만 등록한다 (권한 표의 `입력 (입고검사)`, D-14).', '합격 LOT 만 자재 투입에서 스캔된다. 불합격·검사 대기 LOT 을 스캔하면 422.']) }}
+</section>
+{% endblock %}

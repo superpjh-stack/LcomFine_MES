@@ -1,0 +1,126 @@
+{# JOB-02 Job-Lot-Roll 매핑 — 조회(F-JOB-07) · 등록/계획 수정(F-JOB-06).
+   Job → 생산 LOT → 실제 Roll(공정 구분·상태) → 출하 LOT 을 키로 묶어 읽기만 한다. 롤은 현장 실행이 만든다 —
+   이 화면은 생산 LOT 과 계획값(롤 수·길이)만 쓴다(D-10). 롤 상태는 계보에서 계산한 값이다(v_roll_state). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search" autocomplete="off">
+    <label>Job 번호 (작업지시서 바코드 스캔)
+      <input type="text" name="no" value="{{ f.no }}" placeholder="Job 번호">
+    </label>
+    {{ ui.field('Job 번호 (일부) — 아래 목록 검색', 'q', f.q) }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+{% if job %}
+<section class="panel" id="job">
+  <h2>Job <code>{{ job.job_no }}</code> <small>{{ job.status }} · <code>{{ job.item_code }}</code> {{ job.item_name }} · 지시 {{ job.order_qty|num(3) }} {{ job.qty_unit }} · 납기 {{ job.due_date|dt }}</small></h2>
+  <div class="row-actions">
+    <a class="btn" href="{{ nav.path_of('JOB-01') }}?no={{ job.job_no }}">작업지시 열기</a>
+    <a class="btn" href="{{ nav.path_of('JOB-01') }}/{{ job.job_no }}/print">작업지시서 출력</a>
+  </div>
+</section>
+
+<section class="panel grid-panel">
+  <h2>생산 LOT <small>{{ lots|length }}개 — Job 1 : 생산 LOT N</small></h2>
+  <table class="grid plain">
+    <thead><tr><th>생산 LOT 번호</th><th>계획 롤 수</th><th>계획 길이 (m)</th><th>실제 롤 수</th><th>비고</th><th>계획 수정</th></tr></thead>
+    <tbody>
+    {% for l in lots %}
+      <tr>
+        <td><code>{{ l.lot_no }}</code></td>
+        <td class="num">{{ l.planned_roll_count|txt }}</td>
+        <td class="num">{{ l.planned_length_m|num(3) }}</td>
+        <td class="num">{{ l.roll_count }}</td>
+        <td>{{ l.note|txt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('JOB-02') }}?no={{ job.job_no }}&lot={{ l.lot_no }}#form">수정</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel grid-panel">
+  <h2>실제 Roll <small>{{ rolls|length }}개 — 생산 LOT → Roll → 출하 LOT</small></h2>
+  <table class="grid">
+    <thead><tr><th>생산 LOT</th><th>롤 번호</th><th>공정 구분</th><th>상태</th><th>길이 (m)</th><th>폭 (mm)</th><th>분할 순번</th><th>생산 일시</th><th>출하 LOT</th></tr></thead>
+    <tbody>
+    {% for r in rolls %}
+      <tr>
+        <td>{% if r.lot_no %}<code>{{ r.lot_no }}</code>{% else %}-{% endif %}</td>
+        <td><code>{{ r.roll_no }}</code></td>
+        <td>{{ r.process_type }}</td>
+        <td>{{ r.state }}</td>
+        <td class="num">{{ r.length_m|num(3) }}</td>
+        <td class="num">{{ r.width_mm|num(2) }}</td>
+        <td class="num">{{ r.slit_seq|txt }}</td>
+        <td>{{ r.produced_at|dt }}</td>
+        <td>{% if r.shipment_no %}<code>{{ r.shipment_no }}</code> <small>{{ r.shipment_status }}</small>{% else %}-{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" id="form">
+  {% if editing %}
+  <h2>생산 LOT 계획 수정 <small><code>{{ editing.lot_no }}</code></small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('JOB-02') }}" id="map-form">
+    {{ ui.field('Job 번호', 'job_no', job.job_no, readonly=true) }}
+    {{ ui.field('생산 LOT 번호', 'lot_no', editing.lot_no, readonly=true) }}
+    {{ ui.field('계획 롤 수', 'planned_roll_count', editing.planned_roll_count, type='number', step='1') }}
+    {{ ui.field('계획 길이 (m)', 'planned_length_m', editing.planned_length_m, type='number', step='any') }}
+    {{ ui.field('비고', 'note', editing.note) }}
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('계획 수정 저장', can.write and job.status == ST_OPEN, form='map-form') }}
+    <a class="btn" href="{{ nav.path_of('JOB-02') }}?no={{ job.job_no }}">취소 (새 생산 LOT)</a>
+  </div>
+  {% else %}
+  <h2>생산 LOT 붙이기 <small>LOT 번호는 저장할 때 채번한다 — 다음 번호(미리보기) <code>{{ next_no }}</code></small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('JOB-02') }}" id="map-form">
+    {{ ui.field('Job 번호', 'job_no', job.job_no, readonly=true) }}
+    {{ ui.field('계획 롤 수', 'planned_roll_count', '', type='number', step='1') }}
+    {{ ui.field('계획 길이 (m)', 'planned_length_m', '', type='number', step='any') }}
+    {{ ui.field('비고', 'note', '') }}
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('생산 LOT 붙이기', can.write and job.status == ST_OPEN, form='map-form') }}
+  </div>
+  {% endif %}
+  {{ ui.notes(['`등록` 상태의 작업지시에만 생산 LOT 을 붙이거나 계획을 바꾼다.',
+               '「Lot」 이 생산 LOT 이라는 해석과 채번 형식은 가설이다 — 현업 확인 대기 (D-10 · D-05).']) }}
+</section>
+{% endif %}
+
+<section class="panel grid-panel">
+  <h2>작업지시별 매핑 현황 <small>{{ jobs|length }}건{% if capped %} — 상한 {{ limit }}건까지만 보인다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>Job 번호</th><th>품목</th><th>상태</th><th>납기</th><th>생산 LOT</th><th>계획 롤 수</th><th>실제 롤 수</th><th>출하 LOT</th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr>
+        <td><a href="{{ nav.path_of('JOB-02') }}?no={{ j.job_no }}#job"><code>{{ j.job_no }}</code></a></td>
+        <td><code>{{ j.item_code }}</code> {{ j.item_name }}</td>
+        <td>{{ j.status }}</td>
+        <td>{{ j.due_date|dt }}</td>
+        <td class="num">{{ j.lot_count }}</td>
+        <td class="num">{{ j.planned_rolls }}</td>
+        <td class="num">{{ j.roll_count }}</td>
+        <td class="num">{{ j.shipment_count }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}</style>
+{% endblock %}

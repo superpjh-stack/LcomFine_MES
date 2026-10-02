@@ -1,0 +1,147 @@
+{# SHP-01 출하 — F-SHP-01 등록 · F-SHP-02 롤 스캔 · F-SHP-03 취소 · F-SHP-04 조회 (개발3)
+   출하 LOT 을 열면(`?no=`) 스캔칸이 롤 번호를 받는다 — 바코드 한 번 = 계보 `출하` 한 줄(lineage.ship_roll). 오류가 나도 다음 스캔을 막지 않는다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% set can_scan = opened and opened.status == '등록' and user.can('F-SHP-02') %}
+
+{% block head %}
+<style>
+  .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .verdict-fail{color:var(--warn);font-weight:700}
+  td.wrap{white-space:normal}
+  .opened{margin-bottom:12px}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel">
+  {% if can_scan %}
+  <h2>출하 롤 스캔 <small>출하 LOT <code>{{ opened.shipment_no }}</code> — 바코드 한 번 = 한 건</small></h2>
+  {{ ui.scan_box(screen.path ~ '/' ~ opened.shipment_no ~ '/rolls', name='roll_no', label='롤 번호') }}
+  {{ ui.notes(['이미 출하된 롤 · 소진된 롤 · 다른 Job 의 롤 · 최신 검사가 불합격인 롤은 담기지 않는다. 미검사 롤은 담기고 COA 에 ' ~ NOT_COLLECTED ~ ' 으로 나온다 (D-17).']) }}
+  {% else %}
+  <h2>출하 LOT 열기 <small>출하 LOT 번호를 스캔하거나 아래 목록에서 고른다</small></h2>
+  {{ ui.scan_box(screen.path, name='no', label='출하 LOT 번호', method='get') }}
+  {% endif %}
+</section>
+
+{% if opened %}
+<section class="panel grid-panel" id="opened">
+  <h2>출하 LOT <code>{{ opened.shipment_no }}</code> <small>상태 {{ opened.status }} · 롤 {{ summary.total }}개 (합격 {{ summary.passed }} · 불합격 {{ summary.failed }} · 미검사 {{ summary.uninspected }})</small></h2>
+  <dl class="kv opened">
+    <dt>Job · 품목</dt><dd><code>{{ opened.job_no }}</code> {{ opened.item_name }}</dd>
+    <dt>고객</dt><dd>{{ opened.customer_name }}</dd>
+    <dt>출하일 · 납기</dt><dd>{{ opened.ship_date }} · 납기 {{ opened.due_date }}</dd>
+    <dt>등록</dt><dd>{{ opened.registered_by }} · {{ opened.registered_at|dt }}</dd>
+    <dt>승인 · COA</dt><dd>{% if opened.status == '승인' %}{{ opened.approved_by }} · {{ opened.approved_at|dt }} · COA <code>{{ opened.coa_no }}</code>{% else %}미승인 — COA 미발행{% endif %}</dd>
+    {% if opened.note %}<dt>비고</dt><dd>{{ opened.note }}</dd>{% endif %}
+  </dl>
+  <table class="grid plain">
+    <thead><tr><th>#</th><th>롤 번호</th><th>공정</th><th>길이 (m)</th><th>폭 (mm)</th><th>검사 판정</th><th>ΔE</th><th>불량 유형 · 위치</th><th>스캔</th></tr></thead>
+    <tbody>
+    {% for r in rolls %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><code>{{ r.roll_no }}</code></td>
+        <td>{{ r.process_type }}</td>
+        <td class="num">{{ r.length_m|num(1) }}</td>
+        <td class="num">{{ r.width_mm|num(1) }}</td>
+        {% if r.inspection %}
+        <td{% if r.inspection.result == '불합격' %} class="verdict-fail"{% endif %}>{{ r.inspection.result }}</td>
+        <td class="num">{{ r.inspection.delta_e|num(2, NOT_COLLECTED) }}</td>
+        <td class="wrap">{{ r.inspection.defects|txt }}</td>
+        {% else %}
+        <td colspan="3" class="empty">검사 결과 {{ NOT_COLLECTED }}</td>
+        {% endif %}
+        <td>{{ r.scanned_by }} · {{ r.scanned_at|dt }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">담긴 롤 {{ NOT_COLLECTED }} — 롤 라벨의 바코드를 스캔한다</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="form-actions">
+    {% if opened.status == '등록' %}
+    <form method="post" action="{{ screen.path }}/{{ opened.shipment_no }}/cancel" class="inline" data-confirm="{{ opened.shipment_no }} 출하를 취소할까요? 담긴 롤은 다시 재고가 됩니다.">
+      {{ ui.write_button('출하 취소', user.can('F-SHP-03'), kind='plain') }}
+    </form>
+    <a class="btn" href="{{ nav.path_of('SHP-02') }}">출하 승인 화면</a>
+    <small>승인은 관리자만 한다 (D-14). 승인 전에만 취소할 수 있다.</small>
+    {% elif opened.status == '승인' %}
+    <a class="btn btn-primary" href="{{ nav.path_of('SHP-03') }}/{{ opened.shipment_no }}/print">COA 출력</a>
+    <small>승인된 출하는 취소하거나 롤을 더 담을 수 없다.</small>
+    {% else %}
+    <small>취소된 출하다 — 담겼던 롤은 재고로 돌아갔다.</small>
+    {% endif %}
+    <a class="btn" href="{{ screen.path }}">닫기</a>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel" id="form">
+  <h2>출하 등록 <small>출하 LOT 번호는 등록할 때 채번한다{% if not number_rule %} — 채번 형식 {{ ui.undecided('D-05') }}{% endif %}</small></h2>
+  <form class="form-grid" method="post" action="{{ screen.path }}" id="shipment-form" autocomplete="off">
+    {{ ui.field('Job 번호', 'job_no', '', required=true) }}
+    <label>고객
+      <select name="customer_code">
+        <option value="">그 Job 의 고객</option>
+        {% for c in customers %}<option value="{{ c.customer_code }}">{{ c.customer_code }} {{ c.customer_name }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ ui.field('출하일', 'ship_date', today, type='date', required=true) }}
+    {{ ui.field('비고', 'note', '') }}
+  </form>
+  <div class="form-actions">
+    {{ ui.write_button('출하 등록', user.can('F-SHP-01'), form='shipment-form') }}
+  </div>
+  {{ ui.notes(['출하 LOT 하나는 한 Job 의 롤만 담는다 (D-16).']) }}
+</section>
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('출하 LOT 번호', 'shipment_no', q.shipment_no) }}
+    {{ ui.field('Job 번호', 'job_no', q.job_no) }}
+    {{ ui.field('고객', 'customer', q.customer) }}
+    <label>상태
+      <select name="status">
+        <option value="">전체</option>
+        {% for st in statuses %}<option value="{{ st }}"{% if st == q.status %} selected{% endif %}>{{ st }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ ui.field('출하일 시작', 'date_from', q.date_from, type='date') }}
+    {{ ui.field('출하일 끝', 'date_to', q.date_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>출하 목록 <small>{{ rows|length }}건{% if rows|length >= limit %} — 상한 {{ limit }}건까지만 보인다. 조회 조건을 좁힌다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>출하 LOT</th><th>상태</th><th>Job</th><th>품목</th><th>고객</th><th>출하일</th><th>롤 수</th><th>COA</th><th>등록</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ screen.path }}?no={{ r.shipment_no|urlencode }}#opened"><code>{{ r.shipment_no }}</code></a></td>
+        <td>{{ r.status }}</td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td>{{ r.customer_name }}</td>
+        <td>{{ r.ship_date }}</td>
+        <td class="num">{{ r.roll_count }}</td>
+        <td>{% if r.coa_no %}<code>{{ r.coa_no }}</code>{% elif r.status == '등록' %}미발행{% else %}-{% endif %}</td>
+        <td>{{ r.registered_by }} · {{ r.registered_at|dt }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+{% endblock %}

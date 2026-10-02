@@ -1,0 +1,3 @@
+job_no,item_code,customer_code,plate_code,anilox_code,ink_code,equipment_code,order_qty,qty_unit,due_date,status,note
+IMP-J001,IMP-P01,IMP-C01,IMP-PL1,IMP-AN1,IMP-INK1,IMP-EQ1,1000,m,2026-10-31,,(예시)
+IMP-J002,IMP-P02,IMP-C02,,,,,500,m,2026-11-15,,(예시)

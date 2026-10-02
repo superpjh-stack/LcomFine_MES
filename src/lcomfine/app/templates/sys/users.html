@@ -1,0 +1,111 @@
+{# SYS-01 사용자 — 조회(F-SYS-04) · 등록(F-SYS-01) · 수정·비밀번호 초기화(F-SYS-02) · 삭제 = 상태 `중지`(F-SYS-03).
+   비밀번호 해시는 화면에 내보내지 않는다. 비밀번호 칸은 항상 비어 있다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('로그인 ID', 'login_id', f.login_id) }}
+    {{ ui.field('이름', 'name', f.name) }}
+    <label>역할
+      <select name="role_code">
+        <option value="">전체</option>
+        {% for r in roles %}<option value="{{ r.role_code }}"{% if r.role_code == f.role_code %} selected{% endif %}>{{ r.role_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>상태
+      <select name="status">
+        <option value="">전체</option>
+        {% for s in statuses %}<option value="{{ s }}"{% if s == f.status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>사용자 목록 <small>{{ rows|length }}명</small></h2>
+  <table class="grid">
+    <thead><tr><th>로그인 ID</th><th>이름</th><th>역할</th><th>상태</th><th>연속 실패</th><th>마지막 로그인</th><th>등록</th><th>수정 · 삭제</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><code>{{ r.login_id }}</code></td>
+        <td>{{ r.user_name }}</td>
+        <td>{{ r.role_name }}</td>
+        <td>{{ r.status }}</td>
+        <td class="num">{{ r.fail_count }}</td>
+        <td>{{ r.last_login_at|dt }}</td>
+        <td>{{ r.created_at|dt }} · {{ r.created_by }}</td>
+        <td>
+          <a class="btn btn-sm" href="{{ nav.path_of('SYS-01') }}?edit={{ r.login_id }}#form">수정</a>
+          <form method="post" action="{{ nav.path_of('SYS-01') }}/{{ r.login_id }}/delete" class="inline" data-confirm="{{ r.login_id }} 계정을 중지할까요? 행은 지우지 않는다.">
+            <button type="submit" class="btn btn-sm"{% if not can.delete or r.login_id == user.login_id or r.status == ST_STOPPED %} disabled{% endif %}>삭제 (중지)</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel" id="form">
+  {% if editing %}
+  <h2>사용자 수정 <small><code>{{ editing.login_id }}</code> — 로그인 ID 는 바꿀 수 없다</small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('SYS-01') }}/{{ editing.login_id }}" id="user-form" autocomplete="off">
+    {{ ui.field('로그인 ID', '', editing.login_id, readonly=true) }}
+    {{ ui.field('이름', 'user_name', editing.user_name, required=true) }}
+    <label>역할 <em class="req">*</em>
+      <select name="role_code" required>
+        {% for r in roles %}<option value="{{ r.role_code }}"{% if r.role_code == editing.role_code %} selected{% endif %}>{{ r.role_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>상태 <em class="req">*</em>
+      <select name="status" required>
+        {% for s in statuses %}<option value="{{ s }}"{% if s == editing.status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>비밀번호 초기화 (비우면 그대로)
+      <input type="password" name="password" value="" autocomplete="new-password">
+    </label>
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('수정 저장', can.update, form='user-form') }}
+    <a class="btn" href="{{ nav.path_of('SYS-01') }}">취소 (새로 등록)</a>
+  </div>
+  {% else %}
+  <h2>사용자 등록</h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('SYS-01') }}" id="user-form" autocomplete="off">
+    {{ ui.field('로그인 ID', 'login_id', '', required=true) }}
+    {{ ui.field('이름', 'user_name', '', required=true) }}
+    <label>역할 <em class="req">*</em>
+      <select name="role_code" required>
+        <option value="">선택</option>
+        {% for r in roles %}<option value="{{ r.role_code }}">{{ r.role_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>초기 비밀번호 <em class="req">*</em>
+      <input type="password" name="password" value="" required autocomplete="new-password">
+    </label>
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('사용자 등록', can.create, form='user-form') }}
+  </div>
+  {% endif %}
+  {{ ui.notes(['비밀번호는 해시만 저장한다. 복잡도·잠금 횟수·변경 주기는 정해진 것이 없다 — 미확정 (D-20).',
+               '역할을 바꾸면 그 사용자가 다음에 로그인할 때부터 적용된다.',
+               '삭제는 행을 지우지 않고 상태를 `중지` 로 바꾼다 — 접근 로그가 그 계정을 가리킨다 (D-21). 자기 자신은 삭제할 수 없다.']) }}
+</section>
+
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
+.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+{% endblock %}

@@ -1,0 +1,139 @@
+{# TRC-01 추적 — F-TRC-03 LOT 검색 · F-TRC-01 정방향 · F-TRC-02 역방향 (개발3 · P9 — 읽기만 한다)
+   번호 하나(원재료 LOT · 롤 · 출하 LOT)를 넣으면 계보를 따라간 경로가 단계별로 보인다. 자식이 없는 롤은 `재고`.
+   폭 390px 에서 가로 스크롤이 없도록 표를 쓰지 않고 세로로 쌓는다(G-13). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+
+{% macro chip(n) %}
+<span class="node k-{{ n.kind }}">
+  <span class="kind">{{ n.label }}</span>
+  <a href="{{ screen.path }}?q={{ n.no|urlencode }}"><code>{{ n.no }}</code></a>
+  {% if n.kind == L.ROLL and n.state == L.IN_STOCK %}<span class="badge stock">재고</span>
+  {% elif n.state %}<span class="state">{{ n.state }}</span>{% endif %}
+</span>
+{% endmacro %}
+
+{% macro trace_links(n) %}
+{% if L.FORWARD in directions[n.kind] %}<a class="btn btn-sm" href="{{ screen.path }}/forward?no={{ n.no|urlencode }}">정방향 추적</a>{% endif %}
+{% if L.BACKWARD in directions[n.kind] %}<a class="btn btn-sm" href="{{ screen.path }}/backward?no={{ n.no|urlencode }}">역방향 추적</a>{% endif %}
+{% endmacro %}
+
+{% block head %}
+<style>
+  .trace-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .trace-form label{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .trace-form input{width:100%;min-width:0;font-size:16px;padding:8px 10px}
+  .trace-form .btns{display:flex;flex-wrap:wrap;gap:6px}
+  .node{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;max-width:100%;padding:3px 8px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  .node code{background:none;padding:0;font-size:13px;word-break:break-all}
+  .node a{color:var(--accent)}
+  .node .kind{font-size:11px;color:var(--muted);font-weight:700}
+  .node .state{font-size:11px;color:var(--muted)}
+  .node.k-material_lot{border-color:#b9c9e6;background:#f3f6fc}
+  .node.k-shipment{border-color:#e8cf9a;background:var(--tag-bg)}
+  .badge{font-size:11px;font-weight:700;border-radius:3px;padding:0 6px}
+  .badge.stock{background:var(--accent);color:#fff}
+  .answer{display:flex;flex-direction:column;gap:8px}
+  .answer .row{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+  .answer .row > strong{flex:0 0 100%;font-size:12.5px;color:var(--head)}
+  .stage{border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:12px 0 0}
+  .stage h3{margin:0 0 4px;font-size:13px;color:var(--head)}
+  .stage h3 small{margin-left:6px}
+  .edge{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;padding:6px 0;border-bottom:1px solid var(--line);min-width:0}
+  .edge:last-child{border-bottom:none}
+  .edge .arrow{color:var(--muted);font-size:12px;white-space:nowrap}
+  .hit{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+  .hit:last-child{border-bottom:none}
+  .hit .job{font-size:12px;color:var(--muted)}
+  .trace-panel{min-width:0;overflow-wrap:anywhere}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel trace-panel">
+  <h2>LOT 추적 <small>원재료 LOT · 롤 · 출하 LOT 번호</small></h2>
+  <form class="trace-form" method="get" action="{{ screen.path }}" autocomplete="off">
+    <label>번호 (일부만 넣어도 검색된다)
+      <input type="text" name="no" value="{{ q }}" data-scan autofocus required>
+    </label>
+    <span class="btns">
+      <button type="submit" class="btn btn-primary">LOT 검색</button>
+      <button type="submit" class="btn" formaction="{{ screen.path }}/forward">정방향 추적</button>
+      <button type="submit" class="btn" formaction="{{ screen.path }}/backward">역방향 추적</button>
+    </span>
+  </form>
+  {{ ui.notes(['정방향 = 원재료 LOT · 롤에서 출하 LOT 까지 · 역방향 = 출하 LOT · 롤에서 원재료 LOT 까지.',
+               '추적은 계보(roll_genealogy)를 따라가는 조회다 — 결과를 저장하지 않고 매번 다시 조회한다.']) }}
+</section>
+
+{% if mode == 'search' %}
+<section class="panel trace-panel">
+  {% if results is none %}
+  <h2>검색 결과</h2>
+  <p class="empty">번호를 넣고 「LOT 검색」 을 누른다. 정확한 번호를 알면 곧바로 정방향 · 역방향 추적을 누른다.</p>
+  {% else %}
+  <h2>검색 결과 <small>「{{ q }}」 {{ results|length }}건{% if results|length >= limit %} — 상한 {{ limit }}건까지만 보인다. 번호를 더 넣는다{% endif %}</small></h2>
+  {% for n in results %}
+  <div class="hit">
+    {{ chip(n) }}
+    {% if n.job_no %}<span class="job">Job <code>{{ n.job_no }}</code></span>{% endif %}
+    {{ trace_links(n) }}
+  </div>
+  {% else %}
+  <p class="empty">{{ NOT_COLLECTED }} — 「{{ q }}」 가 들어간 원재료 LOT · 롤 · 출하 LOT 번호가 없다</p>
+  {% endfor %}
+  {% endif %}
+</section>
+
+{% else %}
+{% set fwd = mode == L.FORWARD %}
+<section class="panel trace-panel">
+  <h2>{{ '정방향' if fwd else '역방향' }} 추적 <small>{{ '원재료 LOT · 롤 → 출하 LOT' if fwd else '출하 LOT · 롤 → 원재료 LOT' }}</small></h2>
+  <div class="answer">
+    <div class="row"><strong>출발</strong>{{ chip(trace.start) }}
+      {% if trace.start.job_no %}<span class="job">Job <code>{{ trace.start.job_no }}</code></span>{% endif %}
+      {% if fwd and L.BACKWARD in directions[trace.start.kind] %}<a class="btn btn-sm" href="{{ screen.path }}/backward?no={{ trace.start.no|urlencode }}">역방향으로</a>{% endif %}
+      {% if not fwd and L.FORWARD in directions[trace.start.kind] %}<a class="btn btn-sm" href="{{ screen.path }}/forward?no={{ trace.start.no|urlencode }}">정방향으로</a>{% endif %}
+    </div>
+    {% if fwd %}
+    {% set ships = trace.shipments() %}{% set stock = trace.stock_rolls() %}
+    <div class="row"><strong>닿은 출하 LOT {{ ships|length }}건</strong>
+      {% for n in ships %}{{ chip(n) }}{% else %}<span class="empty">{{ NOT_COLLECTED }} — 아직 출하되지 않았다</span>{% endfor %}
+    </div>
+    <div class="row"><strong>재고로 남은 롤 {{ stock|length }}개</strong>
+      {% for n in stock %}{{ chip(n) }}{% else %}<span class="empty">없음</span>{% endfor %}
+    </div>
+    {% else %}
+    {% set lots = trace.material_lots() %}
+    <div class="row"><strong>닿은 원재료 LOT {{ lots|length }}건</strong>
+      {% for n in lots %}{{ chip(n) }}{% else %}<span class="empty">{{ NOT_COLLECTED }} — 이 번호의 계보에 원재료 LOT 투입 기록이 없다</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel trace-panel">
+  <h2>경로 <small>{{ stages|length }}단계 · 화살표 {{ trace.edges|length }}줄 · 노드 {{ trace.nodes()|length }}개</small></h2>
+  {% for st in stages %}
+  <div class="stage">
+    <h3>{{ st.depth }}단계 <small>{{ st.relations|join(' · ') }} · {{ st.edges|length }}줄</small></h3>
+    {% for e in st.edges %}
+    <div class="edge">
+      {% if fwd %}
+      {{ chip(e.parent) }}<span class="arrow">─ {{ e.relation }}{% if e.qty is not none %} {{ e.qty|num(1) }}{% endif %} →</span>{{ chip(e.child) }}
+      {% else %}
+      {{ chip(e.child) }}<span class="arrow">← {{ e.relation }}{% if e.qty is not none %} {{ e.qty|num(1) }}{% endif %} ─</span>{{ chip(e.parent) }}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">{{ NOT_COLLECTED }} —
+    {% if trace.start.kind == L.ROLL and fwd %}이 롤에서 이어진 다음 공정 · 출하가 없다{% if trace.start.state == L.IN_STOCK %} (재고){% endif %}
+    {% elif trace.start.kind == L.MATERIAL_LOT %}이 원재료 LOT 은 아직 투입되지 않았다
+    {% elif trace.start.kind == L.SHIPMENT %}이 출하 LOT 에 담긴 롤이 없다
+    {% else %}이 롤로 이어진 계보 기록이 없다{% endif %}</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

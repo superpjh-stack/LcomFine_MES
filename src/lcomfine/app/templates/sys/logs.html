@@ -1,0 +1,53 @@
+{# SYS-03 로그 — 조회(F-SYS-07). `sys_access_log` 를 기간·사용자·구분으로 검색한다(G-18).
+   구분: 로그인(성공·실패·로그아웃) · 조회(화면을 열 때마다) · 변경(쓰기 기능이 성공할 때마다) · 오류(처리되지 않은 예외). 읽기만 한다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('시작일', 'date_from', f.date_from, type='date') }}
+    {{ ui.field('종료일', 'date_to', f.date_to, type='date') }}
+    {{ ui.field('사용자 (로그인 ID)', 'login_id', f.login_id) }}
+    <label>구분
+      <select name="log_type">
+        <option value="">전체</option>
+        {% for t in log_types %}<option value="{{ t }}"{% if t == f.log_type %} selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>결과
+      <select name="result">
+        <option value="">전체</option>
+        {% for t in ('성공', '실패') %}<option value="{{ t }}"{% if t == f.result %} selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>접근 로그 <small>조건에 맞는 로그 {{ total }}건{% for t in log_types %} · {{ t }} {{ by_type.get(t, 0) }}{% endfor %}{% if total > rows|length %} — 최근 {{ limit }}건만 보인다. 조건을 좁힌다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>일시</th><th>구분</th><th>결과</th><th>사용자</th><th>역할</th><th>화면</th><th>기능</th><th>대상</th><th>내용</th><th>요청</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr data-log-type="{{ r.log_type }}">
+        <td>{{ r.logged_at|dt('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ r.log_type }}</td>
+        <td>{{ r.result }}</td>
+        <td>{{ r.login_id|txt }}</td>
+        <td>{{ r.role_code|txt }}</td>
+        <td>{{ r.screen_id|txt }}</td>
+        <td>{{ r.function_id|txt }}</td>
+        <td>{{ r.target|txt }}</td>
+        <td>{{ r.detail|txt }}</td>
+        <td><small>{{ r.method|txt }} {{ r.path|txt }}</small></td>
+        <td><small>{{ r.client_ip|txt }}</small></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

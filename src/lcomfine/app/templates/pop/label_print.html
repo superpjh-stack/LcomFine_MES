@@ -1,0 +1,17 @@
+{# 라벨 인쇄용 화면 — 원재료 LOT 라벨(F-MAT-06) · 인쇄 롤 라벨(F-POP-08) · 롤 라벨(F-RLL-07)이 같이 쓴다.
+   라벨 조각은 printing.render_label 이 만든다(출력 방식이 바뀌면 그 함수만 고친다, D-04). 인쇄할 때 헤더·메뉴는 숨는다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+<section class="panel">
+  <h2 class="no-print">{{ title }} <small>{{ labels|length }}장 — 프린터 규격 미확정 (D-04): 브라우저 인쇄</small></h2>
+  <div class="form-actions no-print">
+    {{ ui.print_button('라벨 인쇄') }}
+    <a class="btn no-print" href="{{ back }}">돌아가기</a>
+  </div>
+  <div class="label-sheet">{% for l in labels %}{{ l }}{% endfor %}</div>
+  <p class="empty no-print">바코드의 값은 번호 글자 그대로다 — 스캔칸에 넣으면 그 LOT/롤이 열린다.</p>
+</section>
+{% endblock %}

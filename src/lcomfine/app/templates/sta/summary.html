@@ -1,0 +1,53 @@
+{# STA-01 집계 (생산, 품질, 납기) — F-STA-01 생산 · F-STA-02 품질 · F-STA-03 납기 (개발3 · P10 — 읽기만 한다)
+   값은 app/stats.py 의 함수에서 온다(산식 interfaces.md §7 · D-25). 0건이면 `미수집`. 폭 390px 에서 가로 스크롤 없음(G-13). #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "sta/_tables.html" as st %}
+{% set query = 'date_from=' ~ date_from ~ '&date_to=' ~ date_to ~ ('&item_id=' ~ item_id if item_id else '') %}
+
+{% block head %}
+{{ st.style() }}
+<style>
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .tabs .btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .sta-panel{min-width:0}
+  .search-form label{min-width:0}
+  .search-form select{max-width:100%}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel search sta-panel">
+  <h2>조회 조건 <small>기간은 양 끝 날짜 포함 · 비우면 이번 달 1일 ~ 오늘</small></h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('기간 시작', 'date_from', date_from, type='date') }}
+    {{ ui.field('기간 끝', 'date_to', date_to, type='date') }}
+    {{ ui.select('품목', 'item_id', items, item_id or '', blank='전체') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+  <div class="tabs">
+    <a class="btn btn-sm{% if shown|length > 1 %} on{% endif %}" href="{{ screen.path }}?{{ query }}">전체</a>
+    {% for k, info in kinds.items() %}
+    <a class="btn btn-sm{% if shown|length == 1 and shown[0] == k %} on{% endif %}" href="{{ screen.path }}/{{ k }}?{{ query }}">{{ info[0] }}</a>
+    {% endfor %}
+    <a class="btn btn-sm" href="{{ nav.path_of('STA-02') }}?device=board">현황판</a>
+  </div>
+</section>
+
+{% for sec in sections %}
+<section class="panel sta-panel" id="{{ sec.kind }}">
+  <h2>{{ kinds[sec.kind][0] }} 집계 <small>{{ kinds[sec.kind][2] }} {{ date_from }} ~ {{ date_to }} · 품목 {{ sec.rows|length }}종</small></h2>
+  {% if sec.kind == 'production' %}
+  {{ st.production(sec.rows, sec.total) }}
+  {{ ui.notes(['대상 = 기간 안에 종료된 완료 실적. 실적 수량 = 종료 때 입력한 수량의 합 · 폐기 수량 = 그 실적들의 폐기 기록 합.']) }}
+  {% elif sec.kind == 'quality' %}
+  {{ st.quality(sec.rows, sec.total) }}
+  {{ ui.notes(['대상 = 기간 안의 검사(검사 행 수). 불합격률 = 불합격 수 ÷ 검사 수 · 평균 ΔE 는 ΔE 가 적힌 검사만.']) }}
+  {% else %}
+  {{ st.delivery(sec.rows, sec.total) }}
+  {{ ui.notes(['대상 = 납기가 기간 안인 Job(취소 제외). 준수 = 승인된 출하 중 가장 이른 출하일 ≤ 납기 · 지연 = 그 출하일 > 납기, 또는 승인된 출하 없이 납기가 지남 · 미출하 = 승인된 출하가 없고 납기가 아직 안 지남 (오늘 ' ~ today ~ ').',
+               '준수율 = 준수 ÷ (준수 + 지연). 완납 여부(지시 수량 대비 출하 수량)는 보지 않는다 (D-25).']) }}
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

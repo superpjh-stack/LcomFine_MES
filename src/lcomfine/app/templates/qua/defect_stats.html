@@ -1,0 +1,85 @@
+{# QUA-02 불량 집계 — F-QUA-05 불량 유형별 집계 (stats.defect_by_type) · F-QUA-06 불량 롤 (stats.defect_rolls, 집계의 내역) (개발3)
+   읽기만 한다. 0건이면 `미수집`. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% set base_q = 'date_from=' ~ date_from ~ '&date_to=' ~ date_to ~ ('&item_id=' ~ item_id if item_id else '') %}
+
+{% block head %}
+<style>
+  td.wrap{white-space:normal}
+  .verdict-fail{color:var(--warn);font-weight:700}
+  tr.cur td{background:var(--accent-tint)}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건 <small>기간은 검사 일시의 날짜 · 양 끝 포함</small></h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('검사일 시작', 'date_from', date_from, type='date') }}
+    {{ ui.field('검사일 끝', 'date_to', date_to, type='date') }}
+    {{ ui.select('품목', 'item_id', items, item_id or '', blank='전체') }}
+    {% if detail is not none %}
+    <label>불량 유형
+      <select name="defect_code">
+        <option value="">전체</option>
+        {% for d in defect_codes %}<option value="{{ d.defect_code }}"{% if d.defect_code == defect_code %} selected{% endif %}>{{ d.defect_code }} {{ d.defect_name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>불량 유형별 집계 <small>{{ date_from }} ~ {{ date_to }} · 불량 유형 {{ rows|length }}종 · 불량 행 {{ total }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>불량 코드</th><th>불량 유형</th><th>불량 행 수</th><th>불량 롤 수</th><th>내역</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if detail is not none and r.defect_code == defect_code %} class="cur"{% endif %}>
+        <td><code>{{ r.defect_code }}</code></td>
+        <td>{{ r.defect_name }}</td>
+        <td class="num">{{ r.defect_count|num }}</td>
+        <td class="num">{{ r.roll_count|num }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('QUA-02') }}/rolls?defect_code={{ r.defect_code|urlencode }}&{{ base_q }}#rolls">불량 롤</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['불량 행 수 = 그 기간 검사의 불량 행(불량 유형·위치) 수 · 불량 롤 수 = 그 불량이 기록된 서로 다른 롤 수 (interfaces.md §7).']) }}
+</section>
+
+<section class="panel grid-panel" id="rolls">
+  {% if detail is none %}
+  <h2>불량 롤</h2>
+  <p class="empty">불량 유형의 「불량 롤」 을 누르면 그 불량이 기록된 롤 번호 · 위치 · Job 이 나온다.
+    <a class="btn btn-sm" href="{{ nav.path_of('QUA-02') }}/rolls?{{ base_q }}#rolls">전체 불량 롤 보기</a></p>
+  {% else %}
+  <h2>불량 롤 <small>{% if defect_code %}불량 유형 <code>{{ defect_code }}</code>{% else %}불량 유형 전체{% endif %} · {{ detail|length }}건
+    <a class="btn btn-sm" href="{{ nav.path_of('QUA-02') }}?{{ base_q }}">집계로</a></small></h2>
+  <table class="grid">
+    <thead><tr><th>검사 일시</th><th>불량 유형</th><th>위치</th><th>롤 번호</th><th>공정</th><th>Job</th><th>품목</th><th>ΔE</th><th>판정</th></tr></thead>
+    <tbody>
+    {% for r in detail %}
+      <tr>
+        <td>{{ r.inspected_at|dt }}</td>
+        <td><code>{{ r.defect_code }}</code> {{ r.defect_name }}</td>
+        <td class="wrap">{{ r.position|txt }}</td>
+        <td><a href="{{ nav.path_of('QUA-01') }}?no={{ r.roll_no|urlencode }}"><code>{{ r.roll_no }}</code></a></td>
+        <td>{{ r.process_type }}</td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td class="num">{{ r.delta_e|num(2, NOT_COLLECTED) }}</td>
+        <td{% if r.result == '불합격' %} class="verdict-fail"{% endif %}>{{ r.result }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

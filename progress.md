@@ -4,13 +4,30 @@
 
 ## 지금 해야 할 것
 
-1. **웨이브 B 기동 — 개발 1·2·3 병렬** (goal.md §5 프롬프트). 각자 `CLAUDE.md` → `contracts/` → `decisions.md` 순으로 읽고 시작한다.
-   - **R1 (기반)** 개발1: `app/numbering.py` + `sys_number_rule` 시드 6행 — 가설 형식을 `progress-dev1.md` §1 에 **가장 먼저** 공표(개발2·3 이 기다린다) · 기준정보 시드 `(예시)` · 작업지시 등록.
-     개발2: `app/lineage.py` + `tests/test_lineage_scenario.py`(G-06 10행). 개발3: 추적 화면 뼈대 · `app/stats.py` · `contracts/migration-files.md` 제안.
-   - **R2 (화면)** 각자 담당 중메뉴(개발1 13 · 개발2 11 · 개발3 8)의 placeholder 를 실제 화면으로.
-2. 그 뒤 `make gate` 의 FAIL 순서대로: G-02(기능 ↔ 라우트 ↔ 테스트 표식) · G-03(placeholder 32) · G-06 · G-07 · G-08 · G-10 · G-14 · G-15 · G-18 · G-20 · G-21.
-3. 아키텍트에게 남은 것(웨이브 D): `tools/backup.py`(G-20) · `Dockerfile` + `docker-compose.yml`(D-03).
-4. 사람이 정해야 풀리는 것: D-01~D-07(설계도 §7) · D-10(「Lot」의 뜻) · D-12(P8 의 쓰는 저장소 — 설계도 모순) · D-14(괄호 권한의 해석) · D-17(검사가 출하의 필수 조건인가) · D-25(집계 산식).
+1. **웨이브 C — QA 1·2·3 병렬** (goal.md §3.3 · §5). 검사기 `tools/{check_screens,check_data,check_security}.py` 를 만들면 `gate.py` 가 G-05~G-20 · G-17 을 판정한다. 지금 미검증 16 은 전부 이 검사기 대기다.
+2. **웨이브 D — 결함 수정.** QA 결함 + 개발이 남긴 공용 파일 요청(`progress-dev{1,2,3}.md` §3):
+   - [결함] 중지·잠금 계정의 살아 있는 세션이 계속 통한다 (`rbac.current_user` 가 DB 를 다시 보지 않음) — 개발1 §3-2
+   - [결함] POP 알림을 닫으면 스캔칸 포커스가 돌아오지 않고, 알림 중 스캔 글자가 버려진다 (`static/app.js`; 개발2 화면만 자체 처리, 개발3 POP 화면 미적용) — 개발2 §3-1
+   - [결함] 스캔 진입 GET 의 422 가 오류 화면으로 가서 스캔칸이 사라진다 (`main.py` · api-contract §2, D-201) — 개발2 §3-2 · §3-7
+   - [아키텍트] `tools/backup.py` (G-20 FAIL) · `Dockerfile` + `docker-compose.yml` (D-03)
+   - [계약] `interfaces.md` §3·§4·§5·§7·§9 와 `function-list.md` 문장에 D-101~106 · D-201~207 · D-301~307 반영, `contracts/migration-files.md` 확정, 공용 CSS/매크로(필수 표시 · scan_box 슬롯)
+3. 사람이 정해야 풀리는 것: D-01~D-07(설계도 §7) · D-10(「Lot」의 뜻) · D-12(P8 의 쓰는 저장소 — 설계도 모순) · D-14(괄호 권한) · D-16(출하 LOT 1개 = Job 1개) · D-17(미검사 롤 출하) · D-18(다색 인쇄의 색별 기준) · D-25/D-301(집계 산식) · D-202(입고량 초과 투입) · D-303(이관 파일 규격).
+
+## 2026-10-03 — 웨이브 B 완료 (개발 1·2·3) · 오케스트레이터 재실측
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| `make gate-full` | **PASS 5 · FAIL 1 · 미검증 16 / 22** — PASS: G-01 · G-02 · G-03 · G-04 · G-21. FAIL: G-20(백업 도구 없음). 미검증 16 은 QA 검사기 대기 | `make gate-full` (03:2x 직접 실행) |
+| pytest | **369 passed** (arch 34 · dev1 127 · dev2 152 · dev3 56) | `uv run pytest -q` |
+| G-02 기능 | 기능 ↔ 라우트 **94/94** · 고아 라우트 0 · 테스트 표식 **100/100** · 이관 배치 명령 **6/6** | `make check-trace` |
+| G-03 화면 | HTTP 200 35/35 · placeholder **0** | `make check-routes` |
+| 계보 시나리오 | `tests/test_lineage_scenario.py` 9 passed — 설계도 §3 예시 10행(투입 3 · splice 2 · 슬리팅 3 · 출하 2)을 화면 API 로 생성, 양방향 추적, 6단 이상 임의 계보. **G-06·G-07 판정은 QA2 대기(미검증)** | `uv run pytest -q tests/test_lineage_scenario.py` |
+| 시드 멱등 | 재실행 행 수 diff 0 (테이블 29 · 행 98) | `make gate-full` 의 G-09 실측 |
+| 테스트 잔여물 | roll 0 · roll_genealogy 0 · job 0 · shipment 0 · inspection 0 · sys_migration_log 0 · 시드만 남음(material_lot 4 · item 5 · sys_user 4 · sys_permission 48) | `psql -h /tmp -d lcomfine_db -Atc "select count(*) from roll"` 등 |
+| 용어 오염 | 0건 | `grep -rnE "솥\|인분\|검식\|절임\|숙성\|염도\|needsfood" src tools tests contracts Makefile` |
+| 게이트 도구 수정 | `tools/check_trace.py` 가 `include_router` 한 라우터를 펴지 못해 기능 ↔ 라우트가 항상 0/94, 고아 검사가 빈 집합으로 통과하던 것을 고침 (`all_routes`) — 게이트를 낮춘 것이 아니라 재는 방법을 바로잡음 (개발1 §3-1) | 수정 전 0/94 → 수정 후 94/94 · 고아 0 |
+| 결정 | D-101~106(개발1) · D-201~207(개발2) · D-301~307(개발3) 추가, 전부 가설 · 차단 0 | `grep -c "^## D-" decisions.md` |
+| 개발 보고 중 미확인 | 실제 브라우저 조작은 개발2 의 POP 헤드리스 한 바퀴뿐 · 모바일 390px 는 정적 HTML 측정 · 현황판 30초 새로고침 미실측 · 실물 스캐너/프린터 미확인(D-04) → QA3 G-13 · G-22 | `progress-dev{1,2,3}.md` |
 
 ## 2026-10-03 — Phase 0 오케스트레이터 재실측 · 웨이브 B 기동
 

@@ -1,23 +1,29 @@
-{# 메인 — 묶음 4 > 대메뉴 > 중메뉴 바로가기. 권한 `없음` 인 대메뉴는 나오지 않는다. (개발1 이 이어받아 채운다) #}
+{# 메인 — 묶음 4 > 대메뉴 > 중메뉴 바로가기. 권한 `없음` 인 대메뉴는 나오지 않는다 — 역할에 맞는 메뉴만 보인다. #}
 {% extends "base.html" %}
 {% block body %}
 <section class="panel">
   <h2>{{ user.user_name }} <small>{{ user.role_name }} · {{ channel }}</small></h2>
+  <dl class="kv">
+    <dt>열 수 있는 메뉴</dt><dd>대메뉴 {{ summary.menus }} / {{ summary.all_menus }} · 화면 {{ summary.screens }} / {{ summary.all_screens }} <small>— 권한 표(시스템 관리 &gt; 권한)의 지금 값</small></dd>
+    <dt>이 시스템의 중심</dt><dd>Job → 생산 LOT → Roll. 롤이 합쳐지고 나뉘어도 계보에 부모 → 자식 한 줄씩 남기고, 추적은 그 기록을 따라가는 조회다.</dd>
+  </dl>
   {% if not menus %}
   <p class="empty">열 수 있는 메뉴가 없다 — 권한 표(시스템 관리 &gt; 권한)를 확인한다.</p>
   {% endif %}
 </section>
 {% for node in menus %}
-<section class="panel">
+<section class="panel" data-group="{{ node.group }}">
   <h2>{{ node.group }}</h2>
   <div class="cards">
     {% for m in node.menus %}
-    <div class="card">
-      <h3>{{ m.name }} <small>{{ levels[m.code] }}</small></h3>
+    <div class="card" data-menu="{{ m.code }}">
+      <h3><a href="{{ m.screens[0].path }}">{{ m.name }}</a> <small>{{ levels[m.code] }}</small></h3>
       <ul>{% for s in m.screens %}<li><a href="{{ s.path }}">{{ s.name }}</a></li>{% endfor %}</ul>
+      <p class="card-foot">기능 {{ m.fn_count }} · 쓰기 가능 {{ writable[m.code] }} · {{ m.channels|join(', ') }}</p>
     </div>
     {% endfor %}
   </div>
 </section>
 {% endfor %}
+<style>.card-foot{margin:8px 0 0;font-size:11.5px;color:var(--muted)}</style>
 {% endblock %}

@@ -1,0 +1,98 @@
+{# POP-02 정지 · 폐기 — F-POP-07 조회 · F-POP-04 정지 · F-POP-05 재개 · F-POP-06 폐기 #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash) }}
+
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ pui.keep(device) }}
+    <label>작업 실적
+      <select name="work_id">
+        <option value="">전체</option>
+        {% for w in works %}<option value="{{ w.work_result_id }}"{% if w.work_result_id == work_id %} selected{% endif %}>{{ w.work_result_id }} · {{ w.job_no }} · {{ w.status }}</option>{% endfor %}
+        {% if work_id and work_id not in works|map(attribute='work_result_id')|list %}<option value="{{ work_id }}" selected>{{ work_id }}</option>{% endif %}
+      </select>
+    </label>
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>정지 등록 <small>진행 중인 작업만</small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('POP-02') }}" id="stop-form">
+    <label>작업 실적 <em class="req">*</em>
+      <select name="work_id" required>
+        <option value="">선택</option>
+        {% for w in works if w.status == '진행' %}<option value="{{ w.work_result_id }}"{% if w.work_result_id == work_id %} selected{% endif %}>{{ w.work_result_id }} · {{ w.job_no }} · {{ w.equipment_name|txt }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ ui.field('정지 사유', 'stop_reason', '', required=true) }}
+    {{ ui.field('정지 시각 (비우면 지금)', 'stopped_at', '', type='datetime-local') }}
+  </form>
+  <div class="form-actions">{{ ui.write_button('정지 등록', can_stop, form='stop-form') }}</div>
+</section>
+
+<section class="panel">
+  <h2>폐기 등록</h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('POP-02') }}/scrap" id="scrap-form">
+    <label>작업 실적 <em class="req">*</em>
+      <select name="work_id" required>
+        <option value="">선택</option>
+        {% for w in works %}<option value="{{ w.work_result_id }}"{% if w.work_result_id == work_id %} selected{% endif %}>{{ w.work_result_id }} · {{ w.job_no }} · {{ w.status }}</option>{% endfor %}
+        {% if work_id and work_id not in works|map(attribute='work_result_id')|list %}<option value="{{ work_id }}" selected>{{ work_id }}</option>{% endif %}
+      </select>
+    </label>
+    {{ ui.field('폐기 수량', 'scrap_qty', '', type='number', required=true, step='any') }}
+    {{ ui.field('단위', 'qty_unit') }}
+    {{ ui.select('사유 (불량코드)', 'defect_code', defect_options, '', blank='선택 안 함') }}
+    {{ ui.field('사유 메모', 'reason') }}
+  </form>
+  <div class="form-actions">{{ ui.write_button('폐기 등록', can_scrap, form='scrap-form') }}</div>
+</section>
+
+<section class="panel grid-panel">
+  <h2>정지 <small>{{ stops|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>실적</th><th>Job</th><th>정지 사유</th><th>정지 시각</th><th>재개 시각</th><th>등록자</th><th>재개</th></tr></thead>
+    <tbody>
+    {% for s in stops %}
+      <tr>
+        <td>{{ s.work_result_id }}</td><td><code>{{ s.job_no }}</code></td><td>{{ s.stop_reason }}</td>
+        <td>{{ s.stopped_at|dt }}</td>
+        <td>{% if s.resumed_at %}{{ s.resumed_at|dt }}{% else %}{{ pui.state('정지') }}{% endif %}</td>
+        <td>{{ s.created_by }}</td>
+        <td>{% if not s.resumed_at %}
+          <form method="post" action="{{ nav.path_of('POP-02') }}/{{ s.work_stop_id }}/resume" class="inline">{{ ui.write_button('재개', can_resume) }}</form>
+          {% else %}-{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel grid-panel">
+  <h2>폐기 <small>{{ scraps|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>실적</th><th>Job</th><th>폐기 수량</th><th>사유 (불량코드)</th><th>사유 메모</th><th>폐기 시각</th><th>등록자</th></tr></thead>
+    <tbody>
+    {% for c in scraps %}
+      <tr>
+        <td>{{ c.work_result_id }}</td><td><code>{{ c.job_no }}</code></td>
+        <td class="num">{{ c.scrap_qty|num(3) }} {{ c.qty_unit|txt('') }}</td>
+        <td>{% if c.defect_code %}{{ c.defect_name }} <code>{{ c.defect_code }}</code>{% else %}-{% endif %}</td>
+        <td>{{ c.reason|txt }}</td><td>{{ c.scrapped_at|dt }}</td><td>{{ c.created_by }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['정지 사유는 마스터가 없어 글자로 받는다 (D-18).', '폐기는 수량·사유만 적는다 — 롤·계보를 만들지 않는다.']) }}
+</section>
+{% endblock %}

@@ -1,0 +1,144 @@
+{# JOB-01 작업지시 — 조회(F-JOB-04) · 등록(F-JOB-01) · 수정(F-JOB-02) · 취소(F-JOB-03) · 작업지시서 출력(F-JOB-05).
+   `?no=<Job 번호>` 로 한 건이 열린다(바코드 스캔 진입). 진행 여부는 저장하지 않고 작업 실적(D5) 수로 보여 준다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('Job 번호 (일부)', 'q', f.q) }}
+    {{ ui.select('품목', 'item_id', search_options.item_id, f.item_id, blank='전체') }}
+    {{ ui.select('고객', 'customer_id', search_options.customer_id, f.customer_id, blank='전체') }}
+    <label>상태
+      <select name="status">
+        <option value="">전체</option>
+        {% for s in statuses %}<option value="{{ s }}"{% if s == f.status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ ui.field('납기 시작', 'due_from', f.due_from, type='date') }}
+    {{ ui.field('납기 끝', 'due_to', f.due_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+  <form class="search-form scan-line" method="get" action="{{ nav.path_of('JOB-01') }}" autocomplete="off">
+    <label>Job 번호로 열기 (작업지시서 바코드 스캔)
+      <input type="text" name="no" value="" placeholder="Job 번호" required>
+    </label>
+    <label>&nbsp;<button type="submit" class="btn">열기</button></label>
+  </form>
+</section>
+
+{% if job %}
+<section class="panel" id="job">
+  <h2>작업지시 <code>{{ job.job_no }}</code> <small>{{ job.status }} · 작업 실적 {{ job.work_count }}건 · 롤 {{ job.roll_count }}개 · 생산 LOT {{ job.lot_count }}개</small></h2>
+  <dl class="kv">
+    <dt>품목</dt><dd><code>{{ job.item_code }}</code> {{ job.item_name }}</dd>
+    <dt>고객</dt><dd><code>{{ job.customer_code }}</code> {{ job.customer_name }}</dd>
+    <dt>판사양</dt><dd>{% if job.plate_code %}<code>{{ job.plate_code }}</code> {{ job.plate_name }}{% else %}-{% endif %}</dd>
+    <dt>아니록스</dt><dd>{% if job.anilox_code %}<code>{{ job.anilox_code }}</code> {{ job.anilox_name }}{% else %}-{% endif %}</dd>
+    <dt>잉크조성</dt><dd>{% if job.ink_code %}<code>{{ job.ink_code }}</code> {{ job.ink_name }}{% else %}-{% endif %}</dd>
+    <dt>계획 설비</dt><dd>{% if job.equipment_code %}<code>{{ job.equipment_code }}</code> {{ job.equipment_name }}{% else %}-{% endif %}</dd>
+    <dt>지시 수량</dt><dd>{{ job.order_qty|num(3) }} {{ job.qty_unit }}</dd>
+    <dt>납기</dt><dd>{{ job.due_date|dt }}</dd>
+    <dt>비고</dt><dd>{{ job.note|txt }}</dd>
+    <dt>등록</dt><dd>{{ job.created_at|dt }} · {{ job.created_by }}{% if job.updated_at %} (수정 {{ job.updated_at|dt }} · {{ job.updated_by }}){% endif %}</dd>
+    <dt>생산 LOT</dt>
+    <dd>{% for l in lots %}<code>{{ l.lot_no }}</code>{% if not loop.last %} · {% endif %}{% else %}{{ NOT_COLLECTED }}{% endfor %}</dd>
+  </dl>
+  <div class="row-actions">
+    <a class="btn btn-primary" href="{{ nav.path_of('JOB-01') }}/{{ job.job_no }}/print">작업지시서 출력</a>
+    <a class="btn" href="{{ nav.path_of('JOB-02') }}?no={{ job.job_no }}">Job-Lot-Roll 매핑</a>
+    <form method="post" action="{{ nav.path_of('JOB-01') }}/{{ job.job_no }}/cancel" class="inline" data-confirm="{{ job.job_no }} 을(를) 취소할까요? 작업 실적·롤이 없는 작업지시만 취소된다.">
+      <button type="submit" class="btn"{% if not can.cancel or job.status == ST_CANCEL %} disabled{% endif %}>작업지시 취소</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel" id="form">
+  <h2>작업지시 수정 <small><code>{{ job.job_no }}</code>{% if job.work_count %} — 작업 실적이 있어 품목·수량은 바꿀 수 없다{% endif %}{% if job.status == ST_CANCEL %} — 취소된 작업지시는 수정할 수 없다{% endif %}</small></h2>
+  {% set lock = job.work_count > 0 %}
+  <form class="form-grid" method="post" action="{{ nav.path_of('JOB-01') }}/{{ job.job_no }}" id="job-form">
+    {% if lock %}
+    {{ ui.field('품목', '', job.item_code ~ ' · ' ~ job.item_name, readonly=true) }}
+    {{ ui.field('지시 수량', '', job.order_qty, readonly=true) }}
+    {{ ui.field('수량 단위', '', job.qty_unit, readonly=true) }}
+    {% else %}
+    {{ ui.select('품목', 'item_id', options.item_id, job.item_id, required=true) }}
+    {{ ui.field('지시 수량', 'order_qty', job.order_qty, type='number', required=true, step='any') }}
+    {{ ui.field('수량 단위', 'qty_unit', job.qty_unit, required=true) }}
+    {% endif %}
+    {{ ui.select('고객', 'customer_id', options.customer_id, job.customer_id, required=true) }}
+    {{ ui.select('판사양', 'plate_spec_id', options.plate_spec_id, job.plate_spec_id) }}
+    {{ ui.select('아니록스', 'anilox_id', options.anilox_id, job.anilox_id) }}
+    {{ ui.select('잉크조성', 'ink_formula_id', options.ink_formula_id, job.ink_formula_id) }}
+    {{ ui.select('계획 설비', 'equipment_id', options.equipment_id, job.equipment_id) }}
+    {{ ui.field('납기', 'due_date', job.due_date, type='date', required=true) }}
+    {{ ui.field('비고', 'note', job.note) }}
+    <label>상태 (마감)
+      <select name="status"{% if job.status == ST_CANCEL %} disabled{% endif %}>
+        {% for s in (ST_OPEN, ST_DONE) %}<option value="{{ s }}"{% if s == job.status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+        {% if job.status == ST_CANCEL %}<option selected>{{ ST_CANCEL }}</option>{% endif %}
+      </select>
+    </label>
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('수정 저장', can.update and job.status != ST_CANCEL, form='job-form') }}
+    <a class="btn" href="{{ nav.path_of('JOB-01') }}">닫기 (새로 등록)</a>
+  </div>
+</section>
+{% else %}
+<section class="panel" id="form">
+  <h2>작업지시 등록 <small>Job 번호는 저장할 때 채번한다 — 다음 번호(미리보기) <code>{{ next_no }}</code></small></h2>
+  <form class="form-grid" method="post" action="{{ nav.path_of('JOB-01') }}" id="job-form">
+    {{ ui.select('품목 (제품)', 'item_id', options.item_id, '', required=true) }}
+    {{ ui.select('고객', 'customer_id', options.customer_id, '', required=true) }}
+    {{ ui.select('판사양', 'plate_spec_id', options.plate_spec_id, '') }}
+    {{ ui.select('아니록스', 'anilox_id', options.anilox_id, '') }}
+    {{ ui.select('잉크조성', 'ink_formula_id', options.ink_formula_id, '') }}
+    {{ ui.select('계획 설비', 'equipment_id', options.equipment_id, '') }}
+    {{ ui.field('지시 수량', 'order_qty', '', type='number', required=true, step='any') }}
+    {{ ui.field('수량 단위 (비우면 품목의 단위)', 'qty_unit', '') }}
+    {{ ui.field('납기', 'due_date', '', type='date', required=true) }}
+    {{ ui.field('비고', 'note', '') }}
+  </form>
+  <div class="row-actions">
+    {{ ui.write_button('작업지시 등록', can.create, form='job-form') }}
+  </div>
+  {{ ui.notes(['채번 형식은 가설이다 — 현업 규칙을 받으면 형식 행만 바꾼다 (D-05).',
+               '생산 LOT 은 Job-Lot-Roll 매핑 화면에서 붙인다 (D-10).']) }}
+</section>
+{% endif %}
+
+<section class="panel grid-panel">
+  <h2>작업지시 목록 <small>{{ rows|length }}건{% if capped %} — 상한 {{ limit }}건까지만 보인다. 조회 조건을 좁힌다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>Job 번호</th><th>품목</th><th>고객</th><th>지시 수량</th><th>납기</th><th>상태</th><th>작업 실적</th><th>생산 LOT</th><th>등록</th><th>출력</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('JOB-01') }}?no={{ r.job_no }}#job"><code>{{ r.job_no }}</code></a></td>
+        <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td>
+        <td>{{ r.customer_name }}</td>
+        <td class="num">{{ r.order_qty|num(3) }} {{ r.qty_unit }}</td>
+        <td>{{ r.due_date|dt }}</td>
+        <td>{{ r.status }}</td>
+        <td class="num">{{ r.work_count }}건</td>
+        <td class="num">{{ r.lot_count }}개</td>
+        <td>{{ r.created_at|dt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('JOB-01') }}/{{ r.job_no }}/print">작업지시서</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+  f.addEventListener("submit", function (e) { if (!window.confirm(f.dataset.confirm)) e.preventDefault(); });
+});
+</script>
+<style>.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.scan-line{margin-top:10px}
+/* 필수 표시(*)가 세로 배치된 label 안에서 한 줄을 차지하지 않게 한다 — 공용 CSS 에 반영되면 지운다 (progress-dev1.md §3) */
+.form-grid label{position:relative}.form-grid label>.req{position:absolute;top:0;right:2px}</style>
+{% endblock %}

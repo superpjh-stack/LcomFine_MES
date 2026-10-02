@@ -1,0 +1,26 @@
+{# 잉크조성 관리 — 마스터 화면 한 벌에 조성 행(성분·비율) 입력을 더한다. 수정하면 조성 행은 통째로 바꿔 넣는다. #}
+{% extends "bas/master.html" %}
+{% block extra_fields %}
+<fieldset class="components">
+  <legend>조성 행 (성분 · 비율 %) — 빈 줄은 저장하지 않는다</legend>
+  {% set filled = extra or [] %}
+  {% for c in filled %}
+  <div class="component-row">
+    <label>성분 <input type="text" name="component_name" value="{{ c.component_name }}"></label>
+    <label>비율 (%) <input type="number" name="ratio_pct" value="{{ c.ratio_pct }}" step="0.001" min="0" max="100"></label>
+  </div>
+  {% endfor %}
+  {% for _ in range(5) %}
+  <div class="component-row">
+    <label>성분 <input type="text" name="component_name" value=""></label>
+    <label>비율 (%) <input type="number" name="ratio_pct" value="" step="0.001" min="0" max="100"></label>
+  </div>
+  {% endfor %}
+</fieldset>
+<style>
+fieldset.components{flex-basis:100%;border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:0}
+fieldset.components legend{font-size:12px;color:var(--muted)}
+.component-row{display:flex;gap:12px;margin:4px 0}
+.component-row label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+</style>
+{% endblock %}

@@ -1,0 +1,48 @@
+{# SHP-03 COA — F-SHP-06 COA 조회. 승인된 출하 = COA 발행, 미승인은 `미발행` (개발3) #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+
+{% block head %}
+<style>
+  .badge{font-size:11px;font-weight:700;border-radius:3px;padding:0 6px;background:var(--tag-bg);color:var(--tag);border:1px solid #e8cf9a}
+</style>
+{% endblock %}
+
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건</h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('출하 LOT 번호', 'shipment_no', q.shipment_no) }}
+    {{ ui.field('Job 번호', 'job_no', q.job_no) }}
+    {{ ui.field('고객', 'customer', q.customer) }}
+    {{ ui.field('출하일 시작', 'date_from', q.date_from, type='date') }}
+    {{ ui.field('출하일 끝', 'date_to', q.date_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel grid-panel">
+  <h2>COA <small>{{ rows|length }}건{% if rows|length >= limit %} — 상한 {{ limit }}건까지만 보인다{% endif %} · 승인이 곧 COA 발행이다 (D-17)</small></h2>
+  <table class="grid">
+    <thead><tr><th>COA 번호</th><th>출하 LOT</th><th>고객</th><th>Job</th><th>품목</th><th>출하일</th><th>발행일</th><th>롤 수</th><th>출력</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{% if r.coa_no %}<code>{{ r.coa_no }}</code>{% else %}<span class="badge">{{ not_issued }}</span>{% endif %}</td>
+        <td><a href="{{ nav.path_of('SHP-01') }}?no={{ r.shipment_no|urlencode }}#opened"><code>{{ r.shipment_no }}</code></a></td>
+        <td>{{ r.customer_name }}</td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td>{{ r.item_name }}</td>
+        <td>{{ r.ship_date }}</td>
+        <td>{% if r.coa_issued_at %}{{ r.coa_issued_at|dt }}{% else %}{{ not_issued }}{% endif %}</td>
+        <td class="num">{{ r.roll_count }}</td>
+        <td>{% if r.status == '승인' %}<a class="btn btn-sm btn-primary" href="{{ screen.path }}/{{ r.shipment_no }}/print">COA 출력</a>{% else %}<small>승인 대기</small>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['COA 의 내용은 저장하지 않는다 — 그 출하의 롤마다 최신 검사 결과에서 매번 만든다. 검사가 없는 롤은 ' ~ NOT_COLLECTED ~ ' 으로 나온다.']) }}
+</section>
+{% endblock %}

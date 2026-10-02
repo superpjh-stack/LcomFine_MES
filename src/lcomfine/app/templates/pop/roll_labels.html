@@ -1,0 +1,46 @@
+{# POP-03 롤 라벨 — 라벨을 뽑을 인쇄 롤 목록. F-POP-08 인쇄 롤 라벨 출력은 /pop/roll-labels/{roll_no}/print #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash, scan_error) }}
+
+<section class="panel">
+  <h2>롤 번호 스캔 <small>라벨 다시 뽑기</small></h2>
+  {{ ui.scan_box(nav.path_of('POP-03'), name='no', label='롤 번호', method='get',
+                 hidden=({'device': device} if device != 'web' else {})) }}
+</section>
+
+{% if preview %}
+<section class="panel">
+  <h2>라벨 미리보기 <small><code>{{ preview_no }}</code></small></h2>
+  <div class="form-actions">
+    {% if can_print %}<a class="btn btn-primary" href="{{ nav.path_of('POP-03') }}/{{ preview_no }}/print">라벨 인쇄</a>{% endif %}
+    <a class="btn" href="{{ nav.path_of('RLL-03') }}?no={{ preview_no }}">롤 이력</a>
+  </div>
+  <div class="label-sheet">{{ preview }}</div>
+</section>
+{% endif %}
+
+<section class="panel grid-panel">
+  <h2>인쇄 롤 <small>{{ rows|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>롤 번호</th><th>Job</th><th>품목</th><th>길이 (m)</th><th>폭 (mm)</th><th>상태</th><th>생산 일시</th><th>작업자</th><th>라벨</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('RLL-03') }}?no={{ r.roll_no }}"><code>{{ r.roll_no }}</code></a></td>
+        <td><code>{{ r.job_no }}</code></td><td>{{ r.item_name }}</td>
+        <td class="num">{{ r.length_m|num(3) }}</td><td class="num">{{ r.width_mm|num(2) }}</td>
+        <td>{{ pui.state(r.state) }}</td><td>{{ r.produced_at|dt }}</td><td>{{ r.produced_by }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('POP-03') }}/{{ r.roll_no }}/print">라벨 인쇄</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['프린터 규격 미확정 (D-04) — 라벨은 브라우저 인쇄로 뽑는다.', '후가공·슬리팅 롤의 라벨은 롤 이력 화면에서 뽑는다.']) }}
+</section>
+{% endblock %}

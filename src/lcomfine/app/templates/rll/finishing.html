@@ -1,0 +1,76 @@
+{# RLL-01 후가공 — F-RLL-03 조회 · F-RLL-01 후가공 실적(부모 1개) · F-RLL-02 splice(부모 N개).
+   부모 롤을 하나씩 스캔해 쌓고(주소의 rolls=), 1개면 후가공 · 2개 이상이면 splice 로 등록한다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash, scan_error) }}
+
+<section class="panel">
+  <h2>부모 롤 스캔 <small>한 번 스캔 = 롤 하나. 1개면 후가공, 2개 이상이면 splice</small></h2>
+  {% set keep = {'rolls': pending_csv} %}
+  {% if device != 'web' %}{% set keep = {'rolls': pending_csv, 'device': device} %}{% endif %}
+  {{ ui.scan_box(nav.path_of('RLL-01'), name='add', label='롤 번호 (라벨 바코드)', method='get', hidden=keep) }}
+
+  {% if pending %}
+  <ul class="pending-rolls">
+    {% for p in pending %}<li><code>{{ p.roll_no }}</code> {{ p.process_type }} · Job {{ p.job_no }} · {{ pui.state(p.state) }}</li>{% endfor %}
+  </ul>
+  <form class="form-grid" method="post" id="finish-form"
+        action="{{ nav.path_of('RLL-01') }}{% if pending|length > 1 %}/splice{% endif %}">
+    {% for p in pending %}<input type="hidden" name="roll_no" value="{{ p.roll_no }}">{% endfor %}
+    {{ ui.select('설비', 'equipment_code', equipment_options, '', blank='선택 안 함') }}
+    {{ ui.field('길이 (m)', 'length_m', '', type='number', step='any') }}
+    {{ ui.field('폭 (mm)', 'width_mm', '', type='number', step='any') }}
+    {% if pending|length > 1 and pending|map(attribute='job_no')|unique|list|length > 1 %}
+    {{ ui.field('후가공 롤의 Job 번호 (부모들의 Job 이 다르다)', 'job_no', '', required=true) }}
+    {% endif %}
+  </form>
+  <div class="form-actions">
+    {% if pending|length > 1 %}
+    {{ ui.write_button('splice 등록 — 롤 ' ~ pending|length ~ '개 → 후가공 롤 1개', can_splice, form='finish-form') }}
+    {% else %}
+    {{ ui.write_button('후가공 실적 등록 — 롤 1개 → 후가공 롤 1개', can_finish, form='finish-form') }}
+    {% endif %}
+    <a class="btn" href="{{ nav.path_of('RLL-01') }}">스캔 목록 비우기</a>
+  </div>
+  {% else %}
+  <p class="empty">스캔한 부모 롤이 없다.</p>
+  {% endif %}
+</section>
+
+{% if made_no %}
+<section class="panel" id="made">
+  <h2>방금 만든 후가공 롤 <small><code>{{ made_no }}</code></small></h2>
+  <div class="form-actions">
+    <a class="btn btn-primary" href="{{ nav.path_of('RLL-03') }}/{{ made_no }}/label">라벨 인쇄</a>
+    <a class="btn" href="{{ nav.path_of('RLL-03') }}?no={{ made_no }}">롤 이력</a>
+  </div>
+  <div class="label-sheet">{% for l in made_labels %}{{ l }}{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="panel grid-panel">
+  <h2>후가공 롤 <small>{{ rows|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>롤 번호</th><th>Job</th><th>관계</th><th>부모 롤</th><th>설비</th><th>길이 (m)</th><th>폭 (mm)</th><th>상태</th><th>가공 일시</th><th>작업자</th><th>라벨</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('RLL-03') }}?no={{ r.roll_no }}"><code>{{ r.roll_no }}</code></a></td>
+        <td><code>{{ r.job_no }}</code></td><td>{{ r.relation|txt }}</td><td>{{ r.parent_rolls|txt }}</td>
+        <td>{{ r.equipment_name|txt }}</td>
+        <td class="num">{{ r.length_m|num(3) }}</td><td class="num">{{ r.width_mm|num(2) }}</td>
+        <td>{{ pui.state(r.state) }}</td><td>{{ r.produced_at|dt }}</td><td>{{ r.produced_by }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('RLL-03') }}/{{ r.roll_no }}/label">라벨</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['부모 롤은 `재고` 상태여야 한다. 이미 소진·출하된 롤을 스캔하면 422.',
+               '계보에는 부모 → 자식 한 줄씩만 남는다: 후가공 1줄, splice 는 부모 수만큼.']) }}
+</section>
+{% endblock %}

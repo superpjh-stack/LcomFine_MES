@@ -1,0 +1,72 @@
+{# MAT-04 자재 투입 — F-MAT-08 조회 · F-MAT-07 스캔. 진행 중 작업을 고르고 원재료 LOT 라벨을 스캔한다: 한 번 스캔 = 한 건.
+   투입량을 미리 적어 두고 스캔하면 그 양이 함께 적힌다. 오류가 나도 스캔칸으로 돌아온다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% import "pop/_ui.html" as pui %}
+{% block body %}
+{{ pui.assets() }}
+{{ pui.result(flash) }}
+
+<section class="panel">
+  <h2>작업 실적 고르기 <small>진행·정지 중 {{ works|length }}건</small></h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ pui.keep(device) }}
+    <label>작업 실적
+      <select name="work_id" onchange="this.form.submit()">
+        <option value="">전체 (스캔하려면 고른다)</option>
+        {% for w in works %}<option value="{{ w.work_result_id }}"{% if w.work_result_id == work_id %} selected{% endif %}>{{ w.work_result_id }} · {{ w.job_no }} · {{ w.item_name }} · {{ w.equipment_name|txt }} · {{ w.status }}</option>{% endfor %}
+        {% if work and work.status == '완료' %}<option value="{{ work.work_result_id }}" selected>{{ work.work_result_id }} · {{ work.job_no }} · 완료</option>{% endif %}
+      </select>
+    </label>
+    <label>&nbsp;<button type="submit" class="btn">조회</button></label>
+  </form>
+</section>
+
+{% if work %}
+<section class="panel" id="scan">
+  <h2>자재 투입 스캔 <small>실적 {{ work.work_result_id }} · Job <code>{{ work.job_no }}</code> · {{ work.item_name }} · {{ pui.state(work.status) }}</small></h2>
+  {% if work.status == '진행' %}
+  <form class="scan-box" method="post" action="{{ nav.path_of('MAT-04') }}" autocomplete="off">
+    <input type="hidden" name="work_id" value="{{ work.work_result_id }}">
+    <label>원재료 LOT 번호 (라벨 바코드)
+      <input type="text" name="lot_no" data-scan autofocus required inputmode="text">
+    </label>
+    <label style="flex:0 1 160px">투입량 (선택)
+      <input type="number" name="input_qty" step="any" min="0">
+    </label>
+    {{ ui.write_button('투입', can_scan) }}
+  </form>
+  {% else %}
+  <p class="err big">{{ work.status }} 상태의 작업에는 투입할 수 없습니다 (진행 중인 작업만)</p>
+  {% endif %}
+  <div class="form-actions">
+    <a class="btn" href="{{ nav.path_of('POP-01') }}">작업 실적으로</a>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel grid-panel">
+  <h2>투입 LOT <small>{% if work %}실적 {{ work.work_result_id }} — {% endif %}{{ rows|length }}건</small></h2>
+  <table class="grid">
+    <thead><tr><th>실적</th><th>Job</th><th>원재료 LOT</th><th>품목</th><th>투입량</th><th>스캔 시각</th><th>스캔한 사람</th><th>작업 상태</th><th>인쇄 롤</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ nav.path_of('MAT-04') }}?work_id={{ r.work_result_id }}">{{ r.work_result_id }}</a></td>
+        <td><code>{{ r.job_no }}</code></td>
+        <td><a href="{{ nav.path_of('MAT-03') }}?no={{ r.lot_no }}"><code>{{ r.lot_no }}</code></a></td>
+        <td>{{ r.item_name }}</td>
+        <td class="num">{{ r.input_qty|num(3) }} {{ r.qty_unit|txt('') }}</td>
+        <td>{{ r.scanned_at|dt }}</td><td>{{ r.scanned_by }}</td>
+        <td>{{ pui.state(r.work_status) }}</td>
+        <td>{% if r.roll_no %}<a href="{{ nav.path_of('RLL-03') }}?no={{ r.roll_no }}"><code>{{ r.roll_no }}</code></a>{% else %}-{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['합격 LOT 만 투입된다. 없는 LOT · 불합격 · 검사 대기 · 같은 실적에 중복 스캔은 422 이고 다음 스캔을 막지 않는다.',
+               '투입 스캔은 작업 종료 때 인쇄 롤의 계보 `투입` 행이 된다 (D-13).']) }}
+</section>
+{% endblock %}
