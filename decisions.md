@@ -452,8 +452,8 @@
 ## D-31 Docker 구성 (D-03 의 기본값을 채운다) · 상태: 가설
 - `Dockerfile`(python 3.12 slim + uv + `postgresql-client`) · `docker-compose.yml`(앱 + PostgreSQL 17 + 한 번 도는 `seed`). 비밀 세 개(`LCOMFINE_DB_PASSWORD` · `LCOMFINE_SESSION_SECRET` · `LCOMFINE_SEED_PASSWORD`)는 실행할 때 환경변수로만 주고 없으면 기동하지 않는다. DB 는 호스트로 포트를 내지 않는다.
 - 스키마는 빈 볼륨으로 처음 뜰 때 `schema.sql` 로 만들어진다. 그 뒤의 스키마 변경을 올리는 방법(이관 SQL 의 관리)은 정하지 않았다 — 이번 D-26 의 두 컬럼은 손으로 `ALTER` 했다.
-- ~~이미지 빌드·기동은 확인하지 못했다~~ → **2026-10-03 Hostinger VPS(`srv1934103.hstgr.cloud`, hPanel Docker Manager · GitHub `superpjh-stack/LcomFine_MES` 에서 Compose)에 올려 빌드·`db`·`seed` 기동을 확인했다.** `docker compose config` 외에 실제 빌드가 통과한 첫 기록이다. 워커는 하나로 띄운다(D-415).
-- **호스트 포트는 이 VPS 에서 8040** — 8000~8032 는 다른 사업(송월·꽃순이·광성·경동·니즈푸드·임진강·원터치 등)이 쓰고 있어 기본값 8020 은 경동글로벌텍과 충돌한다(첫 배포에서 `app` 만 뜨지 못했다). hPanel 「환경」 의 `LCOMFINE_HOST_PORT=8040` 으로 준다. 도메인·HTTPS(기존 `infra` 프록시)·쿠키 `Secure`(D-411)는 아직이다 — D-03 은 여전히 `가설`.
+- **이미지 빌드·기동은 아직 확인하지 못했다.** 2026-10-03 Hostinger VPS(`srv1934103.hstgr.cloud`)의 hPanel Docker Manager 에 GitHub `superpjh-stack/LcomFine_MES` 로 두 번 올렸으나(앱 `lcomfine-mes` · `lcomfine`) 두 번 다 「생성됨 · 컨테이너 0」 으로 끝났고 hPanel 은 로그를 보여 주지 않았다(작업 이력은 「Success」 로 적힌다 — 믿을 수 없다). 그때 8020 에서 200 을 돌려준 것은 같은 VPS 의 **경동글로벌텍 시스템**이었다(한때 「빌드 통과」 로 잘못 적었다가 바로잡음). 확인하려면 VPS 셸에서 `docker compose up -d --build` 와 `docker compose logs app` 을 직접 본다.
+- **호스트 포트는 이 VPS 에서 8040** — 8000~8032 는 다른 사업(송월·꽃순이·광성·경동·니즈푸드·임진강·원터치 등)이 쓰고 있어 기본값 8020 은 경동글로벌텍과 충돌한다. `.env`(또는 hPanel 「환경」)의 `LCOMFINE_HOST_PORT=8040` 으로 준다. 도메인·HTTPS(기존 `infra` 프록시)·쿠키 `Secure`(D-411)는 아직이다 — D-03 은 여전히 `가설`.
 
 ## D-32 `/health` 는 접속 문자열을 싣지 않는다 · 서버 로그에도 비밀번호를 남기지 않는다 (DEF-QA3-011 · D-29 보강) · 상태: 가설
 - DEF-QA3-011(경미 · 접속 문자열을 키-값·쿼리 꼴로 쓰는 배포에서는 중대): `/health` 의 `db.dsn` 칸이 접속 문자열을 실었다. 가리는 것은 URL 의 `사용자:비밀번호@` 꼴뿐이라 키-값 꼴(`host=… password=…`)·URL 쿼리 꼴이면 비밀번호가 로그인 없는 주소에 그대로 나왔고, 어느 꼴이든 호스트·사용자·DB 이름이 보였다. D-29 의 「503 응답은 접속 오류 원문을 싣지 않는다」 와도 어긋났다.
