@@ -29,7 +29,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 # 앱 (프로젝트는 편집 가능 설치 — 패키지가 /app/src 에 그대로 있어야 `contracts/` 를 찾는다)
 COPY src ./src
 COPY contracts ./contracts
-COPY tools/backup.py ./tools/backup.py
+COPY tools/backup.py tools/sample_data.py ./tools/
+#   (예시) 샘플 100행: docker compose exec app /app/.venv/bin/python tools/sample_data.py   (지우기: --clean)
 RUN uv sync --frozen --no-dev
 
 RUN useradd --system --home-dir /app --shell /usr/sbin/nologin lcomfine \
