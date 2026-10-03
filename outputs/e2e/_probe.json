@@ -1,15 +1,15 @@
 {
- "measured_at": "2026-10-03 07:17:50",
+ "measured_at": "2026-10-03 15:44:53",
  "world": {
-  "job_no": "J261003-12803",
-  "lot_no": "M261003-5805",
-  "print_roll": "R261003-28309",
-  "roll": "R261003-28313",
-  "shipment_no": "S261003-4584",
-  "probe_shipment_no": "S261003-4586",
+  "job_no": "J261003-13932",
+  "lot_no": "M261003-6475",
+  "print_roll": "R261003-32390",
+  "roll": "R261003-32394",
+  "shipment_no": "S261003-5161",
+  "probe_shipment_no": "S261003-5163",
   "probe_rolls": [
-   "R261003-28315",
-   "R261003-28316"
+   "R261003-32396",
+   "R261003-32397"
   ]
  },
  "errors": {},
@@ -315,7 +315,7 @@
      "body": "ch-mobile",
      "http": 200
     },
-    "/trc/trace/backward?no=S261003-4584": {
+    "/trc/trace/backward?no=S261003-5161": {
      "vw": 390,
      "scrollWidth": 390,
      "bodyScrollWidth": 390,
@@ -339,7 +339,7 @@
      "body": "ch-mobile",
      "http": 200
     },
-    "/trc/trace/forward?no=M261003-5805": {
+    "/trc/trace/forward?no=M261003-6475": {
      "vw": 390,
      "scrollWidth": 390,
      "bodyScrollWidth": 390,
@@ -415,7 +415,7 @@
      "body": "ch-web",
      "http": 200
     },
-    "/trc/trace/backward?no=S261003-4584": {
+    "/trc/trace/backward?no=S261003-5161": {
      "vw": 390,
      "scrollWidth": 390,
      "bodyScrollWidth": 390,
@@ -439,7 +439,7 @@
      "body": "ch-web",
      "http": 200
     },
-    "/trc/trace/forward?no=M261003-5805": {
+    "/trc/trace/forward?no=M261003-6475": {
      "vw": 390,
      "scrollWidth": 390,
      "bodyScrollWidth": 390,
@@ -466,12 +466,12 @@
  "outputs": {
   "작업지시서": {
    "http": 200,
-   "number": "J261003-12803",
+   "number": "J261003-13932",
    "decoded": [
-    "CODE-128:J261003-12803"
+    "CODE-128:J261003-13932"
    ],
    "decoded_print_media": [
-    "CODE-128:J261003-12803"
+    "CODE-128:J261003-13932"
    ],
    "decode_ok": true,
    "requests": 3,
@@ -491,19 +491,19 @@
    "scan_opens": {
     "focus_on_scan": true,
     "navigated": true,
-    "url": "/pop/work?no=J261003-12803",
+    "url": "/pop/work?no=J261003-13932",
     "number_shown": true,
     "http_ok": true
    }
   },
   "원재료 LOT 라벨": {
    "http": 200,
-   "number": "M261003-5805",
+   "number": "M261003-6475",
    "decoded": [
-    "CODE-128:M261003-5805"
+    "CODE-128:M261003-6475"
    ],
    "decoded_print_media": [
-    "CODE-128:M261003-5805"
+    "CODE-128:M261003-6475"
    ],
    "decode_ok": true,
    "requests": 3,
@@ -523,19 +523,19 @@
    "scan_opens": {
     "focus_on_scan": true,
     "navigated": true,
-    "url": "/mat/lots?no=M261003-5805",
+    "url": "/mat/lots?no=M261003-6475",
     "number_shown": true,
     "http_ok": true
    }
   },
   "인쇄 롤 라벨": {
    "http": 200,
-   "number": "R261003-28309",
+   "number": "R261003-32390",
    "decoded": [
-    "CODE-128:R261003-28309"
+    "CODE-128:R261003-32390"
    ],
    "decoded_print_media": [
-    "CODE-128:R261003-28309"
+    "CODE-128:R261003-32390"
    ],
    "decode_ok": true,
    "requests": 3,
@@ -555,19 +555,19 @@
    "scan_opens": {
     "focus_on_scan": true,
     "navigated": true,
-    "url": "/pop/roll-labels?no=R261003-28309",
+    "url": "/pop/roll-labels?no=R261003-32390",
     "number_shown": true,
     "http_ok": true
    }
   },
   "롤 라벨": {
    "http": 200,
-   "number": "R261003-28313",
+   "number": "R261003-32394",
    "decoded": [
-    "CODE-128:R261003-28313"
+    "CODE-128:R261003-32394"
    ],
    "decoded_print_media": [
-    "CODE-128:R261003-28313"
+    "CODE-128:R261003-32394"
    ],
    "decode_ok": true,
    "requests": 3,
@@ -587,19 +587,19 @@
    "scan_opens": {
     "focus_on_scan": true,
     "navigated": true,
-    "url": "/rll/history?no=R261003-28313",
+    "url": "/rll/history?no=R261003-32394",
     "number_shown": true,
     "http_ok": true
    }
   },
   "COA": {
    "http": 200,
-   "number": "S261003-4584",
+   "number": "S261003-5161",
    "decoded": [
-    "CODE-128:S261003-4584"
+    "CODE-128:S261003-5161"
    ],
    "decoded_print_media": [
-    "CODE-128:S261003-4584"
+    "CODE-128:S261003-5161"
    ],
    "decode_ok": true,
    "requests": 3,
@@ -619,7 +619,7 @@
    "scan_opens": {
     "focus_on_scan": true,
     "navigated": true,
-    "url": "/shp/shipments?no=S261003-4584",
+    "url": "/shp/shipments?no=S261003-5161",
     "number_shown": true,
     "http_ok": true
    }
@@ -632,7 +632,7 @@
   "refresh_setting": 30,
   "menu_visible": false,
   "body_font_px": 20,
-  "first_stamp": "2026-10-03 07:18:04",
+  "first_stamp": "2026-10-03 15:45:07",
   "error_page": {
    "status": 404,
    "body": "login-body ch-board",
@@ -643,7 +643,7 @@
    "waited_seconds": 30.2,
    "url_after": "/sta/board/none?device=board"
   },
-  "second_stamp": "2026-10-03 07:18:34",
+  "second_stamp": "2026-10-03 15:45:37",
   "refreshed": true,
   "seconds_until_refresh": 30.2,
   "waited_seconds": 30.2,

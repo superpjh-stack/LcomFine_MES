@@ -10,3 +10,5 @@ backups/
 # Claude Code 실행 중 잠금 파일 (산출물 아님)
 .claude/*.lock
 .gstack/
+# 시연 영상 중간 산출물(원본 webm · 카드) — 최종 mp4 만 둔다
+outputs/video/_work/
