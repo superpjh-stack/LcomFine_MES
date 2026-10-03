@@ -12,7 +12,7 @@
 # · 백업: docker compose exec app /app/.venv/bin/python tools/backup.py backup   (덤프는 볼륨 lcomfine-backups 에 쌓인다)
 #         docker compose exec app /app/.venv/bin/python tools/backup.py restore-check   (임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로)
 #         docker compose cp app:/app/backups ./backups   (호스트로 꺼내기 — backups/ 는 gitignore)
-name: lcomfine-mes
+# 프로젝트 이름은 고정하지 않는다 — 올리는 쪽(폴더 이름 · hPanel 앱 이름 · `-p`)이 정한다. 고정하면 같은 호스트의 두 번째 배포와 이름이 겹친다 (D-31).
 
 x-app-env: &app-env
   LCOMFINE_ENV: ${LCOMFINE_ENV:-prod}
