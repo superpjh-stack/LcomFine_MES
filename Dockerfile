@@ -29,7 +29,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 # 앱 (프로젝트는 편집 가능 설치 — 패키지가 /app/src 에 그대로 있어야 `contracts/` 를 찾는다)
 COPY src ./src
 COPY contracts ./contracts
-COPY tools/backup.py tools/sample_data.py ./tools/
+COPY tools/backup.py tools/sample_data.py tools/docker_init.py ./tools/
+#   docker_init.py — 빈 DB 면 schema.sql 적용 + 시드 (compose 의 seed 서비스 · 호스트에 저장소가 없어도 된다 — D-31)
 #   (예시) 샘플 100행: docker compose exec app /app/.venv/bin/python tools/sample_data.py   (지우기: --clean)
 RUN uv sync --frozen --no-dev
 

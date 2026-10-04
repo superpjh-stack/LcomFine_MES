@@ -6,8 +6,10 @@
 #   3) http://<호스트>:${LCOMFINE_HOST_PORT:-8020}/health → 200
 #
 # · DB 는 호스트로 포트를 내지 않는다(앱만 붙는다). 호스트 포트는 앱 하나 — `LCOMFINE_HOST_PORT`(기본 8020 · 8000 은 다른 사업이 쓴다).
-# · 스키마(`schema.sql`)는 **빈 볼륨으로 처음 뜰 때 한 번** 만들어진다. 그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다.
-# · `seed` 는 한 번 돌고 끝나는 작업이다: 역할 4 · 권한 48칸 · 계정 4 · 채번 형식 6 + `(예시)` 기준정보. 다시 돌려도 행 수가 같다(G-09).
+# · `seed` 는 한 번 돌고 끝나는 작업이다(`tools/docker_init.py`): DB 에 테이블이 없으면 `schema.sql` 을 적용하고, 이어서 시드 —
+#   역할 4 · 권한 48칸 · 계정 4 · 채번 형식 6 + `(예시)` 기준정보. 다시 돌려도 행 수가 같다(G-09). 그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다.
+#   스키마를 호스트 bind-mount 로 넣지 않는다 — compose 파일만 받아 가는 배포 도구(Hostinger Docker Manager)에는 호스트에 저장소가 없다(D-31).
+#   그런 도구에는 `deploy/hostinger/docker-compose.yml`(미리 만든 이미지 ghcr.io 를 쓴다 — `.github/workflows/image.yml`)을 올린다.
 #   이미 있는 권한 칸·채번 형식은 건드리지 않는다. `(예시)` 행이 필요 없으면 command 에 `--common-only` 를 붙인다(그러면 채번 형식은 직접 넣는다 — D-05).
 # · 백업: docker compose exec app /app/.venv/bin/python tools/backup.py backup   (덤프는 볼륨 lcomfine-backups 에 쌓인다)
 #         docker compose exec app /app/.venv/bin/python tools/backup.py restore-check   (임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로)
@@ -35,7 +37,6 @@ services:
       TZ: ${TZ:-Asia/Seoul}          # 집계의 「날짜가 기간 안」 은 DB 세션 시간대의 날짜다 (D-301)
     volumes:
       - lcomfine-db:/var/lib/postgresql/data
-      - ./src/lcomfine/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lcomfine -d lcomfine_db"]
       interval: 5s
@@ -49,7 +50,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["/app/.venv/bin/python", "-m", "lcomfine.db.seed"]
+    command: ["/app/.venv/bin/python", "tools/docker_init.py"]
 
   app:
     build: .
