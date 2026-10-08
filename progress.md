@@ -2,6 +2,16 @@
 
 검증된 것만 적는다. 여기 없는 숫자는 화면에 지어내지 않는다. 형식: `| 항목 | 실측 | 검증 방법 |`.
 
+## 2026-10-09 Hostinger VPS 배포 (D-31 보강 · 사람 요청)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 앱 | hPanel Docker Manager `lcomfine-mes` · 컨테이너 3(db · seed · app) Running · 호스트 포트 8040 | hPanel 목록 |
+| 이미지 | `ghcr.io/superpjh-stack/lcomfine_mes:latest` = `sha-9c778a6…` · 공개(익명 manifest 200) · Actions `image` 성공 | `curl ghcr.io/v2/.../manifests/latest` · `gh run list` |
+| 기동 | 배포 ~30초 뒤 `/health` 200 `{"status":"ok","db":{"ok":true},"menus":12,"screens":32,"functions":94,"placeholders":0}` | `curl http://srv1934103.hstgr.cloud:8040/health` |
+| 화면 | `/login` 200 · 관리자 로그인 303 → `/` 에 IA 단 6 · 카드 13(STA → SAL → … → SYS) | curl 쿠키 로그인 |
+| 없는 것 | 샘플 100행 · 시연 수주 없음(공통 시드 + (예시) 기준정보만) · 퀵 로그인 꺼짐(prod) · 도메인 · HTTPS 없음 | — |
+
 ## 2026-10-09 메인 = IA 화면 (D-419 · 사람 요청 "메인 메뉴를 IA 를 보여 주는 화면으로, 설명도")
 
 메인(`/`)이 설계도를 한 장으로 보여 준다: ① 업무 흐름(확장 수주 + P1~P10 · 쓰기/참조 저장소 · 메뉴 링크 · 설계도 표 그대로) → ② 메뉴(일하는 순서 카드 · 프로세스 · 중메뉴별 계약 기능명) → ③ 데이터(저장소 10 → 테이블 31) → ④ 계보(관계 5 · 번호 7종) → ⑤ 사용자 · 채널(사람 넷 · 역할 4 × 대메뉴 12 칸 수 · 채널 4) → ⑥ 확인 필요 7건. 설명 글은 `app/ia.py`(설계도에서 옮김), 수는 계약 · DB 에서 센다.
