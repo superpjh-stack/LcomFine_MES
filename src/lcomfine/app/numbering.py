@@ -19,7 +19,8 @@ from ..db import conn
 
 #: 번호 종류 — sys_number_rule.seq_kind
 JOB, JOB_LOT, MAT_LOT, ROLL, SHIPMENT, COA = "JOB", "JOB_LOT", "MAT_LOT", "ROLL", "SHIPMENT", "COA"
-KINDS: tuple[str, ...] = (JOB, JOB_LOT, MAT_LOT, ROLL, SHIPMENT, COA)
+SALES_ORDER = "SALES_ORDER"                        # 수주 번호 — 설계도 밖 확장 (D-418)
+KINDS: tuple[str, ...] = (JOB, JOB_LOT, MAT_LOT, ROLL, SHIPMENT, COA, SALES_ORDER)
 
 # 형식 행과 그 시각의 날짜 부분을 한 번에 읽는다. 날짜 부분은 DB 의 to_char 가 만든다(형식 열이 to_char 형식이다).
 _RULE_SQL = """

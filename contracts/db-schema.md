@@ -7,7 +7,7 @@
 > 스키마를 고치는 사람은 아키텍트뿐이다. 개발자는 `progress-devN.md` §3 에 요청을 남긴다(D-22).
 > 컬럼은 설계도 「프로세스별 입력과 출력」 표의 **입력** 낱말에서 끌어왔다. 모자란 곳의 구조 컬럼은 `가설`(D-18)이고 규격 값은 넣지 않았다.
 
-DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **30** (D1~D8 23 + SYS 7) · 뷰 2.
+DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **30** (D1~D8 23 + SYS 7) · 뷰 2 · 그 밖에 설계도 밖 확장 테이블 EXT 1(`sales_order`, D-418 — 30 에 세지 않는다).
 
 ## 1. 저장소 → 테이블
 
@@ -22,6 +22,7 @@ DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **30** (D1~D
 | D7 품질 검사 | P7 | `inspection` `inspection_defect` | ΔE → `delta_e` · 불량 유형·위치 → `inspection_defect` · 불량 롤 번호 → `inspection.roll_id` |
 | D8 출하 | P8 | `shipment` | 출하 등록 → 행 생성 · 출하 승인 → `approved_at` `approved_by` · 롤 스캔 → 계보의 `출하` 행(D-12) |
 | SYS 공통 | 공통(D-15) | `sys_role` `sys_user` `sys_permission` `sys_access_log` `sys_number_rule` `sys_number_seq` `sys_migration_log` | 로그인 · 역할별 권한 · 접근 로그 · 채번 · 이관 기록 |
+| EXT 확장 (설계도 밖 · D-418) | 영업관리 `sal` | `sales_order` | 수주 등록 → 행 생성 · 취소 → `status`. 설계도 테이블 30 에 들어가지 않는다(`check_schema` 가 따로 센다). 작업지시가 `job.sales_order_id` 로 가리킨다 |
 
 이름이 설계도에 적혀 있어 그대로 쓴 테이블 — `material_lot` · `roll` · `roll_genealogy` · `shipment`.
 `roll` 은 인쇄·후가공·슬리팅 롤을 한 테이블에 담고 `process_type` 으로 가른다.
@@ -44,6 +45,7 @@ DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **30** (D1~D
 | **P10 실적 현황** | `sta` | **없음** | 집계 결과를 담는 테이블 |
 | 공통 | `sys` · `main` | `sys_*` | — |
 | 배치(이관) | `lcomfine.migration` | 그 명령의 대상 테이블 + `sys_migration_log` | — |
+| 확장 영업관리 (D-418) | `sal` | `sales_order` 뿐 | `job` 에 쓰기 — 수주 연결(`job.sales_order_id`)은 P2(F-JOB-01·02)가 쓴다 |
 
 - **P8 의 예외**는 설계도의 모순에서 나온다 — §2 표는 P8 → D8 뿐인데 §3 은 출하 화살표도 `roll_genealogy` 한 줄이다. G-06 이 10행을 요구하므로 §3 을 따랐다(D-12).
 - `sys_access_log`(화면 조회 로그)와 `sys_number_seq`(채번 카운터)는 공통 코드가 쓴다. P9·P10 화면을 열면 접근 로그가 한 줄 늘지만 그것은 라우터의 쓰기가 아니다 — **G-05 의 행 수 대조 대상은 D1~D8 의 23개 테이블**이다(D-15).
@@ -302,6 +304,7 @@ DB 가 막지 않고 `lineage` 만 막는 것: 소진된 롤을 **다른 작업�
 | created_by | text | N | 등록자 login_id |
 | updated_at | timestamp with time zone | Y | 수정 일시 |
 | updated_by | text | Y | 수정자 login_id |
+| sales_order_id | bigint | Y | 수주 (설계도 밖 확장 D-418 · 수주 없이 낸 지시는 NULL) |
 
 ### `job_lot` — D2 · 생산 LOT — "Job-Lot-Roll 매핑" 의 Lot 단 (D-10). Job 1 : 생산 LOT N
 
@@ -608,6 +611,28 @@ DB 가 막지 않고 `lineage` 만 막는 것: 소진된 롤을 **다른 작업�
 | started_at | timestamp with time zone | N | 시작 |
 | finished_at | timestamp with time zone | Y | 끝 |
 | run_by | text | Y | 실행한 사람 |
+
+#### EXT 확장(설계도 밖 · D-418) — 테이블 1
+
+### `sales_order` — EXT · 수주 — 설계도 밖 확장(D-418). 영업이 받은 수주 한 건. 작업지시가 이 행을 가리킨다(job.sales_order_id)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| sales_order_id | bigint | N | 내부 키 |
+| order_no | text | N | 수주 번호 (numbering.next('SALES_ORDER') · 형식 가설 D-418) |
+| customer_id | bigint | N | 고객 |
+| item_id | bigint | N | 품목(제품) |
+| order_qty | numeric(14,3) | N | 수주 수량 |
+| qty_unit | text | N | 수량 단위 |
+| order_date | date | N | 수주일 |
+| due_date | date | N | 납기 (고객 요청) |
+| customer_po | text | Y | 고객 발주 번호 (받은 글자 그대로) |
+| status | text | N | 등록 | 취소 (진행은 저장하지 않고 Job·실적·출하에서 읽는다) |
+| note | text | Y | 비고 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | N | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
 <!-- END:generated tables -->
 
 ## 5. 뷰 (읽기 전용 — 저장하지 않고 계산한다)

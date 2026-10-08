@@ -46,7 +46,9 @@ def scoped():
 
 
 def test_rule_rows_exist_for_all_kinds():
-    assert numbering.KINDS == ("JOB", "JOB_LOT", "MAT_LOT", "ROLL", "SHIPMENT", "COA")
+    # 설계도의 번호 6종은 그대로이고, 그 뒤에 설계도 밖 확장의 수주 번호(D-418)가 하나 더 있다
+    assert numbering.KINDS[:6] == ("JOB", "JOB_LOT", "MAT_LOT", "ROLL", "SHIPMENT", "COA")
+    assert numbering.KINDS[6:] == ("SALES_ORDER",)
     for kind in numbering.KINDS:
         row = numbering.rule(kind)
         assert row is not None, f"sys_number_rule 에 {kind} 행 없음 — seed_dev1"

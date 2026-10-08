@@ -37,6 +37,7 @@
     <dt>아니록스</dt><dd>{% if job.anilox_code %}<code>{{ job.anilox_code }}</code> {{ job.anilox_name }}{% else %}-{% endif %}</dd>
     <dt>잉크조성</dt><dd>{% if job.ink_code %}<code>{{ job.ink_code }}</code> {{ job.ink_name }}{% else %}-{% endif %}</dd>
     <dt>계획 설비</dt><dd>{% if job.equipment_code %}<code>{{ job.equipment_code }}</code> {{ job.equipment_name }}{% else %}-{% endif %}</dd>
+    <dt>수주</dt><dd>{% if job.sales_order_no %}<a href="{{ nav.path_of('SAL-01') }}?no={{ job.sales_order_no }}#order"><code>{{ job.sales_order_no }}</code></a>{% else %}- <small>(수주 없이 낸 지시)</small>{% endif %}</dd>
     <dt>지시 수량</dt><dd>{{ job.order_qty|num(3) }} {{ job.qty_unit }}</dd>
     <dt>납기</dt><dd>{{ job.due_date|dt }}</dd>
     <dt>비고</dt><dd>{{ job.note|txt }}</dd>
@@ -71,6 +72,7 @@
     {{ ui.select('아니록스', 'anilox_id', options.anilox_id, job.anilox_id) }}
     {{ ui.select('잉크조성', 'ink_formula_id', options.ink_formula_id, job.ink_formula_id) }}
     {{ ui.select('계획 설비', 'equipment_id', options.equipment_id, job.equipment_id) }}
+    {{ ui.select('수주 (영업관리)', 'sales_order_id', options.sales_order_id, job.sales_order_id, blank='없음') }}
     {{ ui.field('납기', 'due_date', job.due_date, type='date', required=true) }}
     {{ ui.field('비고', 'note', job.note) }}
     <label>상태 (마감)
@@ -87,18 +89,19 @@
 </section>
 {% else %}
 <section class="panel" id="form">
-  <h2>작업지시 등록 <small>Job 번호는 저장할 때 채번한다 — 다음 번호(미리보기) <code>{{ next_no }}</code></small></h2>
+  <h2>작업지시 등록 <small>Job 번호는 저장할 때 채번한다 — 다음 번호(미리보기) <code>{{ next_no }}</code>{% if prefill %} · 수주 <a href="{{ nav.path_of('SAL-01') }}?no={{ prefill.sales_order_no }}#order"><code>{{ prefill.sales_order_no }}</code></a> 의 값을 채웠다{% endif %}</small></h2>
   <form class="form-grid" method="post" action="{{ nav.path_of('JOB-01') }}" id="job-form">
-    {{ ui.select('품목 (제품)', 'item_id', options.item_id, '', required=true) }}
-    {{ ui.select('고객', 'customer_id', options.customer_id, '', required=true) }}
+    {{ ui.select('수주 (영업관리 · 선택)', 'sales_order_id', options.sales_order_id, prefill.get('sales_order_id', ''), blank='없음') }}
+    {{ ui.select('품목 (제품)', 'item_id', options.item_id, prefill.get('item_id', ''), required=true) }}
+    {{ ui.select('고객', 'customer_id', options.customer_id, prefill.get('customer_id', ''), required=true) }}
     {{ ui.select('판사양', 'plate_spec_id', options.plate_spec_id, '') }}
     {{ ui.select('아니록스', 'anilox_id', options.anilox_id, '') }}
     {{ ui.select('잉크조성', 'ink_formula_id', options.ink_formula_id, '') }}
     {{ ui.select('계획 설비', 'equipment_id', options.equipment_id, '') }}
-    {{ ui.field('지시 수량', 'order_qty', '', type='number', required=true, step='any') }}
-    {{ ui.field('수량 단위 (비우면 품목의 단위)', 'qty_unit', '') }}
-    {{ ui.field('납기', 'due_date', '', type='date', required=true) }}
-    {{ ui.field('비고', 'note', '') }}
+    {{ ui.field('지시 수량', 'order_qty', prefill.get('order_qty', ''), type='number', required=true, step='any') }}
+    {{ ui.field('수량 단위 (비우면 품목의 단위)', 'qty_unit', prefill.get('qty_unit', '')) }}
+    {{ ui.field('납기', 'due_date', prefill.get('due_date', ''), type='date', required=true) }}
+    {{ ui.field('비고', 'note', prefill.get('note', '')) }}
   </form>
   <div class="row-actions">
     {{ ui.write_button('작업지시 등록', can.create, form='job-form') }}
@@ -111,11 +114,12 @@
 <section class="panel grid-panel">
   <h2>작업지시 목록 <small>{{ rows|length }}건{% if capped %} — 상한 {{ limit }}건까지만 보인다. 조회 조건을 좁힌다{% endif %}</small></h2>
   <table class="grid">
-    <thead><tr><th>Job 번호</th><th>품목</th><th>고객</th><th>지시 수량</th><th>납기</th><th>상태</th><th>작업 실적</th><th>생산 LOT</th><th>등록</th><th>출력</th></tr></thead>
+    <thead><tr><th>Job 번호</th><th>수주</th><th>품목</th><th>고객</th><th>지시 수량</th><th>납기</th><th>상태</th><th>작업 실적</th><th>생산 LOT</th><th>등록</th><th>출력</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
         <td><a href="{{ nav.path_of('JOB-01') }}?no={{ r.job_no }}#job"><code>{{ r.job_no }}</code></a></td>
+        <td>{% if r.sales_order_no %}<code>{{ r.sales_order_no }}</code>{% else %}-{% endif %}</td>
         <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td>
         <td>{{ r.customer_name }}</td>
         <td class="num">{{ r.order_qty|num(3) }} {{ r.qty_unit }}</td>
@@ -127,7 +131,7 @@
         <td><a class="btn btn-sm" href="{{ nav.path_of('JOB-01') }}/{{ r.job_no }}/print">작업지시서</a></td>
       </tr>
     {% else %}
-      <tr><td colspan="10" class="empty">{{ NOT_COLLECTED }}</td></tr>
+      <tr><td colspan="11" class="empty">{{ NOT_COLLECTED }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

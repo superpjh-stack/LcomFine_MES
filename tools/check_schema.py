@@ -241,10 +241,11 @@ def main() -> int:
     # ── 13. 테이블 수 · PK ──
     n_d = sum(len(v) for v in per_store.values())
     n_sys = sum(1 for t in spec.values() if t.store == "SYS")
+    n_ext = sum(1 for t in spec.values() if t.store == "EXT")        # 설계도 밖 확장 테이블 (D-418) — 설계도 수 30 밖에서 따로 센다
     no_pk = sorted(t for t in live if not conn.q1(
         "select 1 from pg_constraint where conrelid = %s::regclass and contype = 'p'", (t,)))
-    add("테이블 수 = D1~D8 23 + SYS 7 = 30 · 테이블마다 PK", (n_d, n_sys, len(live)) == (23, 7, 30) and not no_pk,
-        f"D1~D8 {n_d} · SYS {n_sys} · DB {len(live)} · PK 없는 테이블 {no_pk or 0}")
+    add("테이블 수 = D1~D8 23 + SYS 7 = 30 · 테이블마다 PK", (n_d, n_sys, len(live) - n_ext) == (23, 7, 30) and not no_pk,
+        f"D1~D8 {n_d} · SYS {n_sys} · DB {len(live)}{f' (확장 EXT {n_ext} 제외 시 {len(live) - n_ext})' if n_ext else ''} · PK 없는 테이블 {no_pk or 0}")
 
     w = max(len(i) for i, _, _ in rows)
     print("G-04 저장소 ↔ 계약 ↔ 실제 DB (tools/check_schema.py)")

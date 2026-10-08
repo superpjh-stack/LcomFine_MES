@@ -63,6 +63,7 @@ class Settings:
     session_cookie: str
     session_idle_minutes: int | None   # 설계도에 수치 없음 → 값이 없으면 만료시키지 않는다 (D-20)
     seed_password: str | None          # 시드 계정 비밀번호 — 환경변수로만 (G-19)
+    quick_login: bool                  # 로그인 화면의 퀵 로그인(비밀번호 입력 없이 시드 비밀번호로) — 개발·테스트 환경에서만 (D-416)
     board_refresh_seconds: int         # 현황판 자동 새로고침 주기. 기본 30 (가설 D-19)
     grid_page_size: int                # 목록 한 쪽 행 수
 
@@ -83,6 +84,7 @@ def get_settings() -> Settings:
         session_cookie=_env("SESSION_COOKIE", "lcomfine_session") or "lcomfine_session",
         session_idle_minutes=_env_int("SESSION_IDLE_MINUTES"),
         seed_password=_env("SEED_PASSWORD"),
+        quick_login=(_env("QUICK_LOGIN", "") or "").strip().lower() in ("1", "true", "yes", "on"),
         board_refresh_seconds=_env_int("BOARD_REFRESH_SECONDS") or 30,
         grid_page_size=_env_int("GRID_PAGE_SIZE") or 10,
     )

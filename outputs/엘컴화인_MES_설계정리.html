@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>엘컴화인 MES 설계 정리</title>
+<meta name="description" content="엘컴화인 MES 설계도를 데이터 흐름 · 업무 진행 · 사용자 관점으로 다시 정리한 문서. 정본 설계도(그림 5 · 표 3)에 계약 · 결정 · 실측을 합쳤다.">
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#1b1f27; --muted:#5e6572; --line:#dde1e7; --soft:#eef1f5;
+  --accent:#1f5fbf; --accent-soft:#e3ecfb;
+  --admin:#4f46a3; --admin-bg:#ebe8f8; --prod:#1d7a4a; --prod-bg:#e2f3e9; --qc:#b45309; --qc-bg:#fdecd3; --field:#0b6e85; --field-bg:#dff3f7;
+  --write:#1f5fbf; --write-bg:#e3ecfb; --read:#6b7280; --read-bg:#eceef2; --none:#9ca3af; --none-bg:#f3f4f6;
+  --d1:#8b5cf6;--d2:#2563eb;--d3:#0891b2;--d4:#db2777;--d5:#16a34a;--d6:#ea580c;--d7:#ca8a04;--d8:#dc2626;
+  --warn:#b91c1c; --warn-bg:#fde8e8; --ok:#15803d; --ok-bg:#dcfce7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111318; --card:#1a1d24; --ink:#e8eaee; --muted:#9aa2ad; --line:#2d323b; --soft:#232730;
+    --accent:#7aa7f0; --accent-soft:#1d2a40;
+    --admin:#b4a9f5; --admin-bg:#2a2650; --prod:#7fd3a3; --prod-bg:#17352a; --qc:#f3b86a; --qc-bg:#3f2a12; --field:#7fd6ea; --field-bg:#123640;
+    --write:#7aa7f0; --write-bg:#1d2a40; --read:#aab1bb; --read-bg:#2a2f38; --none:#6b7280; --none-bg:#1f232b;
+    --warn:#f08a8a; --warn-bg:#3a1c1c; --ok:#7fd3a3; --ok-bg:#17352a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111318; --card:#1a1d24; --ink:#e8eaee; --muted:#9aa2ad; --line:#2d323b; --soft:#232730;
+  --accent:#7aa7f0; --accent-soft:#1d2a40;
+  --admin:#b4a9f5; --admin-bg:#2a2650; --prod:#7fd3a3; --prod-bg:#17352a; --qc:#f3b86a; --qc-bg:#3f2a12; --field:#7fd6ea; --field-bg:#123640;
+  --write:#7aa7f0; --write-bg:#1d2a40; --read:#aab1bb; --read-bg:#2a2f38; --none:#6b7280; --none-bg:#1f232b;
+  --warn:#f08a8a; --warn-bg:#3a1c1c; --ok:#7fd3a3; --ok-bg:#17352a;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+code{background:var(--soft);padding:1px 5px;border-radius:4px}
+h1,h2,h3,h4{line-height:1.3;margin:0}
+h2{font-size:1.5rem;margin:0 0 .4rem}
+h3{font-size:1.1rem;margin:1.6rem 0 .6rem}
+h4{font-size:1rem;margin:1.2rem 0 .4rem}
+p{margin:.5rem 0}
+.muted{color:var(--muted)}
+small{color:var(--muted)}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;max-width:1240px;margin:0 auto;padding:0 16px 80px}
+nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:24px 0}
+nav.toc ol{list-style:none;margin:0;padding:0}
+nav.toc li{margin:0}
+nav.toc a{display:block;padding:5px 10px;border-left:2px solid var(--line);color:var(--muted);font-size:.9rem}
+nav.toc a:hover{border-color:var(--accent);color:var(--ink);text-decoration:none}
+nav.toc .toc-title{font-weight:700;color:var(--ink);padding:0 10px 8px;font-size:.85rem;letter-spacing:.04em}
+main{min-width:0}
+header.hero{padding:40px 0 10px}
+header.hero h1{font-size:2rem;letter-spacing:-.01em}
+header.hero .sub{font-size:1.05rem;color:var(--muted);margin-top:.4rem}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0;font-size:.85rem}
+.legend span{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+section{margin-top:44px;scroll-margin-top:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat b{display:block;font-size:1.6rem;line-height:1.1}
+.stat span{color:var(--muted);font-size:.85rem}
+.callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+.callout.warn{border-color:var(--warn);background:var(--warn-bg)}
+.callout.ok{border-color:var(--ok);background:var(--ok-bg)}
+table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:.92rem}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.tw{overflow-x:auto;margin:10px 0;border-radius:10px}
+.tw table{min-width:640px}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.r-admin{color:var(--admin);background:var(--admin-bg)} .r-prod{color:var(--prod);background:var(--prod-bg)}
+.r-qc{color:var(--qc);background:var(--qc-bg)} .r-field{color:var(--field);background:var(--field-bg)}
+.b-read{color:var(--read);background:var(--read-bg)}
+.kind{display:inline-block;padding:0 7px;border-radius:5px;font-size:.8rem;font-weight:600}
+.k-write{color:var(--write);background:var(--write-bg)} .k-read{color:var(--read);background:var(--read-bg)} .k-batch{color:var(--qc);background:var(--qc-bg)}
+.perm td.p{text-align:center;font-weight:600}
+.p-in{background:var(--write-bg);color:var(--write)} .p-rd{background:var(--read-bg);color:var(--read)} .p-no{background:var(--none-bg);color:var(--none)}
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
+.role{border-top:4px solid;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.role h4{margin:0;display:flex;justify-content:space-between;align-items:baseline}
+.role h4 small{font-weight:400}
+.role .nums{display:flex;gap:8px;margin:8px 0}
+.role .nums span{flex:1;text-align:center;border-radius:8px;padding:6px 4px;font-size:.8rem}
+.role .nums b{display:block;font-size:1.2rem}
+.role ul{margin:6px 0 0;padding-left:18px;font-size:.9rem}
+.role.admin{border-top-color:var(--admin)} .role.prod{border-top-color:var(--prod)} .role.qc{border-top-color:var(--qc)} .role.field{border-top-color:var(--field)}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0;font-size:.9rem}
+.chain .n{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:120px}
+.chain .n b{display:block;font-family:ui-monospace,Menlo,monospace;font-size:.95rem}
+.chain .n small{display:block}
+.chain .ar{color:var(--muted);font-size:1.1rem;padding:0 2px}
+.steps{list-style:none;margin:16px 0;padding:0;counter-reset:step}
+.steps>li{position:relative;padding:0 0 18px 56px;counter-increment:step}
+.steps>li::before{content:counter(step);position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.steps>li::after{content:"";position:absolute;left:17px;top:40px;bottom:0;width:2px;background:var(--line)}
+.steps>li:last-child::after{display:none}
+.step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.step .head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.step .head h4{margin:0;font-size:1.02rem}
+.step .meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 4px;font-size:.85rem;color:var(--muted)}
+.step .meta b{color:var(--ink);font-weight:600}
+.step ul{margin:4px 0 0;padding-left:18px;font-size:.92rem}
+.store{display:inline-block;padding:1px 7px;border-radius:5px;font-size:.8rem;font-weight:700;color:#fff}
+.D1{background:var(--d1)} .D2{background:var(--d2)} .D3{background:var(--d3)} .D4{background:var(--d4)} .D5{background:var(--d5)} .D6{background:var(--d6)} .D7{background:var(--d7)} .D8{background:var(--d8)} .DS{background:#64748b}
+.matrix td.m{text-align:center;font-size:.85rem}
+.matrix .w{background:var(--write-bg);color:var(--write);font-weight:700}
+.matrix .r{color:var(--muted)}
+.matrix .wx{background:var(--qc-bg);color:var(--qc);font-weight:700}
+.arch{display:grid;gap:10px;margin:14px 0}
+.arch .layer{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.arch .layer h4{margin:0 0 8px;font-size:.95rem;color:var(--muted);text-transform:none}
+.arch .boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.arch .box{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--soft);font-size:.9rem}
+.arch .box b{display:block}
+.arch .box.dash{border-style:dashed;background:transparent}
+.arch .down{text-align:center;color:var(--muted);font-size:1.2rem;line-height:1}
+.fn-menu{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:0 14px}
+.fn-menu summary{cursor:pointer;padding:10px 0;font-weight:600;list-style:none;display:flex;gap:10px;align-items:baseline}
+.fn-menu summary::-webkit-details-marker{display:none}
+.fn-menu summary::before{content:"▸";color:var(--muted);width:12px}
+.fn-menu[open] summary::before{content:"▾"}
+.fn-menu .code{font-family:ui-monospace,Menlo,monospace;background:var(--soft);padding:0 6px;border-radius:5px}
+.fn-menu .muted{font-weight:400;font-size:.85rem}
+.fn-menu table{margin:0 0 12px;border-radius:8px;min-width:900px}
+.fn-menu .tw{margin:0}
+table.fn td.contract{font-size:.85rem;color:var(--muted);min-width:280px}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin:14px 0}
+.menu{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.menu h4{margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;font-size:1rem}
+.menu h4 small{font-weight:400}
+.menu ul{margin:0;padding:0;list-style:none;font-size:.9rem}
+.menu li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)}
+.menu li code{font-size:.8rem}
+.bundle{margin-top:18px;font-size:.85rem;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin:12px 0;font-size:.88rem}
+.gate{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:flex-start}
+.gate .ok{color:var(--ok);font-weight:700;white-space:nowrap}
+.gate b{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+svg text{font-family:inherit}
+footer{margin-top:60px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr;gap:0}
+  nav.toc{position:static;max-height:none;padding:16px 0 0}
+  nav.toc ol{display:flex;flex-wrap:wrap;gap:4px}
+  nav.toc a{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:.82rem}
+  .fn-menu table{min-width:760px}
+}
+@media print{
+  body{background:#fff;color:#000;font-size:12px}
+  nav.toc{display:none}
+  .layout{display:block;max-width:none;padding:0}
+  section{break-inside:auto}
+  .card,.step,.role,.menu,.stat,table{break-inside:avoid;box-shadow:none}
+  .fn-menu table{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <div class="toc-title">목차</div>
+  <ol>
+    <li><a href="#s0">한눈에 보기</a></li>
+    <li><a href="#s1">1 · 사용자와 채널</a></li>
+    <li><a href="#s2">2 · 업무 진행</a></li>
+    <li><a href="#s3">3 · 데이터 흐름</a></li>
+    <li><a href="#s4">4 · Job-Lot-Roll 계보</a></li>
+    <li><a href="#s5">5 · 메뉴와 화면</a></li>
+    <li><a href="#s6">6 · 아키텍처와 바깥 연결</a></li>
+    <li><a href="#s7">7 · 확인 필요 7건</a></li>
+    <li><a href="#s8">8 · 검증 게이트</a></li>
+    <li><a href="#src">출처</a></li>
+  </ol>
+</nav>
+<main>
+
+<header class="hero" id="s0">
+  <div class="muted">설계 자료 · 정리본 · 2026-10-08 (확장 D-417 · D-418 반영)</div>
+  <h1>엘컴화인 MES 설계 정리</h1>
+  <p class="sub">데이터가 누구에게서 들어와 어디에 쌓이고 어떻게 이어지는지를 <b>사용자 → 업무 진행 → 데이터 흐름 → 계보</b> 순서로 다시 그렸다.
+  정본은 설계도(그림 5 · 표 3, 2026년 10월 · 2안 전체개발 기준)이고, 거기 없는 것은 코드 계약과 결정 대장에서 가져왔다.</p>
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i> 설계도 원문</span>
+    <span><i style="background:var(--qc)"></i> 가설 — 설계도에 없어 D-nn 으로 정한 기본값</span>
+    <span><i style="background:var(--ok)"></i> 실측 — 코드·DB·게이트에서 잰 값</span>
+  </div>
+  <div class="cards">
+    <div class="stat"><b>12 / 32</b><span>대메뉴 / 중메뉴</span></div>
+    <div class="stat"><b>94 + 6</b><span>화면 기능 + 이관 배치</span></div>
+    <div class="stat"><b>4 × 4</b><span>역할 × 채널</span></div>
+    <div class="stat"><b>48칸</b><span>권한 (입력 19 · 조회 24 · 없음 5)</span></div>
+    <div class="stat"><b>P1~P10</b><span>프로세스 10 (쓰기 8 · 조회 2)</span></div>
+    <div class="stat"><b>D1~D8 → 30</b><span>저장소 8 → 테이블 30 (+SYS 7 포함)</span></div>
+    <div class="stat"><b>5종</b><span>출력물 (작업지시서 · 라벨 3 · COA)</span></div>
+  </div>
+  <div class="callout">
+    <b>이 시스템의 본체는 Job-Lot-Roll 계보다.</b> 롤이 합쳐지고(splice N:1) 나뉘어도(슬리팅 1:N) <code>roll_genealogy</code> 에 부모 → 자식 한 줄씩만 남기고, 추적은 그 기록을 따라가는 조회다.
+    완료 기준은 하나다 — <b>출하 롤 하나에서 원재료 LOT 까지 거슬러 올라갈 수 있어야 한다.</b>
+  </div>
+  <p class="muted">범위 밖: 설비 PLC 실시간 수집 · 비전 검사 연동 · AI 분석. 메뉴·엔드포인트·테이블 어디에도 없다(G-12). 설비는 기준정보(설비 관리)까지다.</p>
+</header>
+
+<!-- ───────────────────────── 1. 사용자 ───────────────────────── -->
+<section id="s1">
+  <h2>1 · 사용자와 채널</h2>
+  <p>설계도 §1(시스템 경계)은 MES 가 <b>사람 넷, 시스템 둘, 장치 하나</b>와 데이터를 주고받는다고 그린다. 사람 넷은 시스템 안에서 역할 4개(관리자 · 생산 · 품질 · 현장)로 묶인다.</p>
+
+  <h3>1.1 설계도의 사람 넷 → 시스템 역할 넷</h3>
+  <div class="tw"><table>
+    <tr><th>설계도의 사람</th><th>넣는 데이터</th><th>받는 데이터</th><th>시스템 역할 (D-06)</th></tr>
+    <tr><td><b>생산관리자</b><br><small>기준 · 지시 · 현황</small></td><td>기준정보, 인쇄 기준, 작업지시</td><td>실적 현황, LOT 추적 결과</td><td><span class="badge r-admin">관리자 ADMIN</span> <span class="badge r-prod">생산 PROD</span></td></tr>
+    <tr><td><b>현장 작업자</b><br><small>POP · 스마트패드</small></td><td>작업 시작·종료, 정지·폐기, 롤 스캔</td><td>작업지시, 롤 라벨</td><td><span class="badge r-field">현장 FIELD</span> <span class="badge r-prod">생산 PROD</span></td></tr>
+    <tr><td><b>품질 담당</b><br><small>입고검사 · 검사 · 조색</small></td><td>입고검사·검사 결과, 조색 기록</td><td>검사 이력, 불량 집계</td><td><span class="badge r-qc">품질 QC</span></td></tr>
+    <tr><td><b>자재 · 출하 담당</b><br><small>입고 · 출하</small></td><td>입고 등록, 출하 등록·승인</td><td>원재료 LOT 라벨, COA</td><td>따로 두지 않는다 — <span class="badge r-prod">생산</span> <span class="badge r-field">현장</span> 이 겸하고, <b>승인만</b> <span class="badge r-admin">관리자</span></td></tr>
+    <tr><td colspan="4" class="muted">시스템 둘: <b>ERP</b>(연계 범위·방식 미정 → 501 명시, D-02) · <b>기존 설치형 MES</b>(2안이므로 1회 이관 후 종료, 접근 경로 미정이라 표준 Import 파일로 받는다, D-01). 장치 하나: <b>라벨 프린터</b>(LOT · 롤 라벨 — 브라우저 인쇄로 가정, D-04).</td></tr>
+  </table></div>
+
+  <h3>1.2 역할별 하루 — 무엇을 넣고, 무엇을 보고, 어디서 여는가</h3>
+  <p class="muted">입력·조회·없음 칸 수는 설계도 §6 권한 표(아래 1.3)를 역할별로 센 것이다. 로그인 ID 는 시드 계정(D-20)이다.</p>
+  <div class="roles">
+    <div class="role admin">
+      <h4>관리자 <small class="mono">ADMIN · admin</small></h4>
+      <div class="nums"><span class="p-in"><b>5</b>입력</span><span class="p-rd"><b>7</b>조회</span><span class="p-no"><b>0</b>없음</span></div>
+      <ul>
+        <li><b>입력</b> 기준정보 · 인쇄 기준 · 작업지시 · 출하(승인만) · 시스템 관리</li>
+        <li><b>조회</b> POP · 자재 · 조색 · 후가공 · 품질 · LOT 추적 · 실적 현황</li>
+        <li><b>하루</b> 기준정보를 세우고 Job 을 내리고, 출하를 승인해 COA 를 발행하고, 추적·집계·로그를 본다</li>
+        <li><b>채널</b> 관리자 Web (PC)</li>
+      </ul>
+    </div>
+    <div class="role prod">
+      <h4>생산 <small class="mono">PROD · prod</small></h4>
+      <div class="nums"><span class="p-in"><b>6</b>입력</span><span class="p-rd"><b>5</b>조회</span><span class="p-no"><b>1</b>없음</span></div>
+      <ul>
+        <li><b>입력</b> 인쇄 기준 · 작업지시 · POP · 자재 입고 · 후가공·슬리팅 · 출하</li>
+        <li><b>조회</b> 기준정보 · 조색 · 품질 · LOT 추적 · 실적 현황</li>
+        <li><b>없음</b> 시스템 관리</li>
+        <li><b>하루</b> 작업지시를 만들고 실적·후가공·슬리팅을 돌리며, 출하를 등록하고 롤을 싣는다</li>
+        <li><b>채널</b> 관리자 Web · 현장 POP</li>
+      </ul>
+    </div>
+    <div class="role qc">
+      <h4>품질 <small class="mono">QC · qc</small></h4>
+      <div class="nums"><span class="p-in"><b>3</b>입력</span><span class="p-rd"><b>8</b>조회</span><span class="p-no"><b>1</b>없음</span></div>
+      <ul>
+        <li><b>입력</b> 자재(입고검사만) · 조색 기록 · 품질 검사</li>
+        <li><b>조회</b> 기준정보 · 인쇄 기준 · 작업지시 · POP · 후가공 · 출하 · LOT 추적 · 실적 현황</li>
+        <li><b>없음</b> 시스템 관리</li>
+        <li><b>하루</b> 입고된 LOT 을 합격·불합격으로 가르고, 롤을 스캔해 ΔE·불량을 적는다. 최신 검사가 그 롤의 판정이 된다</li>
+        <li><b>채널</b> 관리자 Web · 현장 POP</li>
+      </ul>
+    </div>
+    <div class="role field">
+      <h4>현장 <small class="mono">FIELD · field</small></h4>
+      <div class="nums"><span class="p-in"><b>5</b>입력</span><span class="p-rd"><b>4</b>조회</span><span class="p-no"><b>3</b>없음</span></div>
+      <ul>
+        <li><b>입력</b> POP · 자재 입고·투입 · 조색 · 후가공·슬리팅 · 출하</li>
+        <li><b>조회</b> 인쇄 기준 · 작업지시 · 품질 · 실적 현황</li>
+        <li><b>없음</b> 기준정보 · LOT 추적 · 시스템 관리</li>
+        <li><b>하루</b> 스캐너 하나로 일한다 — Job 스캔 → 시작, LOT 스캔 → 투입, 종료 → 롤 라벨, 롤 스캔 → 후가공·슬리팅·출하</li>
+        <li><b>채널</b> 현장 POP (스마트패드 · 바코드 스캐너)</li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted">합계 입력 5+6+3+5 = 19 · 조회 7+5+8+4 = 24 · 없음 0+1+1+3 = 5 → 48칸. 현장 계정 하나를 여러 POP 단말이 같이 쓰므로 로그아웃은 그 세션만 끊는다(D-26).</p>
+
+  <h3>1.3 권한 표 — 대메뉴 12 × 역할 4 (설계도 §6 그대로)</h3>
+  <p>설계도는 이 표를 "제안안"이라 했다. 그래서 코드가 아니라 <b>DB 데이터</b>(<code>sys_permission</code> 48행)로 두고 시스템 관리 &gt; 권한 화면이 바꾼다(G-17 · D-14). 아래는 기본값이다.</p>
+  <div class="tw"><table class="perm">
+    <tr><th>대메뉴</th><th>관리자</th><th>생산</th><th>품질</th><th>현장</th><th>주로 쓰는 채널</th></tr>
+    <tr><td>기준정보 관리</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-no">없음</td><td>관리자 Web</td></tr>
+    <tr><td>인쇄 기준 관리</td><td class="p p-in">입력</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td>관리자 Web</td></tr>
+    <tr><td>작업지시 관리</td><td class="p p-in">입력</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td>관리자 Web</td></tr>
+    <tr><td>생산 실적 (POP)</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td>현장 POP</td></tr>
+    <tr><td>자재 · 입고</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td class="p p-in">입력 (입고검사)</td><td class="p p-in">입력</td><td>현장 POP, 관리자 Web</td></tr>
+    <tr><td>조색 기록</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td class="p p-in">입력</td><td>현장 POP</td></tr>
+    <tr><td>후가공 · 슬리팅 롤 이력</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td>현장 POP</td></tr>
+    <tr><td>품질 검사 기록</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td>관리자 Web, 현장 POP</td></tr>
+    <tr><td>출하</td><td class="p p-in">입력 (승인)</td><td class="p p-in">입력</td><td class="p p-rd">조회</td><td class="p p-in">입력</td><td>현장 POP, 관리자 Web</td></tr>
+    <tr><td>LOT 추적</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-no">없음</td><td>관리자 Web, 모바일</td></tr>
+    <tr><td>실적 현황</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td class="p p-rd">조회</td><td>관리자 Web, 현황판, 모바일</td></tr>
+    <tr><td>시스템 관리</td><td class="p p-in">입력</td><td class="p p-no">없음</td><td class="p p-no">없음</td><td class="p p-no">없음</td><td>관리자 Web</td></tr>
+  </table></div>
+  <div class="tw"><table>
+    <tr><th>칸</th><th>메뉴</th><th>화면 GET</th><th>쓰기 기능</th></tr>
+    <tr><td><span class="badge" style="background:var(--none-bg);color:var(--none)">없음</span></td><td>숨김</td><td>403</td><td>403</td></tr>
+    <tr><td><span class="badge b-read">조회</span></td><td>보임</td><td>200</td><td>403</td></tr>
+    <tr><td><span class="badge" style="background:var(--write-bg);color:var(--write)">입력</span></td><td>보임</td><td>200</td><td>범위가 <code>일반</code> 인 기능만 200</td></tr>
+    <tr><td><span class="badge" style="background:var(--write-bg);color:var(--write)">입력 (입고검사)</span></td><td>보임</td><td>200</td><td>입고검사 결과 등록(F-MAT-03)만 200, 나머지 쓰기 403</td></tr>
+    <tr><td><span class="badge" style="background:var(--write-bg);color:var(--write)">입력 (승인)</span></td><td>보임</td><td>200</td><td>출하 승인(F-SHP-05)만 200, 나머지 쓰기 403</td></tr>
+  </table></div>
+
+  <h3>1.4 채널 4 — 같은 앱, 같은 DB, 레이아웃만 다르다</h3>
+  <div class="tw"><table>
+    <tr><th>채널</th><th>장치</th><th>여는 법</th><th>레이아웃</th><th>대상 화면</th></tr>
+    <tr><td><b>관리자 Web</b></td><td>PC 브라우저</td><td>기본</td><td>3단(메뉴 · 본문 · 계약 패널)</td><td>기준 · 지시 · 승인 · 추적 · 집계 · 시스템 관리 전부</td></tr>
+    <tr><td><b>현장 POP</b></td><td>스마트패드 + 바코드 스캐너(키보드 입력으로 가정, D-04)</td><td>로그인 화면에서 고르거나 <code>?device=pop</code></td><td>터치용 확대 · 스캔칸이 포커스를 잡고 바코드 한 번 = 한 건 · 알림이 떠 있어도 스캔을 받는다</td><td>작업 실적 · 정지·폐기 · 롤 라벨 · 입고 · 입고검사 · 자재 투입 · 조색 · 후가공 · 슬리팅 · 롤 이력 · 검사 · 출하</td></tr>
+    <tr><td><b>모바일</b></td><td>휴대폰</td><td><code>?device=mobile</code></td><td>한 단 · 폭 390px 에서 가로 스크롤 없음 · 본문이 메뉴보다 먼저</td><td>LOT 추적 · 집계(생산 · 품질 · 납기)</td></tr>
+    <tr><td><b>현황판</b></td><td>현장 대형 화면</td><td><code>?device=board</code></td><td>메뉴 없음 · 큰 글씨 · 자동 새로고침(기본 30초, 가설 D-19) · 마지막 갱신 시각</td><td>현황판(오늘 하루의 생산 · 품질 · 납기, D-302)</td></tr>
+  </table></div>
+  <p class="muted">채널은 레이아웃만 바꾼다. 어느 채널에서든 권한은 역할로 판정한다(D-19).</p>
+
+  <h3>1.5 로그인 · 세션 · 기록</h3>
+  <ul>
+    <li><b>세션은 요청마다 DB 로 확인한다</b>(D-26). 쿠키에는 누구의 어느 세션인지만 있고, 역할·상태는 <code>sys_user</code> 의 지금 값을 쓴다. 중지·잠금·로그아웃된 세션은 다음 요청부터 401, 역할 변경은 다음 요청부터 반영.</li>
+    <li><b>접근 로그</b>(G-18): 로그인 성공·실패, 화면 조회, 데이터 변경(누가 · 언제 · 무엇을)이 <code>sys_access_log</code> 에 남고 시스템 관리 &gt; 로그에서 조회한다. 403 거부는 기록하지 않는다(D-410 · 확인 필요).</li>
+    <li><b>비밀</b>(G-19): 비밀번호·세션 비밀은 저장소와 문서에 없다. 시드 비밀번호는 환경변수로만 준다.</li>
+    <li><b>퀵 로그인</b>(D-416 · 가설): 개발·테스트 환경에서만 켜지는 플래그. 로그인 화면 오른쪽에 역할별 계정을 보여 주고 한 번에 들어간다. 운영(<code>prod</code>)에서는 플래그를 켜도 꺼진다.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 2. 업무 진행 ───────────────────────── -->
+<section id="s2">
+  <h2>2 · 업무 진행 — 작업지시에서 출하 · 추적까지</h2>
+  <p>프로세스끼리 직접 주고받지 않는다. <b>앞 화면이 만든 번호(Job · 원재료 LOT · 롤 · 출하 LOT)를 다음 화면이 스캔하거나 고른다.</b> 라벨의 바코드를 스캔칸에 넣으면 그 번호의 화면이 열린다(G-14).</p>
+
+  <h3>2.1 번호가 이어지는 길</h3>
+  <div class="chain">
+    <div class="n"><b>J261003-001</b>Job (작업지시)<small>P2 · <span class="store D2">D2</span></small></div><span class="ar">→</span>
+    <div class="n"><b>M261003-001</b>원재료 LOT<small>P3 · <span class="store D3">D3</span></small></div><span class="ar">→</span>
+    <div class="n"><b>R261003-0001</b>인쇄 롤<small>P5 · <span class="store D5">D5</span> <span class="store D6">D6</span></small></div><span class="ar">→</span>
+    <div class="n"><b>R…</b>후가공 · 슬리팅 롤<small>P6 · <span class="store D6">D6</span></small></div><span class="ar">→</span>
+    <div class="n"><b>S261003-001</b>출하 LOT<small>P8 · <span class="store D8">D8</span></small></div><span class="ar">→</span>
+    <div class="n"><b>C261003-001</b>COA<small>승인 = 발행 (D-17)</small></div>
+  </div>
+  <p class="muted">번호 형식은 가설이다(D-05 · D-101): 접두 한 글자 + <code>YYMMDD-</code> + 일련번호. 형식은 코드가 아니라 <code>sys_number_rule</code> 6행에 있고, 채번은 <code>numbering</code> 한 곳에서만 한다. 생산 LOT(<code>L…</code>)은 Job 아래 매핑 단이다(D-10).</p>
+
+  <h3>2.2 단계별 진행</h3>
+  <ol class="steps">
+    <li><div class="step">
+      <div class="head"><h4>기준정보를 세운다</h4><span class="badge r-admin">관리자</span><span class="badge r-prod">생산 (인쇄 기준만)</span></div>
+      <div class="meta"><span>프로세스 <b>P1</b></span><span>쓰는 곳 <span class="store D1">D1</span></span><span>채널 <b>관리자 Web</b></span><span>화면 <code>/bas/*</code> 5 · <code>/prt/*</code> 3</span></div>
+      <ul>
+        <li>품목(제품 / 원재료) · 고객 · 공정(인쇄 / 후가공 / 슬리팅 / 기타) · 설비 · 불량코드 · 판사양 · 아니록스 · 잉크조성(성분 · 비율).</li>
+        <li>코드는 못 바꾸고, 삭제는 참조(Job · 원재료 LOT · 판사양 …)가 없을 때만 — 막는 참조는 DB FK 에서 읽는다(D-102).</li>
+        <li>설비는 여기까지다. 상태·수집값 컬럼은 두지 않는다(G-12).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>작업지시(Job)를 내린다</h4><span class="badge r-admin">관리자</span><span class="badge r-prod">생산</span></div>
+      <div class="meta"><span><b>P2</b></span><span><span class="store D2">D2</span> 참조 <span class="store D1">D1</span></span><span><b>관리자 Web</b></span><span><code>/job/orders</code> · <code>/job/mapping</code></span><span>출력물 <b>작업지시서</b></span></div>
+      <ul>
+        <li>품목 · 고객 · 수량 · 납기 · 판사양 · 아니록스 · 잉크조성 · 설비를 받아 <b>Job 번호</b>를 채번한다. 작업지시서에 바코드가 찍힌다.</li>
+        <li>Job-Lot-Roll 매핑 = Job 1 : 생산 LOT N(<code>job_lot</code>, D-10). 롤은 미리 묶지 않는다 — 실적이 만든다.</li>
+        <li>상태 <code>등록</code> → <code>완료</code> / <code>취소</code>. 진행 중인 실적이 있으면 마감하지 못한다(D-107).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>원재료를 입고한다</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P3</b></span><span><span class="store D3">D3</span> 참조 <span class="store D1">D1</span></span><span><b>현장 POP · 관리자 Web</b></span><span><code>/mat/receipts</code> · <code>/mat/lots</code></span><span>출력물 <b>원재료 LOT 라벨</b></span></div>
+      <ul>
+        <li><b>입고 1건 = 원재료 LOT 1개</b>. 품목(원재료) · 공급처 · 공급처 LOT · 수량 → LOT 번호 채번 → 라벨 출력(인라인 SVG 바코드).</li>
+        <li>잔량은 저장하지 않고 계산한다 — 입고 수량 − 투입 합(<code>v_material_lot_stock</code>).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>입고검사로 LOT 을 가른다</h4><span class="badge r-qc">품질</span></div>
+      <div class="meta"><span><b>P3</b></span><span><span class="store D3">D3</span></span><span><b>현장 POP · 관리자 Web</b></span><span><code>/mat/inspections</code></span><span>권한 범위 <b>입고검사</b> (괄호 조건 1)</span></div>
+      <ul>
+        <li>LOT 스캔 → <code>대기</code> → <code>합격</code> / <code>불합격</code>. 생산·현장은 이 화면을 보기만 한다 — 단추가 막히고 POST 는 403.</li>
+        <li><b>합격 LOT 만 투입할 수 있다.</b> 대기·불합격 LOT 의 투입 스캔은 422.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>조색을 기록한다</h4><span class="badge r-qc">품질</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P4</b></span><span><span class="store D4">D4</span> 참조 <span class="store D2">D2</span></span><span><b>현장 POP</b></span><span><code>/clr/records</code></span></div>
+      <ul>
+        <li>Job 스캔 → 색 이름 · 색상값(L·a·b, ΔE 가 Lab 차이이므로 Lab 으로 가정, D-18) · 기준 잉크조성.</li>
+        <li>배합비는 성분 행의 비율 합이 100 이어야 저장된다. 조색 기록은 Job 키로 롤과 이어진다(<code>roll.job_id = color_record.job_id</code>).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>작업을 시작한다 — 정지 · 재개 · 폐기</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P5</b></span><span><span class="store D5">D5</span> 참조 <span class="store D2">D2</span></span><span><b>현장 POP</b></span><span><code>/pop/work</code> · <code>/pop/stops</code></span></div>
+      <ul>
+        <li>Job 스캔 → 설비 고르기 → <b>작업 시작</b>(<code>work_result</code> 상태 <code>진행</code>). Job 행을 잠그고 상태를 다시 본 뒤 넣는다(D-211).</li>
+        <li>정지 등록 ⇄ 재개(<code>진행</code> ⇄ <code>정지</code>), 폐기 등록(수량 · 단위 · 불량코드). 전부 D5 에만 쓴다 — Job 상태는 바꾸지 않는다.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>자재를 투입한다 (LOT 스캔)</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P5</b></span><span><span class="store D5">D5</span> 참조 <span class="store D3">D3</span></span><span><b>현장 POP</b></span><span><code>/mat/inputs?work_id=…</code></span></div>
+      <ul>
+        <li>진행 중인 실적에서 원재료 LOT 라벨을 스캔한다 → <code>material_input</code> 한 행. 같은 LOT 이 다른 실적에 또 들어가도 된다(설계도 §3 의 LOT ①).</li>
+        <li>이 스캔이 작업 종료 때 인쇄 롤의 계보 <code>투입</code> 행이 된다(D-13).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>작업을 종료한다 = 인쇄 롤이 태어난다</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P5</b></span><span><span class="store D5">D5</span> <span class="store D6">D6</span></span><span><b>현장 POP</b></span><span><code>/pop/work/{id}/finish</code> · <code>/pop/roll-labels</code></span><span>출력물 <b>인쇄 롤 라벨</b></span></div>
+      <ul>
+        <li><b>실적 1건 = 인쇄 롤 1개</b>(D-13). 생산량 · 길이 · 폭을 받아 롤 번호를 채번하고, 투입 스캔마다 <code>원재료 LOT → 인쇄 롤</code> 계보 한 줄을 남긴다. 한 트랜잭션이다.</li>
+        <li>인쇄(P5)만 두 저장소에 쓴다 — 실적은 D5, 롤과 계보는 D6. 그래서 설계도 §2 에 P5 → D5 · D6 두 화살표가 있다.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>후가공 — 롤 하나, 또는 여럿을 하나로 (splice)</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P6</b></span><span><span class="store D6">D6</span> 참조 <span class="store D2">D2</span> <span class="store D6">D6</span></span><span><b>현장 POP</b></span><span><code>/rll/finishing</code> · <code>/rll/finishing/splice</code></span><span>출력물 <b>롤 라벨</b></span></div>
+      <ul>
+        <li>롤 스캔 1개 → 후가공 롤 1개(<code>후가공</code> 행 1). 롤 스캔 N개 → 후가공 롤 1개(<code>splice</code> 행 N).</li>
+        <li>부모가 된 롤은 <code>소진</code>, 새 롤은 <code>재고</code> — 상태 컬럼이 아니라 계보에서 계산한다(<code>v_roll_state</code>). 이미 출하된 롤은 부모가 될 수 없다(422).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>슬리팅 — 하나를 여럿으로</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P6</b></span><span><span class="store D6">D6</span></span><span><b>현장 POP</b></span><span><code>/rll/slitting</code> · <code>/rll/history</code></span><span>출력물 <b>롤 라벨 N장</b></span></div>
+      <ul>
+        <li>롤 스캔 1개 → 분할 수 · 폭 → 슬리팅 롤 N개(<code>슬리팅</code> 행 N) · 라벨 N장이 한 화면에 나온다.</li>
+        <li><b>롤 이력</b>(<code>/rll/history?no=</code>)은 롤 번호 하나로 지시 · 조색 · 조상 인쇄 롤의 실적 · 검사 · 출하까지 모은다(G-08 · D-210).</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>검사 — ΔE · 판정 · 불량</h4><span class="badge r-qc">품질</span></div>
+      <div class="meta"><span><b>P7</b></span><span><span class="store D7">D7</span> 참조 <span class="store D6">D6</span></span><span><b>관리자 Web · 현장 POP</b></span><span><code>/qua/inspections</code> · <code>/qua/defect-stats</code></span><span>출력물 <b>불량 유형별 집계</b></span></div>
+      <ul>
+        <li>롤 스캔 → ΔE · <code>합격</code> / <code>불합격</code> · 불량 유형(불량코드) · 위치. 롤 하나에 여러 번 — <b>최신 검사가 그 롤의 판정</b>이다. 롤에 판정을 적지 않는다.</li>
+        <li>출하 승인된 롤의 검사는 잠근다(D-304). 불량 집계는 <code>inspection_defect</code> 를 그때그때 센다 — 캐시 없음.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>출하를 등록하고 롤을 싣는다</h4><span class="badge r-prod">생산</span><span class="badge r-field">현장</span></div>
+      <div class="meta"><span><b>P8</b></span><span><span class="store D8">D8</span> + <span class="store D6">D6</span> 의 <code>출하</code> 행(D-12) · 참조 <span class="store D7">D7</span></span><span><b>현장 POP · 관리자 Web</b></span><span><code>/shp/shipments</code></span></div>
+      <ul>
+        <li>Job · 고객 · 출하일 → 출하 LOT 번호 채번(<code>등록</code>). 롤 스캔마다 <code>롤 → 출하 LOT</code> 계보 한 줄 — 롤 목록 테이블은 따로 없다.</li>
+        <li><b>막히는 스캔(의도된 동작, 422)</b>: 최신 검사가 불합격인 롤 · 다른 Job 의 롤(D-16) · 이미 출하된 롤 · 다음 공정에 쓰여 소진된 롤 · 승인된 출하에 담기. 미검사 롤은 실리되 COA 에 <code>미수집</code> 으로 나온다(D-17 · 확인 필요).</li>
+        <li>취소는 승인 전에만 — <code>출하</code> 계보 행을 지우고 롤은 다시 <code>재고</code>.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>출하를 승인한다 = COA 가 발행된다</h4><span class="badge r-admin">관리자</span></div>
+      <div class="meta"><span><b>P8</b></span><span><span class="store D8">D8</span></span><span><b>관리자 Web</b></span><span><code>/shp/approvals</code> · <code>/shp/coa</code></span><span>권한 범위 <b>승인</b> (괄호 조건 2)</span><span>출력물 <b>COA</b></span></div>
+      <ul>
+        <li>승인 → 상태 <code>승인</code>, COA 번호 채번, 발행 일시. 생산·현장은 승인 단추가 막히고 POST 는 403.</li>
+        <li>COA 내용은 저장하지 않는다 — 그 출하에 실린 롤들의 최신 검사 결과(D7)에서 매번 만든다.</li>
+      </ul>
+    </div></li>
+    <li><div class="step">
+      <div class="head"><h4>추적하고 집계한다 — 쓰지 않는 두 프로세스</h4><span class="badge r-admin">관리자</span><span class="badge r-prod">생산</span><span class="badge r-qc">품질</span><span class="badge r-field">현장 (현황만)</span></div>
+      <div class="meta"><span><b>P9 · P10</b></span><span>쓰는 곳 <b>없음</b> · 읽기 <span class="store D2">D2</span> <span class="store D3">D3</span> <span class="store D5">D5</span> <span class="store D6">D6</span> <span class="store D7">D7</span> <span class="store D8">D8</span></span><span><b>관리자 Web · 모바일 · 현황판</b></span><span><code>/trc/trace</code> · <code>/sta/summary</code> · <code>/sta/board</code></span></div>
+      <ul>
+        <li><b>LOT 추적</b>: LOT · 롤 · 출하 번호 하나 → 역방향(출하 롤 → 원재료 LOT) · 정방향(원재료 LOT → 출하 LOT). 재귀 조회 하나이고 결과를 어디에도 저장하지 않는다(G-05 · G-07).</li>
+        <li><b>실적 현황</b>: 기간 · 품목 → 생산(완료 실적 · 생산량 · 폐기) · 품질(검사 수 · 불합격률 · 평균 ΔE) · 납기(완료 · 대기 · 지연). 현황판은 오늘 하루(D-302). 데이터가 없으면 <code>미수집</code>(G-11).</li>
+      </ul>
+    </div></li>
+  </ol>
+
+  <h3>2.3 상태값 — 누가 바꾸는가</h3>
+  <div class="tw"><table>
+    <tr><th>대상</th><th>값</th><th>바꾸는 프로세스</th></tr>
+    <tr><td>Job <code>job.status</code></td><td><code>등록</code> → <code>완료</code> / <code>취소</code></td><td>P2 만 (작업지시 수정 · 취소)</td></tr>
+    <tr><td>원재료 LOT <code>insp_status</code></td><td><code>대기</code> → <code>합격</code> / <code>불합격</code></td><td>P3 (입고검사 · 품질만)</td></tr>
+    <tr><td>작업 실적 <code>work_result.status</code></td><td><code>진행</code> ⇄ <code>정지</code> → <code>완료</code></td><td>P5 (시작 · 정지 · 재개 · 종료)</td></tr>
+    <tr><td>검사 <code>inspection.result</code></td><td><code>합격</code> / <code>불합격</code> — 최신 행이 판정</td><td>P7</td></tr>
+    <tr><td>출하 <code>shipment.status</code></td><td><code>등록</code> → <code>승인</code> / <code>취소</code></td><td>P8 (등록 · 취소 · 승인)</td></tr>
+    <tr><td>롤 상태</td><td><code>재고</code> / <code>소진</code> / <code>출하</code></td><td><b>아무도</b> — 계보에서 계산 (<code>v_roll_state</code>)</td></tr>
+    <tr><td>계정 <code>sys_user.status</code></td><td><code>정상</code> / <code>잠금</code> / <code>중지</code></td><td>공통. 바뀌면 그 계정의 살아 있는 세션이 끊긴다(D-26)</td></tr>
+  </table></div>
+</section>
+
+<!-- ───────────────────────── 3. 데이터 흐름 ───────────────────────── -->
+<section id="s3">
+  <h2>3 · 데이터 흐름 — 프로세스 10 × 저장소 8</h2>
+  <p>설계도 §2(DFD Level 1): <b>프로세스 여덟 개가 저장소 여덟 개에 쓰고, 조회 두 개가 모두 읽는다.</b> 각자 자기 저장소에만 쓰고, 다음 공정은 Job-Lot-Roll 키로 앞 저장소를 참조한다. 그래서 어느 공정에서 시작해도 앞뒤를 따라갈 수 있다.</p>
+
+  <h3>3.1 쓰기 · 참조 행렬 (G-05 의 기대값)</h3>
+  <div class="tw"><table class="matrix">
+    <tr><th>프로세스</th><th>입력 주체</th><th><span class="store D1">D1</span><br><small>기준정보</small></th><th><span class="store D2">D2</span><br><small>작업지시</small></th><th><span class="store D3">D3</span><br><small>원재료 LOT</small></th><th><span class="store D4">D4</span><br><small>조색</small></th><th><span class="store D5">D5</span><br><small>생산 실적</small></th><th><span class="store D6">D6</span><br><small>Roll · 계보</small></th><th><span class="store D7">D7</span><br><small>품질 검사</small></th><th><span class="store D8">D8</span><br><small>출하</small></th><th>출력물</th></tr>
+    <tr><td><b>P1</b> 기준정보 · 인쇄 기준</td><td>생산관리자</td><td class="m w">쓰기</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td>없음</td></tr>
+    <tr><td><b>P2</b> 작업지시</td><td>생산관리자</td><td class="m r">참조</td><td class="m w">쓰기</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td>작업지시서</td></tr>
+    <tr><td><b>P3</b> 자재 입고 · 입고검사</td><td>자재 담당 · 품질 담당</td><td class="m r">참조</td><td class="m"></td><td class="m w">쓰기</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td>원재료 LOT 라벨</td></tr>
+    <tr><td><b>P4</b> 조색 기록</td><td>현장 작업자</td><td class="m"></td><td class="m r">참조</td><td class="m"></td><td class="m w">쓰기</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td>없음</td></tr>
+    <tr><td><b>P5</b> 생산 실적 (인쇄)</td><td>현장 작업자</td><td class="m"></td><td class="m r">참조</td><td class="m r">참조</td><td class="m"></td><td class="m w">쓰기</td><td class="m w">쓰기</td><td class="m"></td><td class="m"></td><td>인쇄 롤 라벨</td></tr>
+    <tr><td><b>P6</b> 후가공 · 슬리팅</td><td>현장 작업자</td><td class="m"></td><td class="m r">참조</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m w">쓰기 · 참조</td><td class="m"></td><td class="m"></td><td>롤 라벨</td></tr>
+    <tr><td><b>P7</b> 품질 검사</td><td>품질 담당</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m r">참조</td><td class="m w">쓰기</td><td class="m"></td><td>불량 유형별 집계</td></tr>
+    <tr><td><b>P8</b> 출하 · 출하 승인</td><td>출하 담당</td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m"></td><td class="m wx">참조 + <code>출하</code> 행<br><small>D-12</small></td><td class="m r">참조</td><td class="m w">쓰기</td><td>COA</td></tr>
+    <tr><td><b>P9</b> LOT 추적</td><td>생산관리자 · 품질 담당</td><td class="m"></td><td class="m"></td><td class="m r">읽기</td><td class="m"></td><td class="m r">읽기</td><td class="m r">읽기</td><td class="m r">읽기</td><td class="m r">읽기</td><td>정방향 · 역방향 추적 결과</td></tr>
+    <tr><td><b>P10</b> 실적 현황</td><td>생산관리자</td><td class="m"></td><td class="m r">읽기</td><td class="m"></td><td class="m"></td><td class="m r">읽기</td><td class="m"></td><td class="m r">읽기</td><td class="m r">읽기</td><td>생산 · 품질 · 납기 집계, 현황판</td></tr>
+  </table></div>
+  <div class="callout warn"><b>설계도의 모순 하나(D-12).</b> §2 표는 P8 → D8 뿐인데, §3 그림은 출하 화살표도 <code>roll_genealogy</code> 한 줄이다. G-06 이 예시 10행을 요구하므로 §3 을 따랐다 — P8 은 D8 과 D6 의 <code>출하</code> 행에 쓰되, 그 행은 <code>lineage</code> 모듈로만 만든다. 설계도는 고치지 않고 결정 대장에 적었다.</div>
+
+  <h3>3.2 저장소 8 → 테이블 30</h3>
+  <p class="muted">테이블 이름은 설계도에 적힌 넷(<code>material_lot</code> · <code>roll</code> · <code>roll_genealogy</code> · <code>shipment</code>)만 원문이고 나머지는 가설이다(D-18). 컬럼은 「프로세스별 입력과 출력」 표의 입력 낱말에서 끌어왔고 규격 값은 넣지 않았다.</p>
+  <div class="tw"><table>
+    <tr><th>저장소</th><th>쓰는 프로세스</th><th>테이블</th><th>설계도의 입력 낱말 → 어디에</th></tr>
+    <tr><td><span class="store D1">D1</span> 기준정보 <small>9</small></td><td>P1</td><td><code>item</code> <code>customer</code> <code>process</code> <code>equipment</code> <code>defect_code</code> <code>plate_spec</code> <code>anilox</code> <code>ink_formula</code> <code>ink_formula_component</code></td><td>품목 · 고객 · 공정 · 설비 · 불량코드 · 판사양 · 아니록스 · 잉크조성(+조성 행)</td></tr>
+    <tr><td><span class="store D2">D2</span> 작업지시 <small>2</small></td><td>P2</td><td><code>job</code> <code>job_lot</code></td><td>Job 등록 → <code>job</code> · Job-Lot-Roll 매핑 → <code>job_lot</code></td></tr>
+    <tr><td><span class="store D3">D3</span> 원재료 LOT <small>1</small></td><td>P3</td><td><code>material_lot</code></td><td>입고 등록 → 행 생성 · 입고검사 결과 → <code>insp_status</code> 등 4컬럼</td></tr>
+    <tr><td><span class="store D4">D4</span> 조색 기록 <small>2</small></td><td>P4</td><td><code>color_record</code> <code>color_record_mix</code></td><td>색상값 → L·a·b · 배합비 → 성분 행의 비율</td></tr>
+    <tr><td><span class="store D5">D5</span> 생산 실적 <small>4</small></td><td>P5</td><td><code>work_result</code> <code>work_stop</code> <code>work_scrap</code> <code>material_input</code></td><td>시작·종료 · 정지 · 폐기 · 자재 투입 스캔</td></tr>
+    <tr><td><span class="store D6">D6</span> Roll · 계보 <small>2</small></td><td>P5(인쇄 롤) · P6</td><td><code>roll</code> <code>roll_genealogy</code></td><td>인쇄·후가공·슬리팅 롤을 한 테이블에 공정 구분으로 · 화살표 한 개 = 계보 한 행</td></tr>
+    <tr><td><span class="store D7">D7</span> 품질 검사 <small>2</small></td><td>P7</td><td><code>inspection</code> <code>inspection_defect</code></td><td>ΔE · 판정 · 불량 유형·위치 · 불량 롤 번호</td></tr>
+    <tr><td><span class="store D8">D8</span> 출하 <small>1</small></td><td>P8</td><td><code>shipment</code></td><td>출하 등록 · 승인(일시 · 승인자 · COA 번호) · 담긴 롤은 계보의 <code>출하</code> 행</td></tr>
+    <tr><td><span class="store DS">SYS</span> 공통 <small>7</small></td><td>공통 · 배치</td><td><code>sys_role</code> <code>sys_user</code> <code>sys_permission</code> <code>sys_access_log</code> <code>sys_number_rule</code> <code>sys_number_seq</code> <code>sys_migration_log</code></td><td>로그인 · 역할별 권한 48칸 · 접근 로그 · 채번 형식과 카운터 · 이관 실행 기록</td></tr>
+  </table></div>
+  <p class="muted">D1~D8 23 + SYS 7 = 30. 뷰 2(<code>v_roll_state</code> · <code>v_material_lot_stock</code>)는 저장하지 않고 계산한다. 설계도 §4 의 「백업 저장소」는 테이블이 아니라 <code>make backup</code> 덤프와 복구 검증이다(D-28).</p>
+
+  <h3>3.3 키 연결 — 롤 번호 하나로 어디까지 가는가 (G-08)</h3>
+  <p><code>job_id</code> 는 D2 · D4 · D5 · D6 · D7 · D8 의 모든 머리 테이블에 있다. D7 · D8 의 <code>job_id</code> 는 롤에서 복사한 키이고(D-16) 복합 FK 로 틀릴 수 없게 했다.</p>
+  <div class="tw"><table>
+    <tr><th>찾는 것</th><th>길</th></tr>
+    <tr><td>작업지시 · 생산 LOT</td><td><code>roll.job_id → job</code> · <code>roll.job_lot_id → job_lot</code></td></tr>
+    <tr><td>조색 기록</td><td><code>roll.job_id = color_record.job_id</code></td></tr>
+    <tr><td>생산 실적</td><td>인쇄 롤: <code>roll.work_result_id → work_result</code>(→ 정지 · 폐기 · 투입). 후가공·슬리팅 롤: 계보를 거슬러 올라간 조상 인쇄 롤의 실적(롤 이력 화면, D-210)</td></tr>
+    <tr><td>검사 결과</td><td><code>inspection.roll_id</code> — 최신 검사가 판정</td></tr>
+    <tr><td>출하</td><td>계보의 <code>parent_roll_id = 롤</code> 행의 <code>child_shipment_id → shipment</code>. 자손 롤의 출하는 정방향 추적</td></tr>
+    <tr><td>원재료 LOT</td><td>역방향 추적</td></tr>
+  </table></div>
+
+  <h3>3.4 지키는 원칙</h3>
+  <ul>
+    <li><b>쓰기 경계</b>: 프로세스는 자기 저장소에만 쓴다. P9 · P10 은 어떤 테이블에도 쓰지 않는다. 라우터별 쓰기 SQL 정적 스캔과 조회 전후 행 수 diff 0 으로 확인한다(G-05).</li>
+    <li><b>한 곳에서만</b>: 계보에 쓰는 곳은 <code>lineage</code>, 번호를 만드는 곳은 <code>numbering</code>, 집계 SQL 은 <code>stats</code>, 라벨·바코드는 <code>printing</code> 뿐이다.</li>
+    <li><b>저장하지 않고 계산하는 셋</b>: 롤 상태 · 원재료 LOT 잔량 · Job 의 진행 여부. 추적·집계 결과도 캐시 테이블에 쌓지 않는다.</li>
+    <li><b>함께 성공해야 하는 것은 트랜잭션 하나</b>: 작업 종료의 실적 마감 + 롤 생성 + 계보 N행, 슬리팅의 롤 N + 계보 N, 승인의 상태 + COA 채번.</li>
+    <li><b>지어내지 않는다</b>: 데이터가 없으면 <code>미수집</code>, 정해지지 않았으면 <code>미확정 (D-nn)</code>. 시드 값에는 <code>(예시)</code> 를 붙인다(G-09 · G-11).</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 4. 계보 ───────────────────────── -->
+<section id="s4">
+  <h2>4 · Job-Lot-Roll 계보 — 화살표 하나가 한 행</h2>
+  <p>설계도 §3 의 예시다. 원재료 LOT ①은 인쇄 롤 두 개에 들어갔고, 두 인쇄 롤은 후가공에서 하나로 이어졌다가(splice) 슬리팅에서 셋으로 나뉘었다. 슬리팅 ①②는 출하되고 ③은 재고로 남는다. <b>화살표 10개 = <code>roll_genealogy</code> 10행</b>(G-06).</p>
+
+  <div class="card" style="overflow-x:auto">
+  <svg viewBox="0 0 960 330" width="100%" style="min-width:720px;display:block" role="img" aria-label="계보 예시: 원재료 LOT 2개에서 인쇄 롤 2개, 후가공 롤 1개, 슬리팅 롤 3개, 출하 LOT 1개로 이어지는 화살표 10개">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    </defs>
+    <g font-size="12" fill="var(--muted)" text-anchor="middle">
+      <text x="90" y="22">입고 · material_lot</text><text x="290" y="22">인쇄 · roll</text><text x="480" y="22">후가공 · roll</text><text x="670" y="22">슬리팅 · roll</text><text x="870" y="22">출하 · shipment</text>
+    </g>
+    <!-- 화살표 (부모 → 자식) -->
+    <g fill="none" stroke-width="2" marker-end="url(#arr)">
+      <g stroke="var(--d3)" color="var(--d3)">
+        <path d="M160,100 L220,100"/>
+        <path d="M160,112 L220,228"/>
+        <path d="M160,240 L220,240"/>
+      </g>
+      <g stroke="var(--d6)" color="var(--d6)">
+        <path d="M360,100 L410,160"/>
+        <path d="M360,240 L410,180"/>
+        <path d="M550,160 L600,78"/>
+        <path d="M550,170 L600,170"/>
+        <path d="M550,180 L600,262"/>
+      </g>
+      <g stroke="var(--d8)" color="var(--d8)">
+        <path d="M740,78 L800,130"/>
+        <path d="M740,170 L800,150"/>
+      </g>
+    </g>
+    <!-- 화살표 라벨 -->
+    <g font-size="11" text-anchor="middle">
+      <text x="190" y="92" fill="var(--d3)">투입 ①</text><text x="178" y="178" fill="var(--d3)">투입 ②</text><text x="190" y="258" fill="var(--d3)">투입 ③</text>
+      <text x="372" y="124" fill="var(--d6)">splice ④</text><text x="372" y="226" fill="var(--d6)">splice ⑤</text>
+      <text x="586" y="108" fill="var(--d6)">슬리팅 ⑥</text><text x="575" y="164" fill="var(--d6)">⑦</text><text x="586" y="238" fill="var(--d6)">⑧</text>
+      <text x="760" y="92" fill="var(--d8)">출하 ⑨</text><text x="770" y="176" fill="var(--d8)">출하 ⑩</text>
+    </g>
+    <!-- 노드 -->
+    <g font-size="13" font-weight="600" text-anchor="middle" fill="var(--ink)">
+      <rect x="20" y="80" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d3)" stroke-width="2"/><text x="90" y="105">원재료 LOT ①</text>
+      <rect x="20" y="220" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d3)" stroke-width="2"/><text x="90" y="245">원재료 LOT ②</text>
+      <rect x="220" y="80" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2"/><text x="290" y="105">인쇄 Roll ①</text>
+      <rect x="220" y="220" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2"/><text x="290" y="245">인쇄 Roll ②</text>
+      <rect x="410" y="150" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2"/><text x="480" y="175">후가공 Roll</text>
+      <rect x="600" y="58" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2"/><text x="670" y="83">슬리팅 Roll ①</text>
+      <rect x="600" y="150" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2"/><text x="670" y="175">슬리팅 Roll ②</text>
+      <rect x="600" y="242" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d6)" stroke-width="2" stroke-dasharray="5 4"/><text x="670" y="267">슬리팅 Roll ③</text>
+      <rect x="800" y="120" width="140" height="40" rx="8" fill="var(--card)" stroke="var(--d8)" stroke-width="2"/><text x="870" y="145">출하 LOT</text>
+    </g>
+    <g font-size="11" fill="var(--muted)" text-anchor="middle">
+      <text x="670" y="300">③ 부모로 나오는 행 없음 → 재고</text>
+      <text x="870" y="175">승인 = COA 발행</text>
+      <text x="290" y="160">같은 Job (작업지시)</text>
+    </g>
+    <g font-size="11" fill="var(--muted)">
+      <text x="20" y="318">정방향: 원재료 LOT → 출하 LOT (왼쪽에서 오른쪽)</text>
+      <text x="520" y="318">역방향(클레임): 출하 롤 → 원재료 LOT (오른쪽에서 왼쪽)</text>
+    </g>
+  </svg>
+  </div>
+
+  <h3>4.1 관계 5가지 — 어느 기능이 어느 화살표를 만드는가</h3>
+  <div class="tw"><table>
+    <tr><th>관계 <code>relation</code></th><th>부모</th><th>자식</th><th>만드는 기능</th><th>예시의 행</th></tr>
+    <tr><td><span class="badge" style="color:var(--d3);background:var(--soft)">투입</span></td><td>원재료 LOT</td><td>인쇄 롤</td><td>작업 종료(F-POP-02) — 그 실적의 투입 스캔마다 한 줄</td><td>① ② ③ (3행)</td></tr>
+    <tr><td><span class="badge" style="color:var(--d6);background:var(--soft)">후가공</span></td><td>롤 1</td><td>후가공 롤</td><td>후가공 실적 등록(F-RLL-01)</td><td>예시에는 없음</td></tr>
+    <tr><td><span class="badge" style="color:var(--d6);background:var(--soft)">splice</span></td><td>롤 N (N줄)</td><td>후가공 롤 1</td><td>splice 등록(F-RLL-02)</td><td>④ ⑤ (2행)</td></tr>
+    <tr><td><span class="badge" style="color:var(--d6);background:var(--soft)">슬리팅</span></td><td>롤 1</td><td>슬리팅 롤 N (N줄)</td><td>슬리팅 분할 등록(F-RLL-04)</td><td>⑥ ⑦ ⑧ (3행)</td></tr>
+    <tr><td><span class="badge" style="color:var(--d8);background:var(--soft)">출하</span></td><td>롤</td><td>출하 LOT</td><td>출하 롤 스캔(F-SHP-02)</td><td>⑨ ⑩ (2행)</td></tr>
+  </table></div>
+  <p class="muted">한 행은 부모 둘(원재료 LOT · 롤) 중 하나, 자식 둘(롤 · 출하) 중 하나만 채운다. 네 컬럼 전부 FK 라서 없는 LOT · 롤 · 출하를 가리킬 수 없다. 원재료 LOT 은 부모만, 출하는 자식만 될 수 있다.</p>
+
+  <h3>4.2 추적은 조회 하나다 (G-07)</h3>
+  <div class="tw"><table>
+    <tr><th>방향</th><th>시작</th><th>따라가는 법</th><th>예시 결과</th></tr>
+    <tr><td><b>역방향</b> (클레임)</td><td>출하 LOT 또는 롤</td><td>자식 쪽 키로 들어가 부모 쪽으로 재귀. 깊이 · 분기 수를 가정하지 않는다</td><td>출하 2행 → 슬리팅 2행 → splice 2행 → 투입 3행 = 9행. <b>원재료 LOT ①·② 둘 다 닿는다.</b> ⑧(③ 슬리팅)은 출하되지 않아 안 나온다</td></tr>
+    <tr><td><b>정방향</b> (영향 범위)</td><td>원재료 LOT 또는 롤</td><td>부모 쪽 키로 들어가 자식 쪽으로 재귀</td><td>LOT ① → 투입 2행 → splice 2행 → 슬리팅 3행 → 출하 2행 = 9행. 자식으로만 나오고 부모로는 안 나오는 롤(③) = <code>재고</code></td></tr>
+  </table></div>
+  <p>후가공 롤은 두 길(①·②)에서 닿지만 중복 제거로 한 번만 나온다. 순환이 없으므로 재귀는 반드시 끝난다. 추적 결과를 담는 테이블은 없다 — 매번 이 조회를 돈다.</p>
+
+  <h3>4.3 DB 가 마지막으로 막는 것</h3>
+  <p class="muted"><code>lineage</code> 가 먼저 검사해 사람이 읽을 문장으로 422 를 낸다. 놓쳐도 DB 제약과 트리거가 막고, 제약 위반은 500 이 아니라 422 로 바뀐다.</p>
+  <ul>
+    <li>순환: 자기 자신(CHECK) · 긴 순환(트리거가 자식에서 내려가 부모에 닿는지 본다, advisory lock 으로 직렬화). 계보 행의 부모·자식·관계는 UPDATE 불가 — 지우고 다시 넣는다.</li>
+    <li>이미 출하된 롤 재출하 · 출하된 롤을 다음 공정의 부모로 · 소진된 롤 출하 · 같은 화살표 중복 · 관계와 자식 롤의 공정 구분 불일치 · <code>등록</code> 이 아닌 출하에 담기 · 다른 Job 의 롤 담기.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 5. 메뉴와 화면 ───────────────────────── -->
+<section id="s5">
+  <h2>5 · 메뉴와 화면 — 대메뉴 12 · 중메뉴 32 · 기능 94 + 6</h2>
+  <p>설계도 §5(IA 구성도)는 대메뉴 12개를 <b>일하는 순서대로 네 묶음</b>으로 나눈다. 숫자는 FP 산정서의 기능 수(2안 · 합계 94)다. 경로 · 화면 ID · 중메뉴별 채널은 설계도에 없어 가설이다(D-19 · D-22). 데이터 이관 6기능은 화면이 아니라 배치 명령이다.</p>
+
+  <div class="bundle">기준 · 지시 — 39</div>
+  <div class="menu-grid">
+    <div class="menu"><h4>기준정보 관리 <small>20 · <span class="badge r-admin">관</span> 관리자 Web</small></h4><ul>
+      <li>품목 관리 <code>/bas/items</code></li><li>고객 관리 <code>/bas/customers</code></li><li>공정 관리 <code>/bas/processes</code></li><li>설비 관리 <code>/bas/equipment</code></li><li>불량코드 관리 <code>/bas/defect-codes</code></li></ul></div>
+    <div class="menu"><h4>인쇄 기준 관리 <small>12 · <span class="badge r-admin">관</span><span class="badge r-prod">생</span> 관리자 Web</small></h4><ul>
+      <li>판사양 관리 <code>/prt/plates</code></li><li>아니록스 관리 <code>/prt/anilox</code></li><li>잉크조성 관리 <code>/prt/inks</code></li></ul></div>
+    <div class="menu"><h4>작업지시 관리 <small>7 · <span class="badge r-admin">관</span><span class="badge r-prod">생</span> 관리자 Web</small></h4><ul>
+      <li>작업지시 <code>/job/orders</code></li><li>Job-Lot-Roll 매핑 <code>/job/mapping</code></li></ul></div>
+  </div>
+  <div class="bundle">현장 실행 — 28</div>
+  <div class="menu-grid">
+    <div class="menu"><h4>생산 실적 (POP) <small>8 · <span class="badge r-prod">생</span><span class="badge r-field">현</span> 현장 POP</small></h4><ul>
+      <li>작업 실적 <code>/pop/work</code></li><li>정지 · 폐기 <code>/pop/stops</code></li><li>롤 라벨 <code>/pop/roll-labels</code></li></ul></div>
+    <div class="menu"><h4>자재 · 입고 <small>8 · <span class="badge r-prod">생</span><span class="badge r-qc">품*</span><span class="badge r-field">현</span> POP · Web</small></h4><ul>
+      <li>입고 <code>/mat/receipts</code></li><li>입고검사 <code>/mat/inspections</code></li><li>원재료 LOT <code>/mat/lots</code></li><li>자재 투입 <code>/mat/inputs</code></li></ul></div>
+    <div class="menu"><h4>조색 기록 <small>5 · <span class="badge r-qc">품</span><span class="badge r-field">현</span> 현장 POP</small></h4><ul>
+      <li>조색 기록 <code>/clr/records</code></li></ul></div>
+    <div class="menu"><h4>후가공 · 슬리팅 롤 이력 <small>7 · <span class="badge r-prod">생</span><span class="badge r-field">현</span> 현장 POP</small></h4><ul>
+      <li>후가공 <code>/rll/finishing</code></li><li>슬리팅 <code>/rll/slitting</code></li><li>롤 이력 <code>/rll/history</code></li></ul></div>
+  </div>
+  <div class="bundle">품질 · 출하 — 13</div>
+  <div class="menu-grid">
+    <div class="menu"><h4>품질 검사 기록 <small>6 · <span class="badge r-qc">품</span> Web · POP</small></h4><ul>
+      <li>검사 결과 <code>/qua/inspections</code></li><li>불량 집계 <code>/qua/defect-stats</code></li></ul></div>
+    <div class="menu"><h4>출하 <small>7 · <span class="badge r-admin">관*</span><span class="badge r-prod">생</span><span class="badge r-field">현</span> POP · Web</small></h4><ul>
+      <li>출하 <code>/shp/shipments</code></li><li>출하 승인 <code>/shp/approvals</code></li><li>COA <code>/shp/coa</code></li></ul></div>
+  </div>
+  <div class="bundle">조회 · 관리 — 14</div>
+  <div class="menu-grid">
+    <div class="menu"><h4>LOT 추적 <small>3 · 조회 · Web · 모바일</small></h4><ul>
+      <li>추적 (정방향, 역방향, LOT 검색) <code>/trc/trace</code></li></ul></div>
+    <div class="menu"><h4>실적 현황 <small>4 · 조회 · Web · 현황판 · 모바일</small></h4><ul>
+      <li>집계 (생산, 품질, 납기) <code>/sta/summary</code></li><li>현황판 <code>/sta/board</code></li></ul></div>
+    <div class="menu"><h4>시스템 관리 <small>7 · <span class="badge r-admin">관</span> 관리자 Web</small></h4><ul>
+      <li>사용자 <code>/sys/users</code></li><li>권한 <code>/sys/permissions</code></li><li>로그 <code>/sys/logs</code></li></ul></div>
+  </div>
+  <p class="muted">배지는 그 대메뉴에 입력 권한이 있는 역할이다. <code>품*</code> = 입고검사만, <code>관*</code> = 승인만. 공통 화면 3: 메인 <code>/</code>(묶음별 바로가기) · 로그인 <code>/login</code>(채널 고르기) · 오류 <code>/error</code>.</p>
+
+  <div class="callout warn" style="border-color:var(--qc);background:var(--qc-bg)">
+    <b>설계도 밖 확장 (D-418 · 2026-10-08 · 가설).</b> 사람 요청으로 <b>영업관리</b>(수주 관리 <code>/sal/orders</code> · 수주 현황 · 거래처 이력, 기능 6, 테이블 <code>sales_order</code> 1)를 더했다.
+    위의 대메뉴 12 · 중메뉴 32 · 기능 94 · 권한 48칸 · 테이블 30 에는 <b>세지 않고</b>, 권한은 작업지시 관리 칸을 그대로 따른다. 수주는 작업지시의 앞단이다 — 수주를 고르거나 수주 화면에서 「이 수주로 작업지시 등록」 을 누르면 고객 · 품목 · 수량 · 납기가 채워지고 <code>job.sales_order_id</code> 가 수주를 가리킨다.
+    좌측 메뉴는 설계도 묶음 대신 일하는 순서(메인 → 실적 현황 → 영업관리 → 작업지시 → 입고 → 조색 → POP → 후가공·슬리팅 → 품질 → 출하 → 추적 → 기준정보 → 인쇄 기준 → 시스템)로 그린다(D-417). 계약은 <code>contracts/extension-list.md</code>.
+  </div>
+
+  <h3>5.1 기능 100줄 — 계약 그대로</h3>
+  <p class="muted">한 기능 = 계약 한 줄 = 화면/API 하나 = 테스트 하나 이상(G-02). 열어서 본다. <b>쓰는 곳</b>이 <code>-</code> 이면 읽기 기능이다. 쓰기 기능의 권한은 권한 표 기본값 기준이다. 출처 <code>contracts/function-list.md</code>.</p>
+  <div class="tw">
+  <details class="fn-menu" id="fn-BAS"><summary><span class="code">BAS</span> 기준정보 관리 <span class="muted">기능 20 · 중메뉴 5 · 개발1</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-BAS-01</td><td>품목 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>item</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/items</code></td><td class="contract">품목 코드·품목명·구분(제품/원재료)·규격·단위를 받아 <code>item</code> 한 행. 코드 중복·필수값 누락 422.</td></tr><tr><td class="mono">F-BAS-02</td><td>품목 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>item</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/items/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부(<code>use_yn</code>) 변경 포함. 없는 ID 404.</td></tr><tr><td class="mono">F-BAS-03</td><td>품목 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>item</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/items/{id}/delete</code></td><td class="contract">참조(Job·원재료 LOT·판사양)가 없을 때만 지운다 — 막는 참조는 목록을 코드에 적지 않고 DB 의 FK 에서 읽는다(D-102). 있으면 422 <code>사용 중이라 삭제할 수 없습니다</code>(D-21).</td></tr><tr><td class="mono">F-BAS-04</td><td>품목 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /bas/items</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>(G-11).</td></tr><tr><td class="mono">F-BAS-05</td><td>고객 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>customer</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/customers</code></td><td class="contract">고객 코드·고객명·비고를 받아 <code>customer</code> 한 행. 코드 중복·필수값 누락 422.</td></tr><tr><td class="mono">F-BAS-06</td><td>고객 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>customer</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/customers/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부(<code>use_yn</code>) 변경 포함. 없는 ID 404.</td></tr><tr><td class="mono">F-BAS-07</td><td>고객 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>customer</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/customers/{id}/delete</code></td><td class="contract">참조(Job·출하)가 없을 때만 지운다. 있으면 422 <code>사용 중이라 삭제할 수 없습니다</code>(D-21).</td></tr><tr><td class="mono">F-BAS-08</td><td>고객 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /bas/customers</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>(G-11).</td></tr><tr><td class="mono">F-BAS-09</td><td>공정 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>process</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/processes</code></td><td class="contract">공정 코드·공정명·공정 구분(인쇄/후가공/슬리팅/기타)·순서를 받아 <code>process</code> 한 행. 코드 중복·필수값 누락 422.</td></tr><tr><td class="mono">F-BAS-10</td><td>공정 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>process</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/processes/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부(<code>use_yn</code>) 변경 포함. 없는 ID 404.</td></tr><tr><td class="mono">F-BAS-11</td><td>공정 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>process</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/processes/{id}/delete</code></td><td class="contract">참조(설비·작업 실적)가 없을 때만 지운다. 있으면 422 <code>사용 중이라 삭제할 수 없습니다</code>(D-21).</td></tr><tr><td class="mono">F-BAS-12</td><td>공정 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /bas/processes</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>(G-11).</td></tr><tr><td class="mono">F-BAS-13</td><td>설비 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>equipment</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/equipment</code></td><td class="contract">설비 코드·설비명·공정를 받아 <code>equipment</code> 한 행. 코드 중복·필수값 누락 422. 설비 상태·수집값은 받지 않는다(G-12).</td></tr><tr><td class="mono">F-BAS-14</td><td>설비 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>equipment</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/equipment/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부(<code>use_yn</code>) 변경 포함. 없는 ID 404.</td></tr><tr><td class="mono">F-BAS-15</td><td>설비 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>equipment</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/equipment/{id}/delete</code></td><td class="contract">참조(Job·작업 실적·롤)가 없을 때만 지운다. 있으면 422 <code>사용 중이라 삭제할 수 없습니다</code>(D-21).</td></tr><tr><td class="mono">F-BAS-16</td><td>설비 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /bas/equipment</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>(G-11).</td></tr><tr><td class="mono">F-BAS-17</td><td>불량코드 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>defect_code</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/defect-codes</code></td><td class="contract">불량 코드·불량명(불량 유형)·분류를 받아 <code>defect_code</code> 한 행. 코드 중복·필수값 누락 422.</td></tr><tr><td class="mono">F-BAS-18</td><td>불량코드 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>defect_code</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/defect-codes/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부(<code>use_yn</code>) 변경 포함. 없는 ID 404.</td></tr><tr><td class="mono">F-BAS-19</td><td>불량코드 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>defect_code</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /bas/defect-codes/{id}/delete</code></td><td class="contract">참조(검사 불량·폐기)가 없을 때만 지운다. 있으면 422 <code>사용 중이라 삭제할 수 없습니다</code>(D-21).</td></tr><tr><td class="mono">F-BAS-20</td><td>불량코드 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /bas/defect-codes</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>(G-11).</td></tr></table></details>
+<details class="fn-menu" id="fn-PRT"><summary><span class="code">PRT</span> 인쇄 기준 관리 <span class="muted">기능 12 · 중메뉴 3 · 개발1</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-PRT-01</td><td>판사양 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>plate_spec</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/plates</code></td><td class="contract">판 코드·판명·품목·도수·사양 메모을 받아 <code>plate_spec</code> 한 행. 코드 중복 422. 규격 값은 <code>(예시)</code> 외에 지어내지 않는다.</td></tr><tr><td class="mono">F-PRT-02</td><td>판사양 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>plate_spec</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/plates/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부 변경 포함.</td></tr><tr><td class="mono">F-PRT-03</td><td>판사양 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>plate_spec</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/plates/{id}/delete</code></td><td class="contract">Job·조색 기록이 참조하면 422, 아니면 지운다(D-21).</td></tr><tr><td class="mono">F-PRT-04</td><td>판사양 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /prt/plates</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>.</td></tr><tr><td class="mono">F-PRT-05</td><td>아니록스 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>anilox</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/anilox</code></td><td class="contract">아니록스 코드·명칭·선수·셀 용적을 받아 <code>anilox</code> 한 행. 코드 중복 422. 규격 값은 <code>(예시)</code> 외에 지어내지 않는다.</td></tr><tr><td class="mono">F-PRT-06</td><td>아니록스 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>anilox</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/anilox/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부 변경 포함.</td></tr><tr><td class="mono">F-PRT-07</td><td>아니록스 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>anilox</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/anilox/{id}/delete</code></td><td class="contract">Job·조색 기록이 참조하면 422, 아니면 지운다(D-21).</td></tr><tr><td class="mono">F-PRT-08</td><td>아니록스 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /prt/anilox</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>.</td></tr><tr><td class="mono">F-PRT-09</td><td>잉크조성 등록</td><td><span class="kind k-write">등록</span></td><td>D1<br><small>ink_formula, ink_formula_component</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/inks</code></td><td class="contract">잉크 코드·잉크명·색 이름·기준 색상값(Lab)과 조성 행(성분·비율)을 받아 <code>ink_formula</code> 한 행. 코드 중복 422. 규격 값은 <code>(예시)</code> 외에 지어내지 않는다.</td></tr><tr><td class="mono">F-PRT-10</td><td>잉크조성 수정</td><td><span class="kind k-write">수정</span></td><td>D1<br><small>ink_formula, ink_formula_component</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/inks/{id}</code></td><td class="contract">코드는 못 바꾼다. 사용 여부 변경 포함. 조성 행은 통째로 바꿔 넣는다.</td></tr><tr><td class="mono">F-PRT-11</td><td>잉크조성 삭제</td><td><span class="kind k-write">삭제</span></td><td>D1<br><small>ink_formula, ink_formula_component</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /prt/inks/{id}/delete</code></td><td class="contract">Job·조색 기록이 참조하면 422, 아니면 지운다(D-21).</td></tr><tr><td class="mono">F-PRT-12</td><td>잉크조성 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /prt/inks</code></td><td class="contract">코드·이름·사용 여부로 검색한 목록. 0건이면 <code>미수집</code>.</td></tr></table></details>
+<details class="fn-menu" id="fn-JOB"><summary><span class="code">JOB</span> 작업지시 관리 <span class="muted">기능 7 · 중메뉴 2 · 개발1</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-JOB-01</td><td>작업지시 등록</td><td><span class="kind k-write">등록</span></td><td>D2<br><small>job</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /job/orders</code></td><td class="contract">품목·고객·판사양·아니록스·잉크조성·지시 수량·납기를 받아 <code>job</code> 한 행. Job 번호는 <code>numbering.next(&#x27;JOB&#x27;)</code>. 상태 <code>등록</code>. 필수는 품목(<code>제품</code> 만)·고객·지시 수량·납기 — 판사양·아니록스·잉크조성·계획 설비는 비워도 된다. 수량 단위를 비우면 품목의 단위, 둘 다 없으면 422. <code>미사용</code> 기준정보는 새로 고를 수 없다(D-103).</td></tr><tr><td class="mono">F-JOB-02</td><td>작업지시 수정</td><td><span class="kind k-write">수정</span></td><td>D2<br><small>job</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /job/orders/{job_no}</code></td><td class="contract">작업 실적이 생기기 전에만 품목·수량(수량 단위 포함)을 바꾼다. 고객·인쇄 기준·설비·납기·비고·마감(상태 <code>완료</code>)은 그 뒤에도 바꾼다. 잘못 마감한 <code>완료</code> 를 <code>등록</code> 으로 되돌리는 것도 수정으로 한다(D-103). <code>취소</code> 된 Job 은 422. 진행 중인(종료되지 않은 — <code>진행</code>·<code>정지</code>) 작업 실적이 있는 Job 은 <code>완료</code> 로 마감할 수 없다 — 422, 사유에 열려 있는 실적이 보인다(D-107). 진행 여부는 저장하지 않고 D5 에서 읽는다. 판정(취소 여부 · 실적 수 · 열린 실적)은 Job 행을 잠근 뒤 같은 트랜잭션에서 다시 읽은 값으로 한다 — 작업 시작·취소와 동시에 들어와도 같다(D-109).</td></tr><tr><td class="mono">F-JOB-03</td><td>작업지시 취소</td><td><span class="kind k-write">삭제</span></td><td>D2<br><small>job</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /job/orders/{job_no}/cancel</code></td><td class="contract">작업 실적·롤이 없는 Job 만 상태 <code>취소</code>. 행은 지우지 않는다(D-21). 실적이 있으면 422. 생산 LOT 이 붙어 있어도 취소된다(LOT 행은 남는다, D-103). 롤이 아직 안 담긴 <code>등록</code> 상태의 출하가 걸린 Job 도 지금은 취소된다 — 막을지는 현업 확인(D-405). 작업 시작과 동시에 들어와도 둘 중 하나만 통과한다(D-107 · D-211).</td></tr><tr><td class="mono">F-JOB-04</td><td>작업지시 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /job/orders</code></td><td class="contract">Job 번호·품목·고객·상태·납기 기간으로 검색. <code>?no=</code> 로 한 건을 연다(바코드 스캔 진입).</td></tr><tr><td class="mono">F-JOB-05</td><td>작업지시서 출력</td><td><span class="kind k-read">출력</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /job/orders/{job_no}/print</code></td><td class="contract">인쇄용 화면(출력물 5종의 하나, G-14). Job 번호 바코드(<code>printing.barcode_svg</code>)와 품목·판사양·아니록스·잉크조성·수량·납기.</td></tr><tr><td class="mono">F-JOB-06</td><td>Job-Lot-Roll 매핑 등록</td><td><span class="kind k-write">등록</span></td><td>D2<br><small>job_lot</small></td><td><span class="badge r-admin">관리자</span> <span class="badge r-prod">생산</span></td><td><code>POST /job/mapping</code></td><td class="contract">Job 에 생산 LOT 을 붙이고 계획 롤 수·계획 길이를 적는다. LOT 번호는 <code>numbering.next(&#x27;JOB_LOT&#x27;)</code>. 같은 요청으로 계획값 수정(D-10). <code>등록</code> 상태의 Job 에만 붙이거나 고친다(<code>완료</code>·<code>취소</code> 422). <code>lot_no</code> 가 없으면 새 LOT, 있으면 그 LOT 의 계획값 수정 — 다른 Job 의 LOT 번호는 422. 계획 롤 수·계획 길이는 비워도 되고 주면 0 보다 커야 한다(D-104). Job 의 상태는 쓰는 트랜잭션 안에서 Job 행을 잠그고 다시 본다 — 취소·마감과 동시에 들어와도 닫힌 Job 에 붙지 않는다(D-109).</td></tr><tr><td class="mono">F-JOB-07</td><td>Job-Lot-Roll 매핑 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /job/mapping</code></td><td class="contract">Job → 생산 LOT → 실제 Roll(공정 구분·상태) → 출하 LOT 을 키로 묶어 보여 준다. 읽기만 한다. 롤이 없으면 <code>미수집</code>.</td></tr></table></details>
+<details class="fn-menu" id="fn-POP"><summary><span class="code">POP</span> 생산 실적 (POP) <span class="muted">기능 8 · 중메뉴 3 · 개발2</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-POP-01</td><td>작업 시작</td><td><span class="kind k-write">등록</span></td><td>D5<br><small>work_result</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /pop/work/start</code></td><td class="contract">Job 번호(스캔)·생산 LOT·설비를 받아 <code>work_result</code> 한 행(상태 <code>진행</code>, 시작 시각). 취소·완료 Job 은 422. <code>job</code> 행은 건드리지 않는다(D2 는 P2 만 쓴다). <b>취소·마감과 동시에 들어와도 둘 중 하나만 통과한다</b> — 실적을 넣는 트랜잭션 안에서 Job 행을 잠그고(<code>for share</code>) 상태를 다시 본다(D-211).</td></tr><tr><td class="mono">F-POP-02</td><td>작업 종료</td><td><span class="kind k-write">등록</span></td><td>D5, D6<br><small>work_result, roll, roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /pop/work/{work_id}/finish</code></td><td class="contract">실적 수량·길이·폭을 받아 실적을 <code>완료</code> 로 닫고 <b>인쇄 롤 1개</b>를 만든다(<code>lineage.make_print_roll</code>). 그 실적의 투입 LOT 마다 계보 <code>투입</code> 한 줄. 투입 0건이면 422. 정지 중인 실적은 재개한 뒤에만 종료한다(422, D-202). 응답에 롤 번호와 라벨 링크(D-13).</td></tr><tr><td class="mono">F-POP-03</td><td>작업 실적 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /pop/work</code></td><td class="contract">진행 중·오늘 완료 실적 목록(Job·설비·시작/종료·수량·만든 롤). 스캔칸이 포커스를 잡는다(G-13).</td></tr><tr><td class="mono">F-POP-04</td><td>정지 등록</td><td><span class="kind k-write">등록</span></td><td>D5<br><small>work_stop, work_result</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /pop/stops</code></td><td class="contract">진행 중 실적에 정지 사유·정지 시각을 적는다. 실적 상태 <code>정지</code>. 진행 중이 아니면 422.</td></tr><tr><td class="mono">F-POP-05</td><td>재개 등록</td><td><span class="kind k-write">수정</span></td><td>D5<br><small>work_stop, work_result</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /pop/stops/{stop_id}/resume</code></td><td class="contract">열린 정지에 재개 시각을 적고 실적 상태를 <code>진행</code> 으로 되돌린다. 이미 재개한 정지는 422.</td></tr><tr><td class="mono">F-POP-06</td><td>폐기 등록</td><td><span class="kind k-write">등록</span></td><td>D5<br><small>work_scrap</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /pop/stops/scrap</code></td><td class="contract">실적에 폐기 수량·사유(불량코드 선택 가능)를 적는다. 수량 0 이하 422. 롤·계보를 만들지 않는다.</td></tr><tr><td class="mono">F-POP-07</td><td>정지·폐기 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /pop/stops</code></td><td class="contract">실적별 정지(시작·재개·사유)와 폐기(수량·사유) 목록. 0건이면 <code>미수집</code>.</td></tr><tr><td class="mono">F-POP-08</td><td>인쇄 롤 라벨 출력</td><td><span class="kind k-read">출력</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /pop/roll-labels/{roll_no}/print</code></td><td class="contract">인쇄 롤 라벨(출력물 5종의 하나). <code>printing.roll_label</code> — 롤 번호 바코드·Job·품목·길이. 화면 <code>/pop/roll-labels</code> 는 라벨을 뽑을 인쇄 롤 목록.</td></tr></table></details>
+<details class="fn-menu" id="fn-MAT"><summary><span class="code">MAT</span> 자재 · 입고 <span class="muted">기능 8 · 중메뉴 4 · 개발2</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-MAT-01</td><td>입고 등록</td><td><span class="kind k-write">등록</span></td><td>D3<br><small>material_lot</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /mat/receipts</code></td><td class="contract">원재료 품목·공급처·공급사 LOT·입고 수량을 받아 <code>material_lot</code> 한 행(입고 1건 = 원재료 LOT 1개). LOT 번호는 <code>numbering.next(&#x27;MAT_LOT&#x27;)</code>. 검사 상태 <code>대기</code>.</td></tr><tr><td class="mono">F-MAT-02</td><td>입고 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /mat/receipts</code></td><td class="contract">입고일·품목·공급처로 검색한 입고 목록과 검사 상태.</td></tr><tr><td class="mono">F-MAT-03</td><td>입고검사 결과 등록</td><td><span class="kind k-write">등록</span></td><td>D3<br><small>material_lot</small></td><td><span class="badge r-qc">품질</span></td><td><code>POST /mat/inspections</code></td><td class="contract">원재료 LOT(스캔)에 <code>합격</code>/<code>불합격</code> 과 비고를 적는다. <b>품질만</b> 할 수 있다(범위 <code>입고검사</code>, D-14). 이미 투입된 LOT 의 판정 변경은 422 — 같은 판정을 다시 적어 비고만 고치는 것은 된다(D-204).</td></tr><tr><td class="mono">F-MAT-04</td><td>입고검사 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /mat/inspections</code></td><td class="contract">검사 대기·합격·불합격 LOT 목록. 대기 건이 먼저 나온다.</td></tr><tr><td class="mono">F-MAT-05</td><td>원재료 LOT 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /mat/lots</code></td><td class="contract">LOT 번호·품목·검사 상태·잔량(<code>v_material_lot_stock</code> = 입고량 − 투입량). <code>?no=</code> 스캔 진입.</td></tr><tr><td class="mono">F-MAT-06</td><td>원재료 LOT 라벨 출력</td><td><span class="kind k-read">출력</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /mat/lots/{lot_no}/label</code></td><td class="contract">원재료 LOT 라벨(출력물 5종의 하나). <code>printing.material_lot_label</code> — LOT 번호 바코드·품목·입고일·검사 상태.</td></tr><tr><td class="mono">F-MAT-07</td><td>자재 투입 스캔</td><td><span class="kind k-write">스캔</span></td><td>D5<br><small>material_input</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /mat/inputs</code></td><td class="contract">상태 <code>진행</code> 인 실적에(정지 중·완료 실적은 422, D-202) 원재료 LOT 바코드 한 번 = 한 건(<code>material_input</code>). 합격 LOT 만. 없는 LOT·불합격·검사 대기·같은 실적에 중복 스캔은 422 이고 다음 스캔을 막지 않는다(D-13).</td></tr><tr><td class="mono">F-MAT-08</td><td>자재 투입 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /mat/inputs</code></td><td class="contract">실적별 투입 LOT 목록과 투입량. 스캔칸이 포커스를 잡는다.</td></tr></table></details>
+<details class="fn-menu" id="fn-CLR"><summary><span class="code">CLR</span> 조색 기록 <span class="muted">기능 5 · 중메뉴 1 · 개발2</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-CLR-01</td><td>조색 기록 등록</td><td><span class="kind k-write">등록</span></td><td>D4<br><small>color_record</small></td><td><span class="badge r-qc">품질</span> <span class="badge r-field">현장</span></td><td><code>POST /clr/records</code></td><td class="contract">Job·색 이름·차수·색상값(L·a·b)·기준 잉크조성을 받아 <code>color_record</code> 한 행. 없는 Job 422.</td></tr><tr><td class="mono">F-CLR-02</td><td>배합비 등록</td><td><span class="kind k-write">등록</span></td><td>D4<br><small>color_record_mix</small></td><td><span class="badge r-qc">품질</span> <span class="badge r-field">현장</span></td><td><code>POST /clr/records/{id}/mix</code></td><td class="contract">그 조색 기록의 배합비 행(성분·비율)을 통째로 바꿔 넣는다. 비율 합이 100 이 아니면 422. 비율은 소수 셋째 자리까지 저장하고(넘는 자리는 반올림) 합은 저장되는 값으로 센다 — 422 의 사유에 그 규칙과 반올림된 행의 「입력 → 저장되는 값」 이 보인다(D-209).</td></tr><tr><td class="mono">F-CLR-03</td><td>조색 기록 수정</td><td><span class="kind k-write">수정</span></td><td>D4<br><small>color_record</small></td><td><span class="badge r-qc">품질</span> <span class="badge r-field">현장</span></td><td><code>POST /clr/records/{id}</code></td><td class="contract">색상값·색 이름·비고를 고친다. Job 은 못 바꾼다.</td></tr><tr><td class="mono">F-CLR-04</td><td>조색 기록 삭제</td><td><span class="kind k-write">삭제</span></td><td>D4<br><small>color_record, color_record_mix</small></td><td><span class="badge r-qc">품질</span> <span class="badge r-field">현장</span></td><td><code>POST /clr/records/{id}/delete</code></td><td class="contract">조색 기록과 그 배합비 행을 지운다.</td></tr><tr><td class="mono">F-CLR-05</td><td>조색 기록 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /clr/records</code></td><td class="contract">Job 번호·기간으로 검색. 차수 순으로 색상값과 배합비를 보여 준다. 0건이면 <code>미수집</code>.</td></tr></table></details>
+<details class="fn-menu" id="fn-RLL"><summary><span class="code">RLL</span> 후가공 · 슬리팅 롤 이력 <span class="muted">기능 7 · 중메뉴 3 · 개발2</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-RLL-01</td><td>후가공 실적 등록</td><td><span class="kind k-write">등록</span></td><td>D6<br><small>roll, roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /rll/finishing</code></td><td class="contract">부모 롤 <b>1개</b> 스캔 + 설비·길이 → 후가공 롤 1개와 계보 <code>후가공</code> 한 줄(<code>lineage.make_finishing_roll</code>). 부모는 <code>재고</code> 상태여야 한다(소진·출하 롤 422). 롤 번호를 2개 이상 주면 422 — splice 로 등록한다(D-203).</td></tr><tr><td class="mono">F-RLL-02</td><td>splice 등록</td><td><span class="kind k-write">등록</span></td><td>D6<br><small>roll, roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /rll/finishing/splice</code></td><td class="contract">부모 롤 <b>N개(2 이상)</b> 스캔 → 후가공 롤 1개와 계보 <code>splice</code> N줄(<code>lineage.make_finishing_roll</code>). 같은 롤 중복·자기 자신·소진·출하 롤 422. 한 트랜잭션. 부모들의 Job 이 서로 다르면 후가공 롤의 Job 을 <code>job_no</code> 로 받아야 한다(없으면 422). <b><code>job_no</code> 는 부모 롤의 Job 중 하나여야 하고(그 밖의 Job 은 422), 취소·완료된 Job 은 422</b> — 롤의 Job 키를 지킨다(G-08 · D-203 · D-208).</td></tr><tr><td class="mono">F-RLL-03</td><td>후가공 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /rll/finishing</code></td><td class="contract">후가공 롤 목록(부모 롤·설비·길이·상태). 스캔칸이 포커스를 잡는다.</td></tr><tr><td class="mono">F-RLL-04</td><td>슬리팅 분할 등록</td><td><span class="kind k-write">등록</span></td><td>D6<br><small>roll, roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /rll/slitting</code></td><td class="contract">부모 롤 1개 스캔 + 분할 수 N(+ 폭) → 슬리팅 롤 N개와 계보 <code>슬리팅</code> N줄, 라벨 N장(<code>lineage.slit_roll</code>). N 이 1 미만이거나 부모가 <code>재고</code> 가 아니면 422.</td></tr><tr><td class="mono">F-RLL-05</td><td>슬리팅 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /rll/slitting</code></td><td class="contract">슬리팅 롤 목록(부모 롤·분할 순번·폭·상태).</td></tr><tr><td class="mono">F-RLL-06</td><td>롤 이력 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /rll/history</code></td><td class="contract">롤 번호(스캔)로 그 롤의 공정 구분·Job·상태(<code>v_roll_state</code>)·부모·자식 한 단계를 보여 준다. 없는 롤 422. 후가공·슬리팅 롤은 계보를 거슬러 올라간 <b>조상 인쇄 롤의 생산 실적</b>(<code>work_result</code>)을 함께 보여 준다 — 롤 번호 하나로 생산 실적에 닿는 길은 이 화면의 책임이다(G-08 · <code>db-schema.md</code> §6).</td></tr><tr><td class="mono">F-RLL-07</td><td>롤 라벨 출력</td><td><span class="kind k-read">출력</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /rll/history/{roll_no}/label</code></td><td class="contract">후가공·슬리팅 롤 라벨(출력물 5종의 하나). <code>printing.roll_label</code>. 인쇄 롤도 같은 양식으로 재출력된다.</td></tr></table></details>
+<details class="fn-menu" id="fn-QUA"><summary><span class="code">QUA</span> 품질 검사 기록 <span class="muted">기능 6 · 중메뉴 2 · 개발3</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-QUA-01</td><td>검사 결과 등록</td><td><span class="kind k-write">등록</span></td><td>D7<br><small>inspection, inspection_defect</small></td><td><span class="badge r-qc">품질</span></td><td><code>POST /qua/inspections</code></td><td class="contract">롤 번호(스캔)·ΔE·판정(합격/불합격)과 불량 행(불량 유형·위치)을 받아 <code>inspection</code> 한 행 + 불량 행. Job 키는 롤에서 복사(D-16). 없는 롤 422. 출하가 <b>승인된</b> 롤에는 검사를 등록하지 못한다(422) — COA 가 그 롤의 최신 검사에서 매번 만들어지기 때문이다(D-304). 불량 유형은 사용 중인 불량코드만.</td></tr><tr><td class="mono">F-QUA-02</td><td>검사 결과 수정</td><td><span class="kind k-write">수정</span></td><td>D7<br><small>inspection, inspection_defect</small></td><td><span class="badge r-qc">품질</span></td><td><code>POST /qua/inspections/{id}</code></td><td class="contract">ΔE·판정·불량 행을 고친다. 롤은 못 바꾼다. 출하 승인된 롤의 검사는 422.</td></tr><tr><td class="mono">F-QUA-03</td><td>검사 결과 삭제</td><td><span class="kind k-write">삭제</span></td><td>D7<br><small>inspection, inspection_defect</small></td><td><span class="badge r-qc">품질</span></td><td><code>POST /qua/inspections/{id}/delete</code></td><td class="contract">검사와 그 불량 행을 지운다. 출하 승인된 롤의 검사는 422.</td></tr><tr><td class="mono">F-QUA-04</td><td>검사 결과 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /qua/inspections</code></td><td class="contract">롤 번호·Job·기간·판정으로 검색. 롤마다 최신 검사가 그 롤의 판정이다.</td></tr><tr><td class="mono">F-QUA-05</td><td>불량 유형별 집계 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /qua/defect-stats</code></td><td class="contract">기간·품목별로 불량 유형마다 불량 행 수와 불량 롤 수(<code>stats.defect_by_type</code>). 0건이면 <code>미수집</code>.</td></tr><tr><td class="mono">F-QUA-06</td><td>불량 롤 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /qua/defect-stats/rolls</code></td><td class="contract">불량 유형·기간을 받아 그 불량이 기록된 롤 번호·위치·Job 목록(집계의 내역).</td></tr></table></details>
+<details class="fn-menu" id="fn-SHP"><summary><span class="code">SHP</span> 출하 <span class="muted">기능 7 · 중메뉴 3 · 개발3</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-SHP-01</td><td>출하 등록</td><td><span class="kind k-write">등록</span></td><td>D8<br><small>shipment</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /shp/shipments</code></td><td class="contract">Job·고객·출하일을 받아 <code>shipment</code> 한 행(상태 <code>등록</code>). 출하 LOT 번호는 <code>numbering.next(&#x27;SHIPMENT&#x27;)</code>.</td></tr><tr><td class="mono">F-SHP-02</td><td>출하 롤 스캔</td><td><span class="kind k-write">스캔</span></td><td>D8, D6(출하 화살표)<br><small>roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /shp/shipments/{shipment_no}/rolls</code></td><td class="contract">롤 바코드 한 번 = <code>lineage.ship_roll</code> 한 줄(롤 → 출하 화살표). 없는 롤·이미 출하된 롤·소진된 롤·다른 Job 의 롤·불합격 롤은 422(D-12·D-16·D-17). 승인된 출하에는 못 담는다.</td></tr><tr><td class="mono">F-SHP-03</td><td>출하 취소</td><td><span class="kind k-write">삭제</span></td><td>D8, D6(출하 화살표)<br><small>shipment, roll_genealogy</small></td><td><span class="badge r-prod">생산</span> <span class="badge r-field">현장</span></td><td><code>POST /shp/shipments/{shipment_no}/cancel</code></td><td class="contract">승인 전 출하만. <code>lineage.unlink_shipment</code> 로 그 출하의 계보 행을 지우고 상태 <code>취소</code>. 승인된 출하는 422.</td></tr><tr><td class="mono">F-SHP-04</td><td>출하 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /shp/shipments</code></td><td class="contract">출하 LOT·Job·고객·상태·기간으로 검색. 한 건을 열면 담긴 롤과 그 검사 판정. 스캔칸이 포커스를 잡는다.</td></tr><tr><td class="mono">F-SHP-05</td><td>출하 승인</td><td><span class="kind k-write">승인</span></td><td>D8<br><small>shipment</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /shp/approvals/{shipment_no}/approve</code></td><td class="contract"><b>관리자만</b>(범위 <code>승인</code>, D-14). 롤이 1개 이상 담긴 <code>등록</code> 출하를 <code>승인</code> 으로 바꾸고 승인자·승인 시각·COA 번호(<code>numbering.next(&#x27;COA&#x27;)</code>)를 적는다. 롤 0개·이미 승인 422. 담긴 롤 가운데 최신 검사가 불합격인 것이 있으면 422(스캔 뒤에 불합격이 들어온 경우). 미검사 롤은 승인되고 COA 에 <code>미수집</code> 으로 나온다(D-305 · D-17).</td></tr><tr><td class="mono">F-SHP-06</td><td>COA 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /shp/coa</code></td><td class="contract">승인된 출하 LOT 의 COA 목록(COA 번호·고객·발행일). 미승인은 <code>미발행</code>.</td></tr><tr><td class="mono">F-SHP-07</td><td>COA 출력</td><td><span class="kind k-read">출력</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /shp/coa/{shipment_no}/print</code></td><td class="contract">COA 인쇄용 화면(출력물 5종의 하나). 그 출하의 롤마다 최신 검사의 ΔE·판정·불량. 검사가 없는 롤은 <code>미수집</code>. 미승인 출하는 422.</td></tr></table></details>
+<details class="fn-menu" id="fn-TRC"><summary><span class="code">TRC</span> LOT 추적 <span class="muted">기능 3 · 중메뉴 1 · 개발3</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-TRC-01</td><td>정방향 추적</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /trc/trace/forward</code></td><td class="contract"><code>?no=</code> 원재료 LOT·롤 번호에서 출하까지 <code>lineage.trace_forward</code>. 자식이 없는 롤은 <code>재고</code> 로 표시. <b>어떤 테이블에도 쓰지 않는다</b>(G-05). 출하 LOT 번호의 정방향은 422(갈 곳이 없다 — 역방향을 안내한다). 없는 번호·빈 번호 422(D-306).</td></tr><tr><td class="mono">F-TRC-02</td><td>역방향 추적</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /trc/trace/backward</code></td><td class="contract"><code>?no=</code> 출하 LOT·롤 번호에서 원재료 LOT 까지 <code>lineage.trace_backward</code>. 클레임 대응의 본 기능이자 완료 기준. 쓰지 않는다. 원재료 LOT 번호의 역방향은 422(정방향을 안내한다). 없는 번호·빈 번호 422(D-306).</td></tr><tr><td class="mono">F-TRC-03</td><td>LOT 검색</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /trc/trace</code></td><td class="contract">번호 일부로 원재료 LOT·롤·출하 LOT 을 찾아 정방향·역방향 추적으로 넘긴다. 폭 390px 에서 가로 스크롤 없음(G-13).</td></tr></table></details>
+<details class="fn-menu" id="fn-STA"><summary><span class="code">STA</span> 실적 현황 <span class="muted">기능 4 · 중메뉴 2 · 개발3</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-STA-01</td><td>생산 집계 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sta/summary/production</code></td><td class="contract">기간·품목별 생산 실적(<code>stats.production</code>, D2·D5). 0건이면 <code>미수집</code>. 쓰지 않는다.</td></tr><tr><td class="mono">F-STA-02</td><td>품질 집계 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sta/summary/quality</code></td><td class="contract">기간·품목별 검사 수·불합격 수·평균 ΔE(<code>stats.quality</code>, D2·D7).</td></tr><tr><td class="mono">F-STA-03</td><td>납기 집계 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sta/summary/delivery</code></td><td class="contract">기간·품목별 납기 준수·지연·미출하 Job 수(<code>stats.delivery</code>, D2·D8).</td></tr><tr><td class="mono">F-STA-04</td><td>현황판</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sta/board</code></td><td class="contract">조작 없이 자동 새로고침 + 마지막 갱신 시각(G-13). 오늘의 생산·품질·납기 요약. 값은 <code>stats</code> 와 같은 함수에서 온다.</td></tr></table></details>
+<details class="fn-menu" id="fn-SYS"><summary><span class="code">SYS</span> 시스템 관리 <span class="muted">기능 7 · 중메뉴 3 · 개발1</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">F-SYS-01</td><td>사용자 등록</td><td><span class="kind k-write">등록</span></td><td>SYS<br><small>sys_user</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /sys/users</code></td><td class="contract">로그인 ID·이름·역할·초기 비밀번호를 받아 <code>sys_user</code> 한 행. ID 중복 422. 비밀번호는 해시만 저장.</td></tr><tr><td class="mono">F-SYS-02</td><td>사용자 수정</td><td><span class="kind k-write">수정</span></td><td>SYS<br><small>sys_user</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /sys/users/{login_id}</code></td><td class="contract">이름·역할·상태 변경과 비밀번호 초기화. 역할·이름 변경은 그 계정의 <b>다음 요청부터</b> 반영된다(다시 로그인하지 않아도 된다). 상태를 <code>잠금</code>·<code>중지</code> 로 바꾸거나 비밀번호를 초기화하면 그 계정의 살아 있는 세션이 전부 끊긴다(D-26). 자기 자신을 <code>잠금</code>·<code>중지</code> 로 바꾸는 것은 422(D-105).</td></tr><tr><td class="mono">F-SYS-03</td><td>사용자 삭제</td><td><span class="kind k-write">삭제</span></td><td>SYS<br><small>sys_user</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /sys/users/{login_id}/delete</code></td><td class="contract">행을 지우지 않고 상태 <code>중지</code>(D-21). 자기 자신은 422. 그 계정의 살아 있는 세션은 곧바로 끊긴다 — 다음 요청이 401 이다(D-26).</td></tr><tr><td class="mono">F-SYS-04</td><td>사용자 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sys/users</code></td><td class="contract">ID·이름·역할·상태·마지막 로그인. 비밀번호 해시는 내보내지 않는다.</td></tr><tr><td class="mono">F-SYS-05</td><td>권한 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sys/permissions</code></td><td class="contract">역할 × 대메뉴 권한 표(48칸)를 DB 에서 그대로 보여 준다.</td></tr><tr><td class="mono">F-SYS-06</td><td>권한 수정</td><td><span class="kind k-write">수정</span></td><td>SYS<br><small>sys_permission</small></td><td><span class="badge r-admin">관리자</span></td><td><code>POST /sys/permissions</code></td><td class="contract">한 칸의 <code>level</code>·<code>write_scope</code> 를 바꾸고 <code>rbac.invalidate()</code> 로 즉시 반영. 잠김 방지 — 시스템 관리 칸을 <code>입력(일반)</code> 아래로 못 내리는 경우: 역할 <code>ADMIN</code> · 요청한 사람 자신의 역할 · 그 칸을 내리면 시스템 관리를 입력할 역할이 하나도 남지 않을 때(D-106). 한 요청 = 한 칸.</td></tr><tr><td class="mono">F-SYS-07</td><td>로그 조회</td><td><span class="kind k-read">조회</span></td><td>-</td><td><span class="badge b-read">조회 이상</span></td><td><code>GET /sys/logs</code></td><td class="contract"><code>sys_access_log</code> 를 기간·사용자·구분(로그인/조회/변경/오류)으로 검색(G-18).</td></tr></table></details>
+<details class="fn-menu" id="fn-MIG"><summary><span class="code">MIG</span> (배치) 데이터 이관 <span class="muted">기능 6 · 화면 없음 · 개발3</span></summary><table class="fn"><tr><th>ID</th><th>기능</th><th>유형</th><th>쓰는 곳</th><th>권한</th><th>API</th><th>계약</th></tr><tr><td class="mono">B-MIG-01</td><td>Import 파일 검증</td><td><span class="kind k-batch">배치</span></td><td>-</td><td><span class="badge b-read">운영자</span></td><td><code>cli validate</code></td><td class="contract">Import 폴더의 파일 유무·열 이름·필수값·코드 참조를 미리 검사한다. 적재하지 않는다. 오류가 있으면 종료코드 1.</td></tr><tr><td class="mono">B-MIG-02</td><td>기준정보 적재</td><td><span class="kind k-batch">배치</span></td><td>D1, SYS<br><small>item, customer, process, equipment, defect_code, sys_migration_log</small></td><td><span class="badge b-read">운영자</span></td><td><code>cli load-master</code></td><td class="contract">품목·고객·공정·설비·불량코드를 코드 기준 upsert. 다시 돌려도 행 수가 같다(G-15).</td></tr><tr><td class="mono">B-MIG-03</td><td>인쇄 기준 적재</td><td><span class="kind k-batch">배치</span></td><td>D1, SYS<br><small>plate_spec, anilox, ink_formula, ink_formula_component, sys_migration_log</small></td><td><span class="badge b-read">운영자</span></td><td><code>cli load-print-std</code></td><td class="contract">판사양·아니록스·잉크조성을 코드 기준 upsert.</td></tr><tr><td class="mono">B-MIG-04</td><td>작업지시 적재</td><td><span class="kind k-batch">배치</span></td><td>D2, SYS<br><small>job, job_lot, sys_migration_log</small></td><td><span class="badge b-read">운영자</span></td><td><code>cli load-jobs</code></td><td class="contract">Job 과 생산 LOT 을 번호 기준 upsert. 없는 품목·고객 코드는 그 행만 오류로 남기고 계속한다. <b>작업 실적·롤·출하가 있는 Job 은 덮어쓰지 않는다 — 파일 값이 DB 와 전부 같으면 「변경 없음」 으로 통과하고(쓰지 않음, D-311), 하나라도 다르면 그 행만 오류로 리포트에 남기고 건너뛴다</b>(화면의 F-JOB-02 「실적 뒤 품목·수량 변경 금지」 를 배치가 우회하지 않는다, <code>migration-files.md</code> §1). <b>DB 에서 <code>취소</code> 인 Job 도 바꾸지 않는다 — 값이 전부 같으면 「변경 없음」, 하나라도 다르면 그 행을 건너뛰고 오류 리포트, 종료코드 1</b>(화면의 F-JOB-02 「<code>취소</code> 된 Job 은 422」 · D-313). 읽은 행 = 적재 + 변경 없음 + 오류.</td></tr><tr><td class="mono">B-MIG-05</td><td>과거 이력 적재</td><td><span class="kind k-batch">배치</span></td><td>D3~D8, SYS<br><small>material_lot, roll, roll_genealogy, inspection, shipment, sys_migration_log</small></td><td><span class="badge b-read">운영자</span></td><td><code>cli load-history</code></td><td class="contract">과거 원재료 LOT·롤·계보·검사·출하. 범위는 기존 MES 확인 뒤 정한다 → 규격과 빈 파일 처리까지(D-01·D-23).</td></tr><tr><td class="mono">B-MIG-06</td><td>이관 결과 리포트</td><td><span class="kind k-batch">배치</span></td><td>-</td><td><span class="badge b-read">운영자</span></td><td><code>cli report</code></td><td class="contract"><code>sys_migration_log</code> 와 대상 테이블 행 수를 대조해 읽은 수·적재 수·오류 목록을 낸다.</td></tr></table></details>
+  </div>
+
+  <h3>5.2 출력물 5종 (G-14)</h3>
+  <div class="tw"><table>
+    <tr><th>출력물</th><th>만드는 단계</th><th>기능</th><th>바코드를 스캔하면</th></tr>
+    <tr><td>작업지시서</td><td>작업지시 등록 뒤</td><td>F-JOB-05</td><td>POP 작업 실적 화면이 그 Job 으로 열린다</td></tr>
+    <tr><td>원재료 LOT 라벨</td><td>입고 등록 뒤</td><td>F-MAT-06</td><td>입고검사 · 자재 투입 · 추적 화면이 그 LOT 으로 열린다</td></tr>
+    <tr><td>인쇄 롤 라벨</td><td>작업 종료 뒤</td><td>F-POP-08</td><td>후가공 · 슬리팅 · 검사 · 출하 · 롤 이력이 그 롤로 열린다</td></tr>
+    <tr><td>롤 라벨 (후가공 · 슬리팅)</td><td>후가공 · 슬리팅 뒤</td><td>F-RLL-07</td><td>위와 같다</td></tr>
+    <tr><td>COA</td><td>출하 승인 뒤</td><td>F-SHP-07</td><td>출하 LOT 번호로 역방향 추적을 시작한다</td></tr>
+  </table></div>
+  <p class="muted">라벨은 인쇄용 화면이고 바코드는 인라인 SVG(외부 CDN 0)다. 프린터 규격이 미정이라(D-04) 출력은 <code>printing</code> 어댑터 뒤에 둔다. 스캔으로 들어오는 화면은 <code>?no=&lt;번호&gt;</code> 로도 열리고, 없는 번호는 그 화면을 422 로 다시 그린다(스캔칸 유지, D-201).</p>
+</section>
+
+<!-- ───────────────────────── 6. 아키텍처 ───────────────────────── -->
+<section id="s6">
+  <h2>6 · 아키텍처와 바깥 연결</h2>
+  <p>설계도 §4: <b>웹 애플리케이션 하나와 DB 하나</b>로 구성하고, 바깥과는 세 곳(라벨 프린터 · ERP · 기존 MES)에서만 닿는다. 화면은 네 채널로 열리지만 뒤에서는 같은 애플리케이션과 같은 DB 를 쓴다. 설계도는 논리 구성만 그렸고 기술 스택은 구현에서 정했다(아래 「실측」).</p>
+  <div class="arch">
+    <div class="layer"><h4>사용자 채널 — HTTPS</h4><div class="boxes">
+      <div class="box"><b>관리자 Web</b>PC 브라우저 · 3단</div>
+      <div class="box"><b>현장 POP · 스마트패드</b>바코드 스캐너 연결 · 터치</div>
+      <div class="box"><b>모바일</b>조회 중심 · 390px</div>
+      <div class="box"><b>현황판</b>현장 대형 화면 · 자동 새로고침</div>
+    </div></div>
+    <div class="down">↓</div>
+    <div class="layer"><h4>신규 MES 웹 애플리케이션 — 공통: 로그인 · 역할별 권한 · 접근 로그 · 채번 · 오류 계약</h4><div class="boxes">
+      <div class="box"><b>기준 · 지시 · 실적</b>기준정보 · 인쇄 기준 · 작업지시 · 생산 실적(POP)<br><small>모듈 bas · prt · job · pop</small></div>
+      <div class="box"><b>입고 · 조색 · 품질</b>자재·입고 · 조색 기록 · 품질 검사<br><small>mat · clr · qua</small></div>
+      <div class="box"><b>이력 · 출하 · 집계</b>후가공·슬리팅 롤 이력 · 출하 · LOT 추적 · 실적 현황<br><small>rll · shp · trc · sta</small></div>
+      <div class="box"><b>연계 · 출력</b>데이터 이관(배치 6) · 라벨·COA 출력 · ERP 어댑터<br><small>migration · printing · erp</small></div>
+      <div class="box"><b>공용 모듈 — 한 곳에서만</b><small><code>lineage</code> 계보 · <code>numbering</code> 채번 · <code>printing</code> 라벨 · <code>rbac</code> 권한 · <code>stats</code> 집계 · <code>erp</code></small></div>
+    </div></div>
+    <div class="down">↓</div>
+    <div class="layer"><h4>데이터 — 저장 · 조회</h4><div class="boxes">
+      <div class="box"><b>MES DB</b>RDBMS · 저장소 D1~D8 → 테이블 30 · Job-Lot-Roll 키 · 뷰 2 · 계보 트리거</div>
+      <div class="box"><b>백업 저장소</b>정기 백업 · 복구 검증(임시 DB 에 복구해 행 수 대조, D-28)</div>
+    </div></div>
+    <div class="down">↓</div>
+    <div class="layer"><h4>외부 시스템 · 장치 — 바깥과 닿는 세 곳</h4><div class="boxes">
+      <div class="box"><b>라벨 프린터</b>LOT · 롤 라벨. 보유 여부·규격 확인 필요 → 브라우저 인쇄 + SVG 바코드로 가정(D-04)</div>
+      <div class="box dash"><b>ERP</b>연계 방식·범위 미정(D-02) → 어댑터만 두고 호출하면 <b>501 「ERP 연계 미확정」</b>. 조용한 폴백 없음</div>
+      <div class="box dash"><b>기존 설치형 MES</b>2안: 1회 이관 후 종료(D-01). 접근 경로 미정 → <b>표준 Import 파일</b> → 배치 6(검증 · 기준정보 · 인쇄 기준 · 작업지시 · 과거 이력 · 리포트). 재실행 멱등</div>
+    </div></div>
+  </div>
+  <div class="tw"><table>
+    <tr><th>구성 요소</th><th>설계도 (논리)</th><th>상태</th><th>구현 (실측 · 가설 D-31)</th></tr>
+    <tr><td>웹 애플리케이션</td><td>11개 모듈 + 공통 + 연계·출력</td><td>신규</td><td>Python 3.12 · FastAPI · Jinja2 서버 렌더 · 라우터 13(모듈 12 + 메인) · 포트 8020</td></tr>
+    <tr><td>MES DB</td><td>RDBMS · D1~D8</td><td>신규</td><td>PostgreSQL 17 · DB <code>lcomfine_db</code> · 테이블 30 · 뷰 2</td></tr>
+    <tr><td>백업 저장소</td><td>정기 백업 · 복구</td><td>신규</td><td><code>make backup</code>(pg_dump) · <code>make restore-check</code></td></tr>
+    <tr><td>운영 환경</td><td>사내 서버 / 클라우드 미정</td><td>미정 (D-03)</td><td>Dockerfile + docker compose(앱 + PostgreSQL 17)로 어디든 올릴 수 있게만. 물리 구성도는 환경이 정해진 뒤</td></tr>
+    <tr><td>현장 장치</td><td>스캐너 · 라벨 프린터</td><td>보유 여부 확인 필요</td><td>스캐너 = 키보드 입력, 라벨 = 브라우저 인쇄(D-04)</td></tr>
+    <tr><td>ERP · 기존 MES</td><td>연계 미정 · 1회 이관</td><td>기존</td><td>501 명시 · 파일 이관 배치(실제 기존 MES 접속은 차단 상태, D-01)</td></tr>
+  </table></div>
+  <p class="muted">1안(기존 MES 유지 + 연계)에서만 쓰는 흐름 — 기준정보·작업지시 주기 수신 3기능 — 은 만들지 않았다(2안 기본값, D-01).</p>
+</section>
+
+<!-- ───────────────────────── 7. 확인 필요 ───────────────────────── -->
+<section id="s7">
+  <h2>7 · 확인 필요 7건 — 설계도 §7 과 지금의 기본값</h2>
+  <p>설계도는 "아래가 정해지면 그림에서 점선과 확인 필요가 사라진다"고 했다. 사람이 답하기 전까지는 아래 <b>기본값(가설)</b>으로 만들고, 바뀌면 한 곳만 고치게 두었다. 전부 상태 <code>가설</code>이다.</p>
+  <div class="tw"><table>
+    <tr><th>#</th><th>확인 필요 (설계도)</th><th>기본값 (가설)</th><th>바뀌면 고칠 곳</th></tr>
+    <tr><td>D-01</td><td>1안 / 2안 판정 — 기존 MES 의 실제 사용 메뉴와 데이터 접근 경로</td><td><b>2안</b> 전체개발. 기존 MES 는 1회 이관, 접근 경로 미정이라 표준 Import 파일로 받는다</td><td>이관 배치의 파일 리더</td></tr>
+    <tr><td>D-02</td><td>ERP 연계 — 연계할 데이터와 방식</td><td>연계 없음. 어댑터 + 501 명시</td><td><code>app/erp.py</code></td></tr>
+    <tr><td>D-03</td><td>운영 환경 — 사내 서버인지 클라우드인지</td><td>미정. Docker 로 어디든 올릴 수 있게만</td><td>배포 설정</td></tr>
+    <tr><td>D-04</td><td>현장 장치 — 스캐너 · 라벨 프린터 보유 여부와 규격, 롤 바코드 사용 여부</td><td>스캐너 = 키보드 입력, 라벨 = 브라우저 인쇄, 롤마다 바코드</td><td><code>app/printing.py</code></td></tr>
+    <tr><td>D-05</td><td>채번 규칙 — 작업지시 번호와 LOT 번호의 현재 규칙</td><td>접두 1자 + <code>YYMMDD-</code> + 일련번호. 형식은 <code>sys_number_rule</code> 데이터</td><td><code>sys_number_rule</code> 행</td></tr>
+    <tr><td>D-06</td><td>역할 구분 — 4역할로 충분한가, 자재와 출하를 따로 둘지</td><td>4역할. 자재 담당 · 출하 담당은 생산 · 현장이 겸한다</td><td><code>sys_role</code> · <code>sys_permission</code> 행 — 코드는 역할을 박지 않는다</td></tr>
+    <tr><td>D-07</td><td>범위 경계 — LOT 추적과 실적 현황을 이 프로젝트에 둘지</td><td><b>둔다</b>(IA · FP 에 포함). PLC 수집 · 비전 · AI 는 뺀다</td><td>—</td></tr>
+  </table></div>
+  <h4>현업 확인이 더 필요한 것 (결정 대장에서 가설로 둔 대표)</h4>
+  <ul>
+    <li>검사를 출하의 필수 조건으로 할지 — 지금은 불합격만 막고 미검사는 COA 에 <code>미수집</code>(D-17).</li>
+    <li>다색 인쇄에서 색마다 다른 아니록스 · 잉크를 지정하는 구조 — 작업지시서 양식을 받은 뒤(D-18).</li>
+    <li>현황판에 띄울 기간(오늘 · 주 · 월 누계)과 납기 기준(D-302). 수량 단위가 섞인 합(D-402).</li>
+    <li>세션 수명 · 자동 로그아웃 · 로그인 실패 잠금 · 비밀번호 규칙(D-411). 403 거부의 기록 여부(D-410).</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 8. 게이트 ───────────────────────── -->
+<section id="s8">
+  <h2>8 · 검증 게이트 G-01~G-22 — 설계도가 코드에 그대로 있는지</h2>
+  <p>검사 도구는 기대값을 <b>설계도 HTML 에서 직접 읽는다</b>(메뉴 이름 · 기능 수 · 권한 칸 · 쓰는 저장소 · 테이블 이름 4개). 앱은 설계도를 읽지 않는다. 아래는 <code>make gate-full</code> 의 항목이고, 실측은 2026-10-07 의 결과다(PASS 22 · FAIL 0 · pytest 1618 · failed 0).</p>
+  <div class="gates">
+    <div class="gate"><span class="ok">PASS</span><div><b>G-01</b> 메뉴 — 대메뉴 12 · 중메뉴 32 · 묶음 4 = 설계도 IA</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-02</b> 기능 — 94 + 이관 6 · 계약 = API = 테스트 · 고아 0</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-03</b> 화면 — 32 + 공통 3 전부 200 · placeholder 0</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-04</b> 저장소 — D1~D8 ↔ 계약 ↔ 실제 DB 컬럼 단위</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-05</b> 쓰기 경계 — 프로세스별 쓰는 저장소 · P9·P10 쓰기 0</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-06</b> 계보 재현 — §3 예시를 API 로 만들어 10행</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-07</b> 추적 — 역방향 · 정방향 재귀 조회 · 분기 5단 이상</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-08</b> 키 연결 — 롤 번호 → 지시 · 조색 · 실적 · 검사 · 출하 · 채번 한 곳</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-09</b> 시드 멱등 — 2회 실행 행 수 diff 0 · (예시) 표기</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-10</b> 집계 — 생산 · 품질 · 납기 = 독립 SQL 재계산</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-11</b> 빈 화면 — 미수집 / 미확정 (D-nn)</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-12</b> 범위 밖 0 — PLC · 비전 · AI 없음</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-13</b> 4채널 — POP 스캔 · 모바일 390px · 현황판 새로고침</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-14</b> 출력물 5종 — 작업지시서 · 라벨 3 · COA · 바코드</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-15</b> 이관 배치 — 표준 Import 파일 · 멱등 · 리포트</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-16</b> ERP — 어댑터 + 501 명시 · 조용한 폴백 0</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-17</b> RBAC — 48칸 전부 · 괄호 조건 2 · 권한은 데이터</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-18</b> 접근 로그 — 로그인 · 조회 · 변경이 남고 조회된다</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-19</b> 비밀 — 비밀번호 · 세션 비밀이 저장소 · 문서에 없다</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-20</b> 백업 — 덤프 생성 · 빈 DB 복구 · 행 수 일치</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-21</b> 빌드 — pytest 전건 · check-routes · /health 200</div></div>
+    <div class="gate"><span class="ok">PASS</span><div><b>G-22</b> 브라우저 한 바퀴 — 실제 브라우저로 역할을 바꿔 가며 기준정보 → 출하 · 승인 → COA → 역추적</div></div>
+  </div>
+  <div class="callout ok">실측 명령: <code>make gate-full</code>(시드 재실행 포함 · 종료 판정) · <code>make check-trace</code>(설계도 ↔ nav · 기능 수) · <code>make check-data</code>(쓰기 경계 · 집계 재계산). 결과의 유일한 진실은 <code>progress.md</code> 다.</div>
+</section>
+
+<footer id="src">
+  <b>출처</b> — 정본 <code>엘컴화인_MES_설계도 복사본.html</code>(그림 5 · 표 3 · 2026.10 · 2안 기준, 고치지 않는다) ·
+  계약 <code>contracts/function-list.md</code> <code>db-schema.md</code> <code>screen-map.md</code> <code>interfaces.md</code> ·
+  결정 <code>decisions.md</code>(D-01~D-416) · 실측 <code>progress.md</code> · 목표와 게이트 <code>goal.md</code>.<br>
+  설계도에 없는 것(경로 · 컬럼 · 채번 형식 · 채널 배분 · 기능 94개의 낱낱)은 전부 가설이며, 「엘컴화인 MES 구축 기획서」 · FP 산정서 원본이 오면 그것이 우선한다.
+  모듈 구성 · 역할 권한 · 저장소 구분은 요구사항 확정 전의 제안안이다(설계도 원문).
+</footer>
+</main>
+</div>
+</body>
+</html>

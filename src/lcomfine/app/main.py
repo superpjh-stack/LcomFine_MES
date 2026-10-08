@@ -106,25 +106,46 @@ def create_app() -> FastAPI:
             return nxt
         return None
 
+    def _login_page(request: Request, *, message: str = "", login_id: str = "", next: str | None = None,
+                    device: str | None = None, status_code: int = 200) -> HTMLResponse:
+        """로그인 화면 한 장 — 퀵 로그인 패널(D-416)은 켜진 환경에서만 그린다. 비밀번호 값은 어디에도 싣지 않는다."""
+        quick = auth.quick_login_accounts() if auth.quick_login_enabled() else None
+        return render(request, "login.html",
+                      {"message": message, "login_id": login_id, "next": _safe_next(next) or "",
+                       "login_device": device if device in nav.DEVICE_CHANNEL else "web", "quick": quick},
+                      screen_id="login", status_code=status_code)
+
+    def _after_login(request: Request, result: auth.LoginResult, *, login_id: str, next: str | None,
+                     device: str | None, failed_prefix: str = ""):
+        if not result.ok or result.user is None:
+            if not http.wants_html(request):
+                return JSONResponse({"code": "unauthorized", "message": failed_prefix + result.reason}, status_code=401)
+            return _login_page(request, message=failed_prefix + result.reason, login_id=login_id, next=next,
+                               device=device, status_code=401)
+        auth.login_session(request, result.user, device)
+        return RedirectResponse(_safe_next(next) or auth.home_path_for(request, result.user), status_code=303)
+
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request, next: str | None = None, device: str | None = None) -> HTMLResponse:
-        return render(request, "login.html",
-                      {"message": "로그인이 필요합니다" if next else "", "next": _safe_next(next) or "",
-                       "login_device": device if device in nav.DEVICE_CHANNEL else "web"}, screen_id="login")
+        return _login_page(request, message="로그인이 필요합니다" if next else "", next=next, device=device)
 
     @app.post("/login")
     def login_submit(request: Request, login_id: str = Form(...), password: str = Form(...),
                      next: str | None = Form(None), device: str | None = Form(None)):
         result = auth.authenticate(login_id, password, client_ip=audit.client_ip(request))
-        if not result.ok or result.user is None:
-            if not http.wants_html(request):
-                return JSONResponse({"code": "unauthorized", "message": result.reason}, status_code=401)
-            return render(request, "login.html",
-                          {"message": result.reason, "login_id": login_id, "next": _safe_next(next) or "",
-                           "login_device": device if device in nav.DEVICE_CHANNEL else "web"},
-                          screen_id="login", status_code=401)
-        auth.login_session(request, result.user, device)
-        return RedirectResponse(_safe_next(next) or auth.home_path_for(request, result.user), status_code=303)
+        return _after_login(request, result, login_id=login_id, next=next, device=device)
+
+    @app.post("/login/quick")
+    def login_quick(request: Request, quick_id: str = Form(...), next: str | None = Form(None),
+                    device: str | None = Form(None)):
+        """퀵 로그인(D-416) — 고른 계정을 **시드 비밀번호**로 인증한다. 판정·접근 로그·실패 횟수는 보통 로그인과 같다.
+        꺼진 환경(운영 · 플래그 없음 · 시드 비밀번호 없음)에서는 404 — 단추도 없고 주소도 없다."""
+        if not auth.quick_login_enabled():
+            raise http.not_found(auth.QUICK_OFF)
+        result = auth.authenticate(quick_id, get_settings().seed_password or "", client_ip=audit.client_ip(request),
+                                   via=auth.QUICK_VIA)
+        return _after_login(request, result, login_id=quick_id, next=next, device=device,
+                            failed_prefix="" if result.ok else f"{auth.QUICK_VIA} 실패 — ")
 
     @app.post("/logout")
     @app.get("/logout")

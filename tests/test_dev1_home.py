@@ -1,4 +1,4 @@
-"""공통 메인(`/`)과 개발1 담당 화면의 권한 전수 — 묶음 4 · 대메뉴 바로가기 · 역할에 맞는 메뉴만.
+"""공통 메인(`/`)과 개발1 담당 화면의 권한 전수 — 일하는 순서의 대메뉴 바로가기(좌측 메뉴와 같은 순서, D-417) · 역할에 맞는 메뉴만.
 
 권한 표는 DB 데이터다. 기대값을 코드에 박지 않고 `rbac`(DB 의 지금 값)과 계약(`function-list.md`)에서 읽어 대조한다.
 시드 계정은 로그인에만 쓰고 아무것도 바꾸지 않는다(쓰기는 전부 403 으로 끝나는 요청만 보낸다).
@@ -75,15 +75,19 @@ def test_every_dev1_function_is_routed():
 
 
 def test_main_shows_only_menus_of_the_role():
-    """메인 — 묶음 4 아래 대메뉴 바로가기. 칸이 `없음` 인 대메뉴는 카드도 링크도 없다."""
+    """메인 — 대메뉴 바로가기 카드가 좌측 메뉴와 같은 순서(`nav.SIDEBAR`, 묶음 없음)로 한 줄씩. 칸이 `없음` 인 대메뉴는 카드도 링크도 없다."""
+    order = [c for c in nav.SIDEBAR if c != "home"]
     for role_code, login_id in _seed_logins().items():
         page = client(login_id).get("/")
         assert page.status_code == 200
         html = page.text
         visible = [m for m in nav.MENUS if rbac.cell(role_code, m.code).can_read]
-        assert html.count('class="card"') == len(visible), login_id
-        groups = [g for g in nav.GROUPS if any(m.group == g for m in visible)]
-        assert re.findall(r'<section class="panel" data-group="([^"]+)">', html) == groups, login_id
+        assert html.count('class="card"') == len(visible), login_id                        # 설계도 대메뉴 카드 수 (확장 카드는 card-ext)
+        assert 'data-group="' not in html and 'class="menu-gname"' not in html.split('<main')[1]  # 묶음 이름을 그리지 않는다
+        shown_codes = re.findall(r'<div class="card[^"]*" data-menu="([A-Z]+)"', html)
+        expect = [c for c in order if rbac.cell(role_code, c).can_read]                   # 설계도 12 + 확장, 일하는 순서
+        assert shown_codes == expect, (login_id, shown_codes)
+        assert re.findall(r'<span class="step">(\d+)</span>', html) == [str(i) for i in range(1, len(expect) + 1)], login_id
         for m in nav.MENUS:
             shown = f'data-menu="{m.code}"' in html
             assert shown == (m in visible), (login_id, m.code)
@@ -91,7 +95,9 @@ def test_main_shows_only_menus_of_the_role():
                 assert (f'href="{s.path}"' in html) == (m in visible), (login_id, s.path)
         assert f"대메뉴 {len(visible)} / {len(nav.MENUS)}" in html
     admin = client("admin").get("/").text
-    assert all(g in admin for g in nav.GROUPS) and len(nav.GROUPS) == 4      # 관리자에게는 묶음 4 가 다 보인다
+    assert re.findall(r'data-menu="([A-Z]+)"', admin) == order                               # 관리자에게는 전부, 좌측 메뉴 순서 그대로
+    assert admin.index('data-menu="SHP"') < admin.index('data-menu="BAS"')                   # 기준정보는 출하보다 뒤
+    assert len(nav.GROUPS) == 4 and [m.code for m in nav.MENUS][:2] == ["BAS", "PRT"]        # 설계도 묶음·순서는 건드리지 않았다 (G-01)
 
 
 def test_main_needs_login():

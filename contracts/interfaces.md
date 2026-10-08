@@ -83,7 +83,7 @@ def create_item(request: Request, item_code: str = Form(...), …, user: rbac.Us
 ## 3. 채번 — `app.numbering` (개발1)
 
 ```python
-KINDS = ("JOB", "JOB_LOT", "MAT_LOT", "ROLL", "SHIPMENT", "COA")
+KINDS = ("JOB", "JOB_LOT", "MAT_LOT", "ROLL", "SHIPMENT", "COA", "SALES_ORDER")   # SALES_ORDER 는 설계도 밖 확장 (D-418)
 numbering.next(kind, *, cur=None, at=None) -> str   # 발번 (카운터 +1). cur 를 주면 그 트랜잭션 안에서
 numbering.peek(kind, *, at=None) -> str             # 발번하지 않고 다음 번호만
 numbering.rule(kind) -> dict | None                 # sys_number_rule 행. 없으면 None → 화면은 `미확정 (D-05)`
@@ -105,6 +105,7 @@ numbering.rule(kind) -> dict | None                 # sys_number_rule 행. 없�
 | `ROLL` | `roll.roll_no` | F-POP-02 · F-RLL-01·02·04 (`lineage` 안에서) |
 | `SHIPMENT` | `shipment.shipment_no` | F-SHP-01 |
 | `COA` | `shipment.coa_no` | F-SHP-05 |
+| `SALES_ORDER` | `sales_order.order_no` | X-SAL-01 (설계도 밖 확장 · D-418 — 설계도의 6종에 세지 않는다) |
 
 ## 4. 계보 — `app.lineage` (개발2)
 

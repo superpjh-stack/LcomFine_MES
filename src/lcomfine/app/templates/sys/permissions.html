@@ -9,6 +9,9 @@
     <dt>없음</dt><dd>메뉴에서 숨기고 화면·기능 모두 403</dd>
     <dt>조회</dt><dd>화면은 열리고 쓰기 기능은 403</dd>
     <dt>입력</dt><dd>칸의 범위에 들어 있는 쓰기 기능만 된다 — 괄호 없는 `입력` 은 범위 `{{ SCOPE_GENERAL }}` (D-14)</dd>
+    {% for m in nav.EXT_MENUS %}
+    <dt>{{ m.name }} <small><code>{{ m.code }}</code></small></dt><dd>설계도 밖 확장 — 칸을 늘리지 않고 <b>{{ nav.menu(m.permission_from).name }}</b> 칸을 그대로 따른다 (D-418)</dd>
+    {% endfor %}
   </dl>
 </section>
 

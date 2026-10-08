@@ -164,6 +164,29 @@ create table ink_formula_component (
 -- D2 작업지시 — P2 가 쓴다 (입력: Job 등록, Job-Lot-Roll 매핑 · 참조 D1)
 -- ════════════════════════════════════════════════════════════════════
 
+-- @table sales_order | EXT | 수주 — 설계도 밖 확장(D-418). 영업이 받은 수주 한 건. 작업지시가 이 행을 가리킨다(job.sales_order_id)
+create table sales_order (
+    sales_order_id  bigint generated always as identity primary key, -- 내부 키
+    order_no        text not null unique,                            -- 수주 번호 (numbering.next('SALES_ORDER') · 형식 가설 D-418)
+    customer_id     bigint not null references customer (customer_id), -- 고객
+    item_id         bigint not null references item (item_id),       -- 품목(제품)
+    order_qty       numeric(14,3) not null,                          -- 수주 수량
+    qty_unit        text not null,                                   -- 수량 단위
+    order_date      date not null default current_date,              -- 수주일
+    due_date        date not null,                                   -- 납기 (고객 요청)
+    customer_po     text,                                            -- 고객 발주 번호 (받은 글자 그대로)
+    status          text not null default '등록',                    -- 등록 | 취소 (진행은 저장하지 않고 Job·실적·출하에서 읽는다)
+    note            text,                                            -- 비고
+    created_at      timestamptz not null default now(),              -- 등록 일시
+    created_by      text not null,                                   -- 등록자 login_id
+    updated_at      timestamptz,                                     -- 수정 일시
+    updated_by      text,                                            -- 수정자 login_id
+    constraint sales_order_qty_chk check (order_qty > 0),
+    constraint sales_order_status_chk check (status in ('등록', '취소'))
+);
+create index sales_order_customer_idx on sales_order (customer_id);
+create index sales_order_due_idx on sales_order (due_date);
+
 -- @table job | D2 | 작업지시(Job) — Job-Lot-Roll 키의 맨 위
 create table job (
     job_id          bigint generated always as identity primary key, -- 내부 키
@@ -183,10 +206,12 @@ create table job (
     created_by      text not null,                                   -- 등록자 login_id
     updated_at      timestamptz,                                     -- 수정 일시
     updated_by      text,                                            -- 수정자 login_id
+    sales_order_id  bigint references sales_order (sales_order_id),  -- 수주 (설계도 밖 확장 D-418 · 수주 없이 낸 지시는 NULL)
     constraint job_qty_chk check (order_qty > 0),
     constraint job_status_chk check (status in ('등록', '완료', '취소'))
 );
 create index job_due_idx on job (due_date);
+create index job_sales_order_idx on job (sales_order_id);
 
 -- @table job_lot | D2 | 생산 LOT — "Job-Lot-Roll 매핑" 의 Lot 단 (D-10). Job 1 : 생산 LOT N
 create table job_lot (

@@ -51,6 +51,8 @@ class Menu:
     owner: str
     channels: tuple[str, ...]  # 설계도 §6 「주로 쓰는 채널」
     screens: tuple[Screen, ...]
+    ext: bool = False          # 설계도 밖 확장 대메뉴 (D-418) — 설계도 수(12 · 32 · 94 · 48)에 들어가지 않는다
+    permission_from: str = ""  # 확장 대메뉴가 권한을 물려받는 설계도 대메뉴 코드 (권한 표에 칸을 늘리지 않는다)
 
 
 # (묶음, 코드, 대메뉴명, 기능 수, 담당, 대메뉴 채널, [(중메뉴명, 슬러그, 중메뉴 채널)])
@@ -131,6 +133,38 @@ def _build() -> list[Menu]:
 MENUS: list[Menu] = _build()
 SCREENS: list[Screen] = [s for m in MENUS for s in m.screens]
 
+# ── 확장 대메뉴 (설계도 밖 · D-418) ──
+# 설계도의 대메뉴 12 · 중메뉴 32 · 기능 94 · 권한 48칸은 그대로 두고, 그 밖의 메뉴는 여기에 둔다.
+# 게이트(G-01 · G-02 · G-17)는 `MENUS` · `SCREENS` 만 세고, 확장은 `EXT_MENUS` · `EXT_SCREENS` 다.
+# 계약은 `contracts/extension-list.md`(ID `X-<코드>-nn`), 권한은 `permission_from` 의 설계도 대메뉴 칸을 그대로 따른다.
+# (코드, 대메뉴명, 기능 수, 담당, 채널, 권한을 물려받는 설계도 대메뉴, [(중메뉴명, 슬러그, 채널)])
+EXT_GROUP = "확장 (설계도 밖)"
+_EXT_SPEC: list[tuple[str, str, int, str, tuple[str, ...], str, list[tuple[str, str, tuple[str, ...]]]]] = [
+    ("SAL", "영업관리", 6, "개발1", (WEB,), "JOB", [     # 수주는 작업지시의 앞 — 권한도 작업지시 관리 칸을 따른다
+        ("수주 관리", "orders", (WEB,)),
+        ("수주 현황", "status", (WEB,)),
+        ("거래처 이력", "customers", (WEB,)),
+    ]),
+]
+
+
+def _build_ext() -> list[Menu]:
+    menus: list[Menu] = []
+    for code, name, fn_count, owner, channels, perm_from, subs in _EXT_SPEC:
+        module = code.lower()
+        screens = tuple(
+            Screen(screen_id=f"{code}-{i:02d}", name=sub, menu_code=code, menu=name, group=EXT_GROUP, module=module,
+                   slug=slug, path=f"/{module}/{slug}", owner=owner, channels=sub_channels)
+            for i, (sub, slug, sub_channels) in enumerate(subs, start=1)
+        )
+        menus.append(Menu(code=code, name=name, group=EXT_GROUP, fn_count=fn_count, module=module, owner=owner,
+                          channels=channels, screens=screens, ext=True, permission_from=perm_from))
+    return menus
+
+
+EXT_MENUS: list[Menu] = _build_ext()
+EXT_SCREENS: list[Screen] = [s for m in EXT_MENUS for s in m.screens]
+
 # ── 공통 화면 3 (goal.md G-03 "공통(로그인·메인·오류)") — 권한 표 밖. 로그인한 누구나 메인을 연다 ──
 COMMON: list[Screen] = [
     Screen("home", "메인", "", "공통", "공통", "home", "", "/", "개발1", CHANNELS, common=True),
@@ -138,16 +172,22 @@ COMMON: list[Screen] = [
     Screen("error", "오류", "", "공통", "공통", "home", "error", "/error", "아키텍트", CHANNELS, common=True),
 ]
 
-ALL: list[Screen] = COMMON + SCREENS
+ALL: list[Screen] = COMMON + SCREENS + EXT_SCREENS
 
-#: main.py 가 include 하는 라우터 모듈 순서
-MODULES: list[str] = ["home"] + [m.module for m in MENUS]
-MODULE_OWNER: dict[str, str] = {"home": "개발1", **{m.module: m.owner for m in MENUS}}
+#: main.py 가 include 하는 라우터 모듈 순서 (확장 모듈은 맨 뒤)
+MODULES: list[str] = ["home"] + [m.module for m in MENUS] + [m.module for m in EXT_MENUS]
+MODULE_OWNER: dict[str, str] = {"home": "개발1", **{m.module: m.owner for m in MENUS + EXT_MENUS}}
 
 _BY_ID: dict[str, Screen] = {s.screen_id: s for s in ALL}
 _BY_PATH: dict[str, Screen] = {s.path: s for s in ALL}
-_MENU_BY_CODE: dict[str, Menu] = {m.code: m for m in MENUS}
-_MENU_BY_NAME: dict[str, Menu] = {m.name: m for m in MENUS}
+_MENU_BY_CODE: dict[str, Menu] = {m.code: m for m in MENUS + EXT_MENUS}
+_MENU_BY_NAME: dict[str, Menu] = {m.name: m for m in MENUS + EXT_MENUS}
+
+
+def permission_menu(menu_code: str) -> str:
+    """권한 표에서 볼 대메뉴 코드 — 확장 대메뉴는 `permission_from` 의 설계도 대메뉴 칸을 그대로 따른다(D-418)."""
+    m = _MENU_BY_CODE.get(menu_code)
+    return m.permission_from if m is not None and m.ext and m.permission_from else menu_code
 
 
 def by_id(screen_id: str) -> Screen:
@@ -178,7 +218,7 @@ def menu_by_name(name: str) -> Menu:
 
 
 def screens_of(module: str) -> list[Screen]:
-    return [s for s in SCREENS if s.module == module]
+    return [s for s in SCREENS + EXT_SCREENS if s.module == module]
 
 
 def screen_by_names(menu_name: str, screen_name: str) -> Screen:
@@ -190,8 +230,41 @@ def screen_by_names(menu_name: str, screen_name: str) -> Screen:
 
 
 def menu_tree() -> list[dict]:
-    """좌측 메뉴 렌더링용 — 묶음 4 > 대메뉴 > 중메뉴. 권한에 따른 숨김은 `rbac.visible_menu` 가 한다."""
+    """설계도 묶음 4 > 대메뉴 > 중메뉴 (G-01 · 계약 렌더본 · `rbac.visible_menu`). 화면(좌측 메뉴 · 메인)은 `sidebar_items` 순서를 쓴다(D-417)."""
     return [{"group": g, "menus": [m for m in MENUS if m.group == g]} for g in GROUPS]
+
+
+# ── 좌측 메뉴 표시 순서 (D-417) — 묶음 없이 일하는 순서로 한 줄씩: 대시보드 → 수주 → 지시 → 입고 → 공정 → 품질 → 출하 → 추적 → 기준정보 → 시스템 ──
+# 설계도 §5 의 묶음·순서(`GROUPS` · `MENUS`)는 그대로 두고(G-01 · 계약 렌더본이 쓴다) 좌측 메뉴와 메인 화면 카드를 이 순서로 그린다.
+# 값은 대메뉴 코드(설계도 + 확장) 또는 공통 화면 키. 대메뉴를 누르면 그 중메뉴가 펼쳐진다(static/app.js).
+SIDEBAR: tuple[str, ...] = (
+    "home",          # 메인 (대시보드)
+    "STA",           # 실적 현황 — 집계 · 현황판
+    "SAL",           # 영업관리 — 수주 (확장 · D-418)
+    "JOB",           # 작업지시 관리
+    "MAT",           # 자재 · 입고
+    "CLR",           # 조색 기록
+    "POP",           # 생산 실적 (POP)
+    "RLL",           # 후가공 · 슬리팅 롤 이력
+    "QUA",           # 품질 검사 기록
+    "SHP",           # 출하
+    "TRC",           # LOT 추적
+    "BAS",           # 기준정보 관리
+    "PRT",           # 인쇄 기준 관리
+    "SYS",           # 시스템 관리
+)
+
+
+def sidebar_items() -> list[dict]:
+    """좌측 메뉴 렌더링용 — `SIDEBAR` 순서의 항목 목록. {kind: 'screen', screen} 또는 {kind: 'menu', menu}.
+    권한에 따른 숨김은 `rbac.visible_sidebar` 가 한다."""
+    out: list[dict] = []
+    for key in SIDEBAR:
+        if key in _MENU_BY_CODE:
+            out.append({"kind": "menu", "menu": _MENU_BY_CODE[key]})
+        else:
+            out.append({"kind": "screen", "screen": _BY_ID[key]})
+    return out
 
 
 def _selfcheck() -> None:
@@ -209,6 +282,19 @@ def _selfcheck() -> None:
         for s in m.screens:
             if not set(s.channels) <= set(CHANNELS):
                 raise AssertionError(f"{s.screen_id} 의 채널이 4채널 밖이다: {s.channels}")
+    side_codes = [k for k in SIDEBAR if k in _MENU_BY_CODE]
+    if sorted(side_codes) != sorted(m.code for m in MENUS + EXT_MENUS):
+        raise AssertionError(f"좌측 메뉴 순서(SIDEBAR)는 대메뉴 12 + 확장 {len(EXT_MENUS)} 을 한 번씩 담아야 한다 — 실제 {side_codes}")
+    if SIDEBAR[0] != "home":
+        raise AssertionError("좌측 메뉴의 첫 항목은 메인(대시보드)이다 (D-417)")
+    for k in SIDEBAR:
+        if k not in _MENU_BY_CODE and (k not in _BY_ID or not _BY_ID[k].common):
+            raise AssertionError(f"SIDEBAR 의 {k!r} 는 대메뉴 코드도 공통 화면 키도 아니다")
+    for m in EXT_MENUS:
+        if m.permission_from not in {d.code for d in MENUS}:
+            raise AssertionError(f"확장 대메뉴 {m.code} 의 권한 출처 {m.permission_from!r} 는 설계도 대메뉴가 아니다 (D-418)")
+        if m.code in {d.code for d in MENUS} or m.name in {d.name for d in MENUS}:
+            raise AssertionError(f"확장 대메뉴 {m.code} {m.name} 이 설계도 대메뉴와 겹친다")
 
 
 _selfcheck()

@@ -1,5 +1,5 @@
 # 엘컴화인 MES — 게이트 실행. 판정은 이 명령의 출력으로만 한다. (명령은 전부 `uv run …` — 시스템 python 을 쓰지 않는다)
-.PHONY: setup db-schema db-seed db-reset contracts run test check-routes check-trace check-schema check-data check-security gate gate-full backup restore-check sample sample-clean
+.PHONY: setup db-schema db-seed db-reset db-passwords contracts run test check-routes check-trace check-schema check-data check-security gate gate-full backup restore-check sample sample-clean
 
 DB := lcomfine_db
 PORT ?= 8020
@@ -19,6 +19,9 @@ db-seed:         # 공통 → 개발1 → 개발2 → 개발3 (seed_devN.py 가 
 	uv run python -m lcomfine.db.seed
 
 db-reset: db-schema db-seed
+
+db-passwords:    # 모든 계정 비밀번호를 .env 의 LCOMFINE_SEED_PASSWORD 하나로 맞춘다 (개발·테스트 DB 용 — 이미 같은 계정은 두므로 세션이 끊기지 않는다)
+	uv run python tools/reset_passwords.py
 
 sample:          # (예시) 샘플 데이터 — 업무 테이블 23개에 100행 안팎씩 + 계정 100 (코드 SMP- · 계정 smp_). 이미 있으면 건너뛴다(멱등). 시드 뒤에 돌린다
 	uv run python tools/sample_data.py

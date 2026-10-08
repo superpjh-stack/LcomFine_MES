@@ -27,11 +27,11 @@ SCHEMA_SQL = ROOT / "src" / "lcomfine" / "db" / "schema.sql"
 DB_SCHEMA_MD = ROOT / "contracts" / "db-schema.md"
 SCREEN_MAP_MD = ROOT / "contracts" / "screen-map.md"
 
-TABLE_TAG_RE = re.compile(r"^-- @table (\w+) \| (D[1-8]|SYS) \| (.+)$")
+TABLE_TAG_RE = re.compile(r"^-- @table (\w+) \| (D[1-8]|SYS|EXT) \| (.+)$")   # EXT = 설계도 밖 확장 (D-418)
 COLUMN_RE = re.compile(r"^\s{4}(\w+)\s+.+?--\s*(.+)$")
-STORES = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "SYS"]
+STORES = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "SYS", "EXT"]
 STORE_NAMES = {"D1": "기준정보", "D2": "작업지시", "D3": "원재료 LOT", "D4": "조색 기록", "D5": "생산 실적",
-               "D6": "Roll·계보", "D7": "품질 검사", "D8": "출하", "SYS": "공통(시스템)"}
+               "D6": "Roll·계보", "D7": "품질 검사", "D8": "출하", "SYS": "공통(시스템)", "EXT": "확장(설계도 밖 · D-418)"}
 
 
 def parse_schema_sql() -> list[dict]:

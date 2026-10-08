@@ -59,6 +59,7 @@ select j.job_id, j.job_no, j.status, j.order_qty, j.qty_unit, j.due_date, j.note
        a.anilox_code, a.anilox_name, a.line_count, a.cell_volume,
        k.ink_code, k.ink_name, k.color_name, k.target_l, k.target_a, k.target_b,
        e.equipment_code, e.equipment_name,
+       j.sales_order_id, so.order_no as sales_order_no,
        (select count(*) from work_result w where w.job_id = j.job_id) as work_count,
        (select count(*) from work_result w where w.job_id = j.job_id and w.status <> '완료') as open_work_count,
        (select count(*) from roll r where r.job_id = j.job_id) as roll_count,
@@ -70,7 +71,9 @@ select j.job_id, j.job_no, j.status, j.order_qty, j.qty_unit, j.due_date, j.note
   left join anilox a on a.anilox_id = j.anilox_id
   left join ink_formula k on k.ink_formula_id = j.ink_formula_id
   left join equipment e on e.equipment_id = j.equipment_id
+  left join sales_order so on so.sales_order_id = j.sales_order_id
 """
+SO_OPEN = "등록"              # `sales_order.status` — 등록 | 취소 (설계도 밖 확장 D-418). 취소된 수주에는 지시를 내지 않는다
 
 
 # ── 읽기 도우미 ─────────────────────────────────────────────────────────
@@ -180,10 +183,46 @@ def number_preview(kind: str) -> str:
     return numbering.peek(kind) if numbering.rule(kind) else screen.undecided("D-05")
 
 
+# ── 수주 연결 (설계도 밖 확장 · D-418) — 읽기만 한다. `sales_order` 에는 영업관리(sal)만 쓴다 ──
+def sales_order_options(current_id: int | None = None) -> list[tuple[int, str]]:
+    """등록·수정 폼의 수주 선택 목록 — 상태 `등록` 인 수주. 수정 중인 Job 이 가리키는 수주는 취소됐어도 남긴다."""
+    rows = conn.q("""select so.sales_order_id as id, so.order_no, so.status, so.order_qty, so.qty_unit, so.due_date,
+                            c.customer_name, i.item_code
+                       from sales_order so join customer c on c.customer_id = so.customer_id join item i on i.item_id = so.item_id
+                      where so.status = %s or so.sales_order_id = %s order by so.order_no desc""", (SO_OPEN, current_id))
+    return [(r["id"], f'{r["order_no"]} · {r["customer_name"]} · {r["item_code"]} {screen.num(r["order_qty"], 3)} {r["qty_unit"]}'
+                      f' · 납기 {r["due_date"]}' + ("" if r["status"] == SO_OPEN else f' ({r["status"]})')) for r in rows]
+
+
+def sales_order_by_no(order_no: str) -> dict:
+    """`?sales_order_no=` 로 연 수주 — 없으면 422."""
+    row = conn.q1("select * from sales_order where order_no = %s", (order_no,))
+    if row is None:
+        raise bad("없는 수주 번호입니다", "수주 번호", order_no)
+    return row
+
+
+def parse_sales_order(form: FormData, *, item_id: int | None, customer_id: int | None) -> int | None:
+    """폼의 수주 선택값. 없는 수주 · 취소된 수주 · 수주와 다른 품목·고객은 422."""
+    so_id = int_of(form, "sales_order_id", "수주", required=False)
+    if so_id is None:
+        return None
+    row = conn.q1("select * from sales_order where sales_order_id = %s", (so_id,))
+    if row is None:
+        raise bad("입력값을 확인해 주세요", "수주", "없는 수주입니다")
+    if row["status"] != SO_OPEN:
+        raise bad("취소된 수주에는 작업지시를 낼 수 없습니다", "수주", row["order_no"])
+    if item_id is not None and item_id != row["item_id"]:
+        raise bad("수주의 품목과 다릅니다", "품목", f"수주 {row['order_no']} 의 품목으로 지시합니다")
+    if customer_id is not None and customer_id != row["customer_id"]:
+        raise bad("수주의 고객과 다릅니다", "고객", f"수주 {row['order_no']} 의 고객으로 지시합니다")
+    return so_id
+
+
 # ── JOB-01 작업지시 ─────────────────────────────────────────────────────
 @router.get(ORDERS, response_class=HTMLResponse)                     # F-JOB-04 작업지시 조회 = 화면 GET
 def orders(request: Request, q: str = "", item_id: str = "", customer_id: str = "", status: str = "",
-           due_from: str = "", due_to: str = "", no: str = "",
+           due_from: str = "", due_to: str = "", no: str = "", sales_order_no: str = "",
            user: rbac.User = rbac.require_fn("F-JOB-04")) -> HTMLResponse:
     where, params = ["true"], []
     if q.strip():
@@ -208,12 +247,20 @@ def orders(request: Request, q: str = "", item_id: str = "", customer_id: str = 
     rows = conn.q(f"{JOB_SELECT} where {' and '.join(where)} order by j.created_at desc, j.job_id desc "
                   f"limit {LIST_LIMIT + 1}", params)
     job = job_of_input(no.strip()) if no.strip() else None            # `?no=` 스캔 진입 — 없는 번호는 422
+    prefill: dict[str, Any] = {}                                      # `?sales_order_no=` — 수주의 값으로 등록 폼을 채운다 (D-418)
+    if sales_order_no.strip() and job is None:
+        so = sales_order_by_no(sales_order_no.strip())
+        prefill = {"sales_order_id": so["sales_order_id"], "sales_order_no": so["order_no"], "item_id": so["item_id"],
+                   "customer_id": so["customer_id"], "order_qty": so["order_qty"], "qty_unit": so["qty_unit"],
+                   "due_date": so["due_date"], "note": so["note"] or ""}
+    options = ref_options(job)
+    options["sales_order_id"] = sales_order_options(job["sales_order_id"] if job else prefill.get("sales_order_id"))
     return templating.render(request, "job/orders.html", {
         "rows": rows[:LIST_LIMIT], "capped": len(rows) > LIST_LIMIT, "limit": LIST_LIMIT,
         "f": {"q": q, "item_id": item_id, "customer_id": customer_id, "status": status,
               "due_from": due_from, "due_to": due_to},
-        "statuses": STATUSES, "job": job, "lots": lots_of(job["job_id"]) if job else [],
-        "options": ref_options(job), "search_options": ref_options(),
+        "statuses": STATUSES, "job": job, "lots": lots_of(job["job_id"]) if job else [], "prefill": prefill,
+        "options": options, "search_options": ref_options(),
         "next_no": number_preview(numbering.JOB),
         "can": {"create": user.can("F-JOB-01"), "update": user.can("F-JOB-02"), "cancel": user.can("F-JOB-03")},
         "ST_OPEN": ST_OPEN, "ST_DONE": ST_DONE, "ST_CANCEL": ST_CANCEL,
@@ -232,16 +279,17 @@ def create_order(request: Request, user: rbac.User = rbac.require_fn("F-JOB-01")
     if not qty_unit:
         raise bad("필수값이 빠졌습니다", "수량 단위", "품목에 단위가 없어 직접 적어야 합니다")
     note = text_of(form, "note", "비고", max_len=1000)
+    so_id = parse_sales_order(form, item_id=refs["item_id"], customer_id=refs["customer_id"])   # 수주 연결 (선택 · D-418)
     with conn.tx() as cur:
         job_no = numbering.next(numbering.JOB, cur=cur)               # 번호와 Job 행은 같이 성공하거나 같이 실패한다
         cur.execute("""insert into job (job_no, item_id, customer_id, plate_spec_id, anilox_id, ink_formula_id,
-                                        equipment_id, order_qty, qty_unit, due_date, status, note, created_by)
-                       values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning job_id""",
+                                        equipment_id, order_qty, qty_unit, due_date, status, note, created_by, sales_order_id)
+                       values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning job_id""",
                     (job_no, refs["item_id"], refs["customer_id"], refs["plate_spec_id"], refs["anilox_id"],
                      refs["ink_formula_id"], refs["equipment_id"], order_qty, qty_unit, due, ST_OPEN, note,
-                     user.login_id))
+                     user.login_id, so_id))
         job_id = cur.fetchone()["job_id"]
-    audit.log_change(request, user, "F-JOB-01", f"job:{job_no}", "작업지시 등록")
+    audit.log_change(request, user, "F-JOB-01", f"job:{job_no}", "작업지시 등록" + (f" · 수주 {so_id}" if so_id else ""))
     return http.saved(request, f"작업지시 {job_no} 을(를) 등록했습니다", back=f"{ORDERS}?no={job_no}",
                       data={"job_no": job_no, "job_id": job_id, "status": ST_OPEN})
 
@@ -265,6 +313,9 @@ def update_order(request: Request, job_no: str, user: rbac.User = rbac.require_f
         sets["due_date"] = date_of(form.get("due_date"), "납기", required=True)
     if "note" in form:
         sets["note"] = text_of(form, "note", "비고", max_len=1000)
+    if "sales_order_id" in form:                                      # 수주 연결 바꾸기 — 수주의 품목·고객과 맞아야 한다 (D-418)
+        sets["sales_order_id"] = parse_sales_order(form, item_id=sets.get("item_id", job["item_id"]),
+                                                   customer_id=sets.get("customer_id", job["customer_id"]))
     if "status" in form:
         status = text_of(form, "status", "상태", required=True)
         if status == ST_CANCEL:

@@ -1978,15 +1978,20 @@ def check_g08(ctx: Ctx, rep: Report) -> None:
     for t_ in ts:
         t_.join()
     kinds_seen = sorted(numbers)
+    design_kinds = set(rules) - EXT_KINDS                           # 설계도의 번호 6종 — 확장 종류(D-418)는 이 흐름이 발번하지 않는다
     rep.add("G-08", "[동적] 받은 번호가 전부 sys_number_rule 형식 · 중복 0 · 동시 발번 중복 0",
-            not bad_fmt and dup == 0 and len(made) == 6 and len(set(made)) == 6 and set(kinds_seen) == set(rules),
-            f"번호 {sum(len(v) for v in numbers.values())}개 (종류 {len(kinds_seen)}/{len(rules)}: " + " · ".join(f"{k} {len(numbers[k])}" for k in kinds_seen)
+            not bad_fmt and dup == 0 and len(made) == 6 and len(set(made)) == 6 and set(kinds_seen) == design_kinds,
+            f"번호 {sum(len(v) for v in numbers.values())}개 (종류 {len(kinds_seen)}/{len(design_kinds)}"
+            + (f" + 확장 {sorted(set(rules) & EXT_KINDS)}" if set(rules) & EXT_KINDS else "") + ": " + " · ".join(f"{k} {len(numbers[k])}" for k in kinds_seen)
             + f") · 형식 어긋남 {len(bad_fmt)} · 중복 {dup} · 동시 6건 → 서로 다른 번호 {len(set(made))}" + (f" — {bad_fmt[:3]}" if bad_fmt else ""))
 
 
-#: 업무 번호 컬럼 → 채번 종류
+#: 업무 번호 컬럼 → 채번 종류 (설계도 6종 + 확장 — 정적 검사는 확장 테이블도 numbering.next 경유를 요구한다)
 NUMBER_COLUMNS = {("job", "job_no"): "JOB", ("job_lot", "lot_no"): "JOB_LOT", ("material_lot", "lot_no"): "MAT_LOT",
-                  ("roll", "roll_no"): "ROLL", ("shipment", "shipment_no"): "SHIPMENT", ("shipment", "coa_no"): "COA"}
+                  ("roll", "roll_no"): "ROLL", ("shipment", "shipment_no"): "SHIPMENT", ("shipment", "coa_no"): "COA",
+                  ("sales_order", "order_no"): "SALES_ORDER"}
+#: 설계도 밖 확장(D-418)의 번호 종류 — QA 흐름이 발번하지 않으므로 동적 대조(종류 집합)에서만 뺀다
+EXT_KINDS = {"SALES_ORDER"}
 
 
 def numbering_static() -> dict:

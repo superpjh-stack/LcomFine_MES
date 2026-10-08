@@ -67,7 +67,8 @@ def screen_context(request: Request, screen_id: str | None) -> dict[str, Any]:
         "system_name": nav.SYSTEM_NAME,
         "now": _fmt_now(),
         "user": user,
-        "menus": rbac.visible_menu(user),
+        "menus": rbac.visible_menu(user),            # 설계도 묶음 순서 — 로그인 여부 판정(base.html)·계약 렌더본. 화면은 `sidebar` 순서로 그린다
+        "sidebar": rbac.visible_sidebar(user),       # 일하는 순서 — 좌측 메뉴 (D-417)
         "device": device,                       # web | pop | mobile | board
         "channel": nav.DEVICE_CHANNEL[device],  # 관리자 Web | 현장 POP | 모바일 | 현황판
         "settings": s,

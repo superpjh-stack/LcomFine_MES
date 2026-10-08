@@ -102,8 +102,8 @@ def role(code: str) -> Role | None:
 
 
 def cell(role_code: str, menu_code: str) -> Cell:
-    """권한 표 한 칸. 행이 없으면 `없음`."""
-    return _load()[1].get((role_code, menu_code), NO_CELL)
+    """권한 표 한 칸. 행이 없으면 `없음`. 확장 대메뉴(D-418)는 설계도 대메뉴 한 칸을 그대로 따른다 — 칸을 늘리지 않는다."""
+    return _load()[1].get((role_code, nav.permission_menu(menu_code)), NO_CELL)
 
 
 def can_read_menu(role_code: str, menu_code: str) -> bool:
@@ -270,7 +270,7 @@ def require_fn(function_id: str):
 
 
 def visible_menu(user: User | None) -> list[dict]:
-    """좌측 메뉴 — 묶음 > 대메뉴 > 중메뉴. `없음` 인 대메뉴는 숨긴다(G-17). 미로그인이면 빈 목록."""
+    """설계도 묶음 > 대메뉴 > 중메뉴 (화면에는 그리지 않는다 — 로그인 여부 판정 · 검사용). `없음` 인 대메뉴는 숨긴다(G-17). 미로그인이면 빈 목록."""
     if user is None:
         return []
     tree = []
@@ -279,3 +279,12 @@ def visible_menu(user: User | None) -> list[dict]:
         if menus:
             tree.append({"group": node["group"], "menus": menus})
     return tree
+
+
+def visible_sidebar(user: User | None) -> list[dict]:
+    """좌측 메뉴와 메인 화면 카드 — 묶음 없이 일하는 순서(`nav.SIDEBAR`, D-417). 숨김 규칙은 `visible_menu` 와 같고(확장 대메뉴는 물려받은 칸),
+    공통 화면(메인)은 권한 표 밖이라 로그인만 하면 보인다. 미로그인이면 빈 목록."""
+    if user is None:
+        return []
+    return [it for it in nav.sidebar_items()
+            if it["kind"] == "screen" or can_read_menu(user.role_code, it["menu"].code)]

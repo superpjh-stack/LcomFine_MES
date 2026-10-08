@@ -1,5 +1,7 @@
 {# 공통 로그인 화면 (아키텍트). 채널을 골라 로그인하면 그 채널로 세션이 고정된다 (D-19).
-   `?device=pop|mobile|board` 로 열면 그 채널이 미리 골라져 있다 — 단말 바로가기 주소 없이도 화면에서 고를 수 있다. #}
+   `?device=pop|mobile|board` 로 열면 그 채널이 미리 골라져 있다 — 단말 바로가기 주소 없이도 화면에서 고를 수 있다.
+   퀵 로그인(D-416): `quick` 가 있을 때만 오른쪽 패널을 그린다 — 계정 단추는 같은 폼 안에서 `formaction=/login/quick` 로 보내고
+   서버가 시드 비밀번호로 인증한다. 비밀번호 값은 이 화면 어디에도 없다 (G-19). #}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -9,13 +11,13 @@
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
 <body class="login-body ch-{{ login_device or 'web' }}">
-<div class="login-wrap">
+<form method="post" action="/login" id="login-form" class="login-wrap{% if quick %} wide{% endif %}">
+  <input type="hidden" name="next" value="{{ next or '' }}">
   <div class="login-card">
     <h1>{{ system_name }}</h1>
     <p class="sub">Job-Lot-Roll 계보 · {{ nav.DEVICE_CHANNEL[login_device or 'web'] }}</p>
-    {% if message %}<p class="err">{{ message }}</p>{% endif %}
-    <form method="post" action="/login" id="login-form">
-      <input type="hidden" name="next" value="{{ next or '' }}">
+    {% if message %}<p class="err" role="alert">{{ message }}</p>{% endif %}
+    <div class="login-fields">
       <label>아이디<input type="text" name="login_id" autocomplete="username" required autofocus value="{{ login_id or '' }}"></label>
       <label>비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
       <fieldset class="login-channel">
@@ -27,12 +29,49 @@
       <div class="login-actions">
         <button class="btn btn-primary" type="submit">로그인</button>
       </div>
-    </form>
+    </div>
     <ul class="notes">
       <li>자동 로그아웃 {{ settings.session_idle_label }}</li>
+      <li>로그인 성공·실패는 접근 로그에 남는다 (시스템 관리 &gt; 접근 로그).</li>
       <li>비밀번호 초기화는 관리자가 시스템 관리 &gt; 사용자에서 한다.</li>
     </ul>
   </div>
-</div>
+
+  {% if quick %}
+  <aside class="login-quick" aria-label="퀵 로그인">
+    <h2>퀵 로그인 <span class="tag">개발 · 테스트 환경</span></h2>
+    <p class="hint">계정을 누르면 비밀번호 입력 없이 그 계정으로 들어간다 — 위에서 고른 채널로. 운영 환경에서는 이 패널도 주소도 없다.</p>
+    {% for g in quick %}
+    <section class="quick-role" data-role="{{ g.role.code }}">
+      <header>
+        <h3>{{ g.role.name }} <code>{{ g.role.code }}</code></h3>
+        <p class="perm">대메뉴 {{ g.summary['입력'] + g.summary['조회'] + g.summary['없음'] }} 중 입력 {{ g.summary['입력'] }} · 조회 {{ g.summary['조회'] }} · 없음 {{ g.summary['없음'] }}
+          · 계정 {{ g.active }}/{{ g.total }} 정상</p>
+        {% if g.menus %}<p class="menus">{{ g.menus | join(' · ') }}</p>{% else %}<p class="menus">조회 가능한 대메뉴 없음</p>{% endif %}
+      </header>
+      <button class="btn btn-primary quick-btn" type="submit" formaction="/login/quick" formnovalidate
+              name="quick_id" value="{{ g.primary.login_id }}"{% if g.primary.status != '정상' %} disabled title="{{ g.primary.status }} 계정"{% endif %}>
+        <span class="who">{{ g.primary.user_name }}</span><span class="id">{{ g.primary.login_id }}</span>
+        {% if g.primary.status != '정상' %}<span class="st">{{ g.primary.status }}</span>{% endif %}
+      </button>
+      {% if g.others %}
+      <details class="quick-more">
+        <summary>다른 {{ g.role.name }} 계정 {{ g.others | length }}개</summary>
+        <div class="quick-list">
+          {% for a in g.others %}
+          <button class="btn btn-sm quick-btn" type="submit" formaction="/login/quick" formnovalidate
+                  name="quick_id" value="{{ a.login_id }}"{% if a.status != '정상' %} disabled title="{{ a.status }} 계정 — 로그인할 수 없다"{% endif %}>
+            <span class="who">{{ a.user_name }}</span><span class="id">{{ a.login_id }}</span>
+            {% if a.status != '정상' %}<span class="st">{{ a.status }}</span>{% endif %}
+          </button>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </aside>
+  {% endif %}
+</form>
 </body>
 </html>

@@ -3,10 +3,12 @@
 (function () {
   "use strict";
 
-  /* 좌측 메뉴 접기/펼치기 */
+  /* 좌측 메뉴 접기/펼치기 — 대메뉴를 누르면 그 중메뉴가 펼쳐지고, 펼쳐져 있던 다른 대메뉴는 접힌다 (지금 화면의 대메뉴 `on` 은 그대로) */
   document.querySelectorAll(".menu-head").forEach(function (head) {
     head.addEventListener("click", function () {
-      head.parentElement.classList.toggle("open");
+      var group = head.parentElement, opening = !group.classList.contains("open");
+      group.parentElement.querySelectorAll(".menu-group.open").forEach(function (g) { if (g !== group) g.classList.remove("open"); });
+      group.classList.toggle("open", opening);
     });
   });
 

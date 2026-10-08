@@ -1,0 +1,62 @@
+{# SAL-02 수주 현황 (설계도 밖 확장 · D-418) — 수주별 지시 · 생산 · 출하 진행과 납기 지연 (X-SAL-05). 읽기만 — 저장하지 않는다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건 <small>상태 `등록` 인 수주만 — 취소된 수주는 수주 관리에서 본다</small></h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.select('고객', 'customer_id', search_options.customer_id, f.customer_id, blank='전체') }}
+    <label>진행
+      <select name="progress">
+        <option value="">전체</option>
+        {% for p in progress_values %}<option value="{{ p }}"{% if p == f.progress %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>납기 지남만
+      <select name="late"><option value="">전체</option><option value="1"{% if f.late == '1' %} selected{% endif %}>지난 것만</option></select>
+    </label>
+    {{ ui.field('납기 시작', 'due_from', f.due_from, type='date') }}
+    {{ ui.field('납기 끝', 'due_to', f.due_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>요약 <small>오늘 {{ today|dt }} 기준</small></h2>
+  <dl class="kv">
+    <dt>수주</dt><dd>{{ totals.count }}건 · 납기 지남 <b class="{% if totals.late %}late{% endif %}">{{ totals.late }}건</b></dd>
+    <dt>진행별</dt><dd>{% for p, n in totals.by_progress.items() %}{{ p }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+    <dt>수량</dt><dd>수주 {{ totals.order_qty|num(3) }} · 지시 {{ totals.job_qty|num(3) }} · 완료 실적 {{ totals.output_qty|num(3) }}{% if totals.units|length > 1 %} <small>— 단위가 섞여 있다({{ totals.units|join(', ') }}) · 환산 없이 더했다(D-402)</small>{% elif totals.units %} {{ totals.units[0] }}{% endif %}</dd>
+  </dl>
+  {{ ui.notes(['진행 = 미지시(작업지시 없음) → 지시 → 생산 중(완료 실적 있음) → 일부 출하 → 출하 완료(승인 출하가 있고 모든 작업지시가 완료). 저장하지 않고 매번 센다.',
+               '납기 지남 = 납기가 오늘보다 앞인데 승인된 출하가 없는 수주.']) }}
+</section>
+
+<section class="panel grid-panel">
+  <h2>수주별 진행 <small>{{ rows|length }}건{% if capped %} — 상한 {{ limit }}건까지만 보인다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>수주 번호</th><th>고객</th><th>품목</th><th>납기</th><th>수주 수량</th><th>작업지시</th><th>지시 수량</th><th>완료 실적</th><th>롤</th><th>승인 출하</th><th>마지막 출하 승인</th><th>진행</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if r.late %} class="late-row"{% endif %}>
+        <td><a href="{{ nav.path_of('SAL-01') }}?no={{ r.order_no }}#order"><code>{{ r.order_no }}</code></a></td>
+        <td>{{ r.customer_name }}</td>
+        <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td>
+        <td>{{ r.due_date|dt }}{% if r.late %} <span class="late">지남</span>{% endif %}</td>
+        <td class="num">{{ r.order_qty|num(3) }} {{ r.qty_unit }}</td>
+        <td class="num">{{ r.job_count }}건{% if r.done_job_count %} (완료 {{ r.done_job_count }}){% endif %}</td>
+        <td class="num">{{ r.job_qty|num(3) }}</td>
+        <td class="num">{{ r.output_qty|num(3) }}</td>
+        <td class="num">{{ r.roll_count }}개</td>
+        <td class="num">{{ r.shipped_count }}건</td>
+        <td>{{ r.last_shipped_at|dt }}</td>
+        <td><b>{{ r.progress }}</b></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="12" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<style>.late{color:#b42318;font-weight:700}.late-row td{background:#fff6f5}</style>
+{% endblock %}

@@ -1,0 +1,48 @@
+{# SAL-03 거래처 이력 (설계도 밖 확장 · D-418) — 고객별 수주 · 작업지시 · 승인 출하 이력 (X-SAL-06). 읽기만 — 저장하지 않는다. #}
+{% extends "base.html" %}
+{% import "home/_macros.html" as ui %}
+{% block body %}
+<section class="panel search">
+  <h2>조회 조건 <small>기간은 수주일 · 작업지시 등록일 · 출하일에 같이 건다. 비우면 전체</small></h2>
+  <form class="search-form" method="get" id="screen-search">
+    {{ ui.field('고객 코드 · 고객명 (일부)', 'q', f.q) }}
+    {{ ui.field('기간 시작', 'date_from', f.date_from, type='date') }}
+    {{ ui.field('기간 끝', 'date_to', f.date_to, type='date') }}
+    <label>&nbsp;<button type="submit" class="btn btn-primary">조회</button></label>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>요약</h2>
+  <dl class="kv">
+    <dt>거래처</dt><dd>{{ totals.customers }}곳 (기준정보 &gt; 고객 관리의 고객 전부 — 거래가 없으면 0 으로 보인다)</dd>
+    <dt>합계</dt><dd>수주 {{ totals.order_count }}건 · 작업지시 {{ totals.job_count }}건 · 승인 출하 {{ totals.shipment_count }}건</dd>
+  </dl>
+</section>
+
+<section class="panel grid-panel">
+  <h2>거래처별 이력 <small>{{ rows|length }}곳{% if capped %} — 상한 {{ limit }}곳까지만 보인다{% endif %}</small></h2>
+  <table class="grid">
+    <thead><tr><th>고객 코드</th><th>고객명</th><th>사용</th><th>수주</th><th>수주 수량</th><th>최근 수주일</th><th>작업지시</th><th>승인 출하</th><th>최근 출하일</th><th>보기</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><code>{{ r.customer_code }}</code></td>
+        <td>{{ r.customer_name }}</td>
+        <td>{{ '사용' if r.use_yn == 'Y' else '미사용' }}</td>
+        <td class="num">{{ r.order_count }}건</td>
+        <td class="num">{% if r.order_count %}{{ r.order_qty|num(3) }}{% if r.unit_count > 1 %} <small>(단위 {{ r.unit_count }}종 — D-402)</small>{% endif %}{% else %}-{% endif %}</td>
+        <td>{{ r.last_order_date|dt }}</td>
+        <td class="num">{{ r.job_count }}건</td>
+        <td class="num">{{ r.shipment_count }}건</td>
+        <td>{{ r.last_ship_date|dt }}</td>
+        <td><a class="btn btn-sm" href="{{ nav.path_of('SAL-01') }}?customer_id={{ r.customer_id }}">수주</a> <a class="btn btn-sm" href="{{ nav.path_of('SHP-01') }}?customer_id={{ r.customer_id }}">출하</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">{{ NOT_COLLECTED }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.notes(['수주 건수·수량은 이 화면(영업관리)의 수주이고, 작업지시·출하는 설계도 테이블(D2 · D8)에서 고객 키로 센다 — 수주 없이 낸 작업지시도 들어간다.']) }}
+</section>
+{% endblock %}

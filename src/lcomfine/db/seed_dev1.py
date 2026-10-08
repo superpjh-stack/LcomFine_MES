@@ -25,6 +25,7 @@ NUMBER_RULES: list[tuple[str, str, str, int, str]] = [
     ("ROLL",     "R", "YYMMDD-", 4, "롤 번호 — 가설 (D-05 · D-101). 예 R261003-0001"),
     ("SHIPMENT", "S", "YYMMDD-", 3, "출하 LOT 번호 — 가설 (D-05 · D-101). 예 S261003-001"),
     ("COA",      "C", "YYMMDD-", 3, "COA 번호 — 가설 (D-05 · D-101). 예 C261003-001"),
+    ("SALES_ORDER", "SO", "YYMMDD-", 3, "수주 번호 — 설계도 밖 확장 · 가설 (D-418). 예 SO261008-001"),
 ]
 
 # (코드, 이름, 구분, 단위) — 규격은 받은 적이 없어 비운다
