@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""(예시) 샘플 데이터 — 업무 테이블(D1~D8 23개)에 **100행 안팎**씩 + (예시) 계정 100. `make sample` / `make sample-clean`.
+"""(예시) 샘플 데이터 — 업무 테이블(D1~D8 23개)에 **100행 안팎**씩 + (예시) 계정 100 + 수주 100(설계도 밖 확장 · D-418). `make sample` / `make sample-clean`.
 
-    uv run python tools/sample_data.py            # 넣는다 (이미 들어 있으면 건너뛴다 — 두 번 돌려도 행 수가 같다)
+    uv run python tools/sample_data.py            # 넣는다 (이미 들어 있으면 건너뛴다 — 두 번 돌려도 행 수가 같다. 수주 샘플만 없으면 수주만 더한다)
     uv run python tools/sample_data.py --clean    # 샘플만 전부 지운다 (공통·개발 시드 행 · 테스트가 만든 행은 건드리지 않는다)
     uv run python tools/sample_data.py --counts   # 테이블별 행 수만 찍는다
 
@@ -46,7 +46,7 @@ DAYS = 90              # 최근 90일
 TABLES = ("item", "customer", "process", "equipment", "defect_code", "plate_spec", "anilox", "ink_formula", "ink_formula_component",
           "job", "job_lot", "material_lot", "color_record", "color_record_mix",
           "work_result", "work_stop", "work_scrap", "material_input", "roll", "roll_genealogy",
-          "inspection", "inspection_defect", "shipment", "sys_user")
+          "inspection", "inspection_defect", "shipment", "sales_order", "sys_user")
 
 TZ = datetime.now().astimezone().tzinfo
 TODAY = date.today()
@@ -76,6 +76,10 @@ def print_counts(title: str, c: dict[str, int], base: dict[str, int] | None = No
     for t in TABLES:
         extra = f"  ({c[t] - base[t]:+d})" if base is not None else ""
         print(f"  {t:<24}{c[t]:>7}{extra}")
+
+
+def orders_in() -> bool:
+    return conn.q1("select 1 as x from sales_order where created_by like %s limit 1", (USER.replace("_", r"\_") + "%",)) is not None
 
 
 def already_in() -> bool:
@@ -196,6 +200,56 @@ class Sample:
             for seq, (name, pct) in enumerate(comps, start=1):
                 self.x("ink_formula_component", """insert into ink_formula_component (ink_formula_id, seq_no, component_name, ratio_pct)
                                                    values (%s, %s, %s, %s)""", (r["ink_formula_id"], seq, example(name), pct))
+
+    # ── 2b. 수주 (EXT · D-418) — 100건: 지시 80(샘플 Job 을 가리킨다) · 미지시 12 · 취소 8. 번호는 numbering 만 ──
+    def sales_orders(self) -> None:
+        """샘플 Job 을 DB 에서 읽어 수주를 만든다 — 새로 넣는 실행에서는 같은 트랜잭션의 Job, 수주만 더하는 실행에서는 이미 들어 있는 Job.
+        규칙(라우터 `sal` 과 같다): 수주의 고객·품목 = 그 Job 의 고객·품목, 납기는 수주일보다 앞서지 않는다, 취소된 수주에는 Job 이 없다."""
+        rng = random.Random(SEED + 1)
+        u = USER.replace("_", r"\_") + "%"
+        if not self.users["PROD"]:                                       # 수주만 더하는 실행 — 등록자 계정을 DB 에서
+            self.cur.execute("select login_id from sys_user where login_id like %s and status = '정상' order by login_id",
+                             (USER.replace("_", r"\_") + r"prod\_%",))
+            self.users["PROD"] = [r["login_id"] for r in self.cur.fetchall()]
+            if not self.users["PROD"]:
+                raise SystemExit("샘플 계정(smp_prod_*)이 없다 — 샘플 데이터를 먼저 넣는다")
+        self.cur.execute("""select job_id, item_id, customer_id, order_qty, qty_unit, due_date, created_at, status
+                              from job where created_by like %s and sales_order_id is null order by job_id""", (u,))
+        jobs = self.cur.fetchall()
+        linked = [j for j in jobs if j["status"] != "취소"][:80]
+        if len(linked) < 80:
+            raise SystemExit(f"수주를 붙일 샘플 Job 이 모자란다 — 취소 아닌 Job {len(linked)} (80 필요)")
+        n = 0
+        for j in linked:                                                 # 지시 80 — Job 보다 1~5일 앞서 받은 수주
+            n += 1
+            created = not_future(j["created_at"] - timedelta(days=rng.randint(1, 5), hours=rng.randint(0, 6)))
+            order_date = created.date()
+            qty = j["order_qty"] + Decimal(rng.choice((0, 0, 500, 1000)))   # 지시 수량과 같거나 조금 큰 수주 수량
+            self._order(n, created, order_date, max(j["due_date"], order_date), j["customer_id"], j["item_id"], qty, j["qty_unit"], "등록",
+                        by=rng.choice(self.users["PROD"]), job_id=j["job_id"])
+        pool = [j for j in jobs if j["status"] != "취소"]
+        for k in range(20):                                              # 미지시 12 · 취소 8 — 최근 12일에 받은 수주, Job 없음
+            n += 1
+            j = rng.choice(pool)
+            created = not_future(at(self.day(rng.randint(1, 12)), 9, rng.randrange(0, 59)))
+            order_date = created.date()
+            status = "취소" if k >= 12 else "등록"
+            self._order(n, created, order_date, order_date + timedelta(days=rng.randint(7, 30)), j["customer_id"], j["item_id"],
+                        Decimal(rng.randrange(1000, 20001, 500)), j["qty_unit"], status, by=rng.choice(self.users["PROD"]))
+
+    def _order(self, n: int, created: datetime, order_date: date, due: date, customer_id: int, item_id: int, qty: Decimal, unit: str,
+               status: str, *, by: str, job_id: int | None = None) -> None:
+        """수주 한 행. 등록자는 수주 단계의 난수(`rng`)로 고른다 — 본류 난수(`self.rng`)를 건드리지 않아 다른 표의 샘플은 전과 같다."""
+        order_no = numbering.next(numbering.SALES_ORDER, cur=self.cur, at=created)
+        cancelled = status == "취소"
+        r = self.x("sales_order", """insert into sales_order (order_no, customer_id, item_id, order_qty, qty_unit, order_date, due_date, customer_po,
+                                                              status, note, created_at, created_by, updated_at, updated_by)
+                                     values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning sales_order_id""",
+                   (order_no, customer_id, item_id, qty, unit, order_date, due, f"{CODE}PO-{n:03d}", status,
+                    example("샘플 수주" + (" — 취소" if cancelled else "")), created, by,
+                    created + timedelta(hours=3) if cancelled else None, by if cancelled else None))
+        if job_id is not None:
+            self.u("update job set sales_order_id = %s where job_id = %s", (r["sales_order_id"], job_id))
 
     # ── 2. 작업지시 (D2) — Job 100 (등록 · 완료 · 취소 섞임) · 생산 LOT 100 ──
     def jobs(self) -> None:
@@ -531,6 +585,7 @@ class Sample:
         self.users_()
         self.masters()
         self.jobs()
+        self.sales_orders()
         self.material_lots()
         self.colors()
         self.works()
@@ -543,12 +598,17 @@ class Sample:
 def insert() -> int:
     before = counts()
     if already_in():
-        print("샘플 데이터가 이미 들어 있다 — 건너뛴다 (멱등). 지우려면 --clean")
-        print_counts("행 수 (지금)", before)
-        return 0
-    with conn.tx() as cur:
-        s = Sample(cur)
-        s.run()
+        if orders_in():
+            print("샘플 데이터가 이미 들어 있다 — 건너뛴다 (멱등). 지우려면 --clean")
+            print_counts("행 수 (지금)", before)
+            return 0
+        with conn.tx() as cur:                                           # 수주(D-418)가 생기기 전에 넣은 샘플 — 수주 100 만 더한다
+            Sample(cur).sales_orders()
+        print("샘플은 이미 있고 수주 샘플만 없었다 — 수주 100 을 더했다")
+    else:
+        with conn.tx() as cur:
+            s = Sample(cur)
+            s.run()
     after = counts()
     print_counts("샘플 넣음 — 테이블별 행 수 (괄호: 이 실행이 더한 행)", after, before)
     summary = conn.q1("""select (select count(*) from job where created_by like %(u)s and status = '등록') as job_open,
@@ -571,6 +631,11 @@ def insert() -> int:
           f"실적 완료 {summary['wr_done']} · 열림 {summary['wr_open']} / 롤 인쇄 {summary['r_print']} · 후가공 {summary['r_fin']} · 슬리팅 {summary['r_slit']} / "
           f"계보 {' · '.join(f'{k} {v}' for k, v in rel.items())} / 검사 불합격 {summary['insp_fail']} / "
           f"출하 승인 {summary['sh_ok']} · 등록 {summary['sh_reg']} · 취소 {summary['sh_cancel']} / 원재료 LOT 합격 {summary['ml_ok']}")
+    so = conn.q1("""select count(*) filter (where status = '등록' and exists (select 1 from job j where j.sales_order_id = so.sales_order_id)) as linked,
+                           count(*) filter (where status = '등록' and not exists (select 1 from job j where j.sales_order_id = so.sales_order_id)) as open,
+                           count(*) filter (where status = '취소') as cancel
+                      from sales_order so where created_by like %s""", (USER.replace("_", r"\_") + "%",))
+    print(f"수주(확장 D-418) — 지시 {so['linked']} · 미지시 {so['open']} · 취소 {so['cancel']}")
     return 0
 
 
@@ -598,6 +663,7 @@ def clean() -> int:
         ("color_record", f"delete from color_record where job_id in ({jobs}) or recorded_by like %(u)s"),        # 배합비 행은 cascade
         ("job_lot", f"delete from job_lot where job_id in ({jobs}) or created_by like %(u)s"),
         ("job", "delete from job where created_by like %(u)s"),
+        ("sales_order", "delete from sales_order where created_by like %(u)s"),                                  # Job 이 먼저 지워져야 한다 (FK)
         ("material_lot", "delete from material_lot where received_by like %(u)s"),
         ("plate_spec", "delete from plate_spec where plate_code like %(c)s"),
         ("ink_formula", "delete from ink_formula where ink_code like %(c)s"),                                     # 조성 행은 cascade
@@ -629,6 +695,7 @@ def leftovers() -> dict[str, int]:
     return {
         "item": conn.q1("select count(*) as n from item where item_code like %s", (CODE + "%",))["n"],
         "job": conn.q1("select count(*) as n from job where created_by like %s", (u,))["n"],
+        "sales_order": conn.q1("select count(*) as n from sales_order where created_by like %s", (u,))["n"],
         "material_lot": conn.q1("select count(*) as n from material_lot where received_by like %s", (u,))["n"],
         "roll": conn.q1("select count(*) as n from roll where produced_by like %s", (u,))["n"],
         "roll_genealogy": conn.q1("select count(*) as n from roll_genealogy where created_by like %s", (u,))["n"],

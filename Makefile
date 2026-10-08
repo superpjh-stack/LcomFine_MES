@@ -23,7 +23,7 @@ db-reset: db-schema db-seed
 db-passwords:    # 모든 계정 비밀번호를 .env 의 LCOMFINE_SEED_PASSWORD 하나로 맞춘다 (개발·테스트 DB 용 — 이미 같은 계정은 두므로 세션이 끊기지 않는다)
 	uv run python tools/reset_passwords.py
 
-sample:          # (예시) 샘플 데이터 — 업무 테이블 23개에 100행 안팎씩 + 계정 100 (코드 SMP- · 계정 smp_). 이미 있으면 건너뛴다(멱등). 시드 뒤에 돌린다
+sample:          # (예시) 샘플 데이터 — 업무 테이블 23개에 100행 안팎씩 + 계정 100 + 수주 100(확장 D-418) (코드 SMP- · 계정 smp_). 이미 있으면 건너뛴다(멱등 · 수주만 없으면 수주만 더한다). 시드 뒤에 돌린다
 	uv run python tools/sample_data.py
 
 sample-clean:    # 샘플만 지운다 (공통·개발 시드 행과 테스트가 만든 행은 그대로)

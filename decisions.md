@@ -566,6 +566,7 @@
   - 쓰기 경계: `sal` 은 `sales_order` 에만 쓴다. `job.sales_order_id` 는 P2(F-JOB-01·02)만 쓴다. 수주의 진행(미지시 → 지시 → 생산 중 → 일부 출하 → 출하 완료)과 납기 지남은 저장하지 않고 D2 · D5 · D6 · D8 에서 센다.
   - 검사기에 더한 것(낮춘 것 없음): `check_schema` 는 EXT 테이블을 따로 세고 설계도 30 을 그대로 요구한다. `check_data` 는 `sales_order.order_no` 도 `numbering.next` 경유를 요구하고(정적), 동적 발번 대조는 설계도 6종으로 본다. `gen_contracts` 가 EXT 단을 그린다.
 - 규칙: 수주와 다른 품목·고객으로는 지시 못 낸다(422). 취소된 수주에는 지시 못 낸다. 작업지시가 걸린 수주는 고객·품목·수량 수정과 취소가 안 된다(작업지시를 먼저 취소). 납기는 수주일보다 앞설 수 없다.
+- 샘플(2026-10-09 · 사람 요청): `tools/sample_data.py` 가 수주 100 도 넣는다 — 지시 80(샘플 Job 80 을 가리킨다 · 고객·품목은 그 Job 과 같고 수주일은 Job 보다 1~5일 앞) · 미지시 12 · 취소 8(Job 없음). 번호는 `numbering.next('SALES_ORDER', at=)` 만. 수주가 생기기 전에 넣은 샘플(VPS 등)에는 수주 100 만 더한다(멱등). `--clean` 은 Job 을 지운 뒤 수주를 지운다(FK).
 - 현업 확인 필요: 영업 역할을 따로 둘지(D-06) · 수주 번호 체계 · 단가·금액·견적 항목 · 수주 1 : 작업지시 N 가정 · 수주 수량과 지시 수량의 차이 허용.
 - 바뀌면 고칠 곳: `app/nav.py`(`_EXT_SPEC` · `permission_menu`) · `app/contracts.py`(`ext_functions`) · `app/rbac.py`(`cell`) · `app/routers/sal.py` · `templates/sal/` · `app/routers/job.py`(수주 연결) · `db/schema.sql` · `db/seed_dev1.py`(번호 형식) · `contracts/extension-list.md`. 검증 `tests/test_ext_sal.py`.
 
