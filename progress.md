@@ -10,7 +10,8 @@
 | 이미지 | `ghcr.io/superpjh-stack/lcomfine_mes:latest` = `sha-9c778a6…` · 공개(익명 manifest 200) · Actions `image` 성공 | `curl ghcr.io/v2/.../manifests/latest` · `gh run list` |
 | 기동 | 배포 ~30초 뒤 `/health` 200 `{"status":"ok","db":{"ok":true},"menus":12,"screens":32,"functions":94,"placeholders":0}` | `curl http://srv1934103.hstgr.cloud:8040/health` |
 | 화면 | `/login` 200 · 관리자 로그인 303 → `/` 에 IA 단 6 · 카드 13(STA → SAL → … → SYS) | curl 쿠키 로그인 |
-| 없는 것 | 샘플 100행 · 시연 수주 없음(공통 시드 + (예시) 기준정보만) · 퀵 로그인 꺼짐(prod) · 도메인 · HTTPS 없음 | — |
+| 샘플 (2026-10-09 · 사람이 SSH 로 실행) | app 컨테이너에서 `tools/sample_data.py` — 업무 테이블 23개에 +100 안팎(roll 150 · roll_genealogy 272 · material_input 135 · inspection_defect 89) · `(예시)` 계정 +100. Job 등록 70 · 완료 20 · 취소 10, 출하 승인 57, 검사 불합격 18 | 스크립트 출력(행 수 표) |
+| 없는 것 | 시연 수주(영업관리) 샘플 없음 — 스크립트가 D-418 확장을 모른다 · 퀵 로그인 꺼짐(prod) · 도메인 · HTTPS 없음 | — |
 
 ## 2026-10-09 메인 = IA 화면 (D-419 · 사람 요청 "메인 메뉴를 IA 를 보여 주는 화면으로, 설명도")
 
