@@ -3,6 +3,8 @@
 import time
 import uuid
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from lcomfine.app.main import app
@@ -105,3 +107,44 @@ def test_helpers_make_and_cleanup():
     assert it["item_code"].startswith(p)
     cleanup(p)
     assert conn.q1("select count(*) as n from item where item_code like %s", (p + "%",))["n"] == 0
+
+
+@pytest.mark.fn("F-BAS-011")
+@pytest.mark.fn("F-BAS-021")
+@pytest.mark.fn("F-BAS-031")
+@pytest.mark.fn("F-STD-021")
+@pytest.mark.fn("F-WO-011")
+@pytest.mark.fn("F-SYS-011")
+@pytest.mark.fn("F-SYS-031")
+def test_nul_input_names_the_field_dev1():
+    """DEF-QA3-002 · api-contract §3 — 글자 속 NUL(0x00) 은 라우터가 먼저 422 로 막고 어느 항목인지 짚는다
+    (핸들러의 `입력` 한 줄은 마지막 방어선). 개발2 와 같은 문장 「<항목>: 글자에 NUL(0x00)을 넣을 수 없습니다」."""
+    p = uniq("nul")
+    cu, it = make_customer(p), make_item(p)
+    try:
+        cases = [
+            ("admin", "/bas/items", {"item_code": f"{p}a\x00b", "item_name": "x (예시)", "item_type": "제품"}, "품목 코드"),
+            ("admin", "/bas/items", {"item_code": f"{p}ok", "item_name": "x (예시)", "item_type": "제품", "spec": "a\x00b"}, "규격"),
+            ("admin", "/bas/customers", {"customer_code": f"{p}c", "customer_name": "a\x00b"}, "거래처명"),
+            ("admin", "/bas/customers", {"customer_code": f"{p}c", "customer_name": "x (예시)", "phone": "0\x001"}, "연락처"),
+            ("admin", "/bas/warehouses", {"target": "warehouse", "warehouse_code": f"{p}w", "warehouse_name": "x (예시)",
+                                          "note": "a\x00b"}, "비고"),
+            ("admin", "/std/standards", {"standard_code": f"{p}s", "standard_name": "x (예시)", "content": "a=\x00"}, "조건 항목"),
+            ("sl", "/wo/requests", {"customer_id": str(cu["id"]), "item_id": str(it["id"]), "qty": "5",
+                                    "due_date": "2027-01-31", "note": "a\x00b"}, "비고"),
+            ("admin", "/sys/users", {"login_id": f"{p}u\x00", "user_name": "x (예시)", "role_code": "SL", "password": "x"},
+             "사번(로그인 ID)"),
+            ("admin", "/sys/codes", {"group_code": "설비", "code": "a\x00b", "code_name": "x (예시)", "sort_no": "1"}, "코드 값"),
+            ("admin", "/sys/codes", {"group_code": "설비", "code": f"{p}c", "code_name": "x\x00", "sort_no": "1"}, "코드 이름"),
+        ]
+        for role, path, body, label in cases:
+            r = client(role).post(path, data=body)
+            assert r.status_code == 422, f"{path} {label} → {r.status_code} {r.text[:200]}"
+            j = r.json()
+            assert j["fields"] == [{"name": label, "reason": "글자에 NUL(0x00)을 넣을 수 없습니다"}], f"{path} {label} → {j}"
+            assert j["message"] == f"{label}: 글자에 NUL(0x00)을 넣을 수 없습니다", j["message"]
+        # 조회 인자도 같은 문장으로 422 (500 이 아니다)
+        r = client("admin").get("/bas/items", params={"q": "a\x00b"})
+        assert r.status_code == 422 and r.json()["fields"][0]["name"] == "검색어", r.text[:200]
+    finally:
+        cleanup(p)

@@ -3,11 +3,70 @@
 검증된 것만 적는다. 여기 없는 숫자는 화면에 지어내지 않는다. 형식: `| 항목 | 실측 | 검증 방법 |`.
 옛 판(설계도 기준 · 대메뉴 12)의 기록은 `progress-v1.md` 에 있다 — v2 의 실측이 아니다.
 
-## 지금 해야 할 것: W1 개발 3 기동
+## 지금 해야 할 것: W2 수금 (개발3 → QA 3 → gate-full → 커밋)
 
-Phase 0 끝(아래 실측). `goal.md` §3.1 W1 핵심 흐름 — 개발1 · 개발2 · 개발3 을 §5 프롬프트로 **한 번에** 띄운다.
-각자 자기 화면의 GET 을 등록하면 placeholder 가 빠지고(G-03), 기능 API 와 `@pytest.mark.fn` 테스트가 붙으면 G-02 고아가 준다.
-QA2 · QA3 는 `tools/check_data.py` · `tools/check_security.py` 를 만든다 — 그 전까지 G-05~G-20 · G-22 는 `미작성`(FAIL 로 센다).
+W1 끝(아래 실측 · 커밋). 다음 회전은 `goal.md` §3.1 **W2 수금** — 개발3 을 §5 프롬프트로 기동한다:
+COL 7 화면(COL-010~070) · `erp_upload.py` · `stats.customer_receivable(customer_id)` · `stats.due_compliance(period)` 공표 → 개발1 이 TRK-030 수금 칸 · TRK-020 납기 준수율에 붙인다(Ruling 23).
+회차 교체 · 이전 회차 보존 · 오류 행 제외 · 미매핑 → `erp_upload_error` 알림(G-11 의 마지막 1종) · 열 구성은 `차단` D-516 — 매핑 화면이 흡수한다.
+끝나면 QA1 · QA2(G-12~G-14 를 W2 로 잰다) · QA3 → 결함 수정 → `make gate-full` → 커밋. 그 뒤 W3 대시보드(G-15~G-17) · W4 문서 SSO(G-18 · D-524 앱 DB 역할 · G-24 D-525).
+
+사람이 할 것(루프는 기다리지 않는다): **D-525** Docker Desktop 을 켜고 `docker compose up -d --build` → `/health` 200 (G-24) · **D-526** HOME-030 「개인 추가 알림」의 뜻 · D-516~D-520.
+
+## 2026-10-21 W1 핵심 흐름 실측 (개발 3 → QA 3 → 결함 수정 → gate-full)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| W1 화면 | 49 등록(개발1 23 · 개발2 20 · 개발3 6) · placeholder **18** = W2~W4 몫(COL 7 · RPT 9 · DOC 2) · W1 화면 placeholder 0 | `make check-routes` · `uv run python tools/check_screens.py` G-03 |
+| W1 기능 | 136 중 **109** 라우트 · 표식 109/109 · 고아(W1) 0 — 남은 27 은 COL · RPT · DOC(W2~W4) | `make check-trace` G-02 |
+| 화면 응답 | 칸 있는 260/260 → 200 · 칸 없는 276/276 → 403 「이 화면을 볼 권한이 없습니다」 · 쓰기 58 × 8 계정 R/없음 337 → 403 · W 127 통과 · 권한 예외 8/8 | `tools/check_screens.py` G-03 · G-19 |
+| 오류 계약 | 쓰기 58 × 사례 209 어긋남 0 · 5xx 0 · GET 조회 칸 142 → 422 · 422 는 항목을 짚음(일반 문장 0 — DEF-QA1-003 수정 뒤) | `tools/check_screens.py` G-02 「오류 계약」 행 · `tests/test_qa1_errors.py` |
+| E2E (HTTP 만) | 의뢰 → 지시 → 입고 LOT(분할 포함) → 입고검사 → 불출 → 일보 · 검사일보 → 제품 입고 → 판정 → 출하 지시 → 확정 · 부서 교대 sl → pr → sl → sh · 요청 28 전부 기대 응답 | `uv run python tools/check_data.py --transcript` G-06 · `outputs/qa2-흐름데이터.md` ③ |
+| 역추적 · 정추적 | 출하 1건 → 제품 LOT → 지시 → 불출 LOT(분할 → 원 LOT) → 원자재 입고 LOT = QA2 독립 SQL 불일치 0 · DB 전 출하 · 전 원 LOT 대조 불일치 0 · 「출하 후 불합격」 표시 | `tools/check_data.py` G-07 · G-08 |
+| 차단 · 가용 | 검사대기 · 보류 LOT 불출 422 · 보류 LOT 확정 422 · 중지 품목 입고/지시 422 · 가용 = qty − allocated · 동시 불출/할당(스레드 2) [200, 422] · 전 LOT 할당 = 열린 출하 행 합 · 라인 전부 제거 = 지시 취소 · 할당 0(Ruling 21) | `tools/check_data.py` G-09 · G-10 |
+| 알림 | W1 8종 수신 부서 = D-511 · dedupe(D-522) · 처리 화면에서 닫힘 · HOME-020 남의 부서 404 · due-check 2회 멱등 · `erp_upload_error` 는 W2 미검증 | `tools/check_data.py` G-11 |
+| 쓰기 경계 | 라우터 14 쓰기 테이블 ⊆ 계약 · TRK · LOT · PRP · trace · stats 쓰기 0 · 조회 화면 GET 전후 업무 테이블 diff 0 · 공용 모듈(numbering → `sys_number_seq` · auth → `sys_user`) §2.2 등재 | `tools/check_data.py` G-05 |
+| 보안 · 운영 | G-19 · G-20 · G-21 · G-22 PASS · DB 끊김 503(화면 · 쓰기 · 로그인 · /health 본문에 접속 문자열 없음) · 이상 입력 26 POST 500 0 · Docker 정적 PASS(COPY 원본 7) · 실기동은 D-525 | `make check-security` (rc 3 = G-16 · 17 · 18 W3/W4) |
+| QA 리포트 | 3종 — `outputs/qa1-기능계약.md`(결함 5 · 해소 5) · `qa2-흐름데이터.md`(결함 3 · 해소 3) · `qa3-보안운영.md`(결함 3 · 해소 2 · 열림 1 = DEF-QA3-003 경미 → D-524 W4) · **치명 0** · E2E 캡처 16 `outputs/e2e/` | `ls outputs/` · 각 보고서 §1 |
+| 결정 | D-524 앱 DB 역할(가설 · W4) · D-525 Docker 데몬(차단) · D-526 HOME-030 개인 추가 알림(차단 · 정본 모순) · 개발 가설 D-601~607 · D-701~704 · D-801 · Ruling 21~25 반영 | `decisions.md` |
+| pytest | **249 passed · 0 failed** (arch 8 · dev1 8 · dev2 7 · dev3 3 · qa1 3 · qa2 2 · qa3 3 = 35 파일) | `uv run pytest -q` |
+| 시드 멱등 · 백업 | 시드 재실행 행 수 diff 0(테이블 46 · 행 305) · 백업 → 임시 DB 복구 테이블 48 전부 · 행 36,316 일치 | `make gate-full` G-21 · G-23 |
+| 게이트 판정표 | **PASS 13 · FAIL 9 · 미검증 1 · BLOCKED 1** / 24 — W1 범위(G-01 · 04~10 · 19~23) 전부 PASS. FAIL 9 = G-02 · 03(W2~W4 몫) · G-12~18(W2~W4) · 미검증 G-11 1종(W2) · BLOCKED G-24(D-525). gate-full 종료코드 10 | `make gate-full` |
+| 커밋 | `W1 핵심 흐름 끝: QA 3 보고서 · 결함 11 중 10 해소(1 = D-524 W4) · gate-full PASS 13` (이 커밋) | `git log --oneline -1` |
+
+`make gate-full` 출력 (2026-10-21 23:42):
+
+```
+빌드 전제  PASS  pytest passed 249 · failed 0 (rc=0) · /health 200
+
+G-01  정본(ia.json + overrides) ↔ nav.py           PASS  검사 10 전부 PASS
+G-02  기능 목록 ↔ 라우트 ↔ 테스트 표식 · 고아 0                FAIL  [check_trace FAIL] 라우트 없는 계약 27 · 이어진 기능 109/136 / 표식 없는 기능 27 · 표식 있는 기능 109/136 · 테스트 파일 35 / [check_screens PASS] 검사 4 전부 PASS
+G-03  화면 응답 — 67 + 공통 200 · placeholder 0 · 403  FAIL  [check_routes FAIL] placeholder 18 (개발1 2 · 개발3 16) / [check_screens PASS] 검사 3 전부 PASS
+G-04  스키마 계약 ↔ 실제 DB                             PASS  검사 10 전부 PASS
+G-05  쓰기 경계                                      PASS  검사 5 전부 PASS
+G-06  E2E 흐름 1건                                  PASS  검사 3 전부 PASS
+G-07  역추적                                        PASS  검사 5 전부 PASS
+G-08  정방향 추적                                     PASS  검사 3 전부 PASS
+G-09  차단 규칙                                      PASS  검사 7 전부 PASS
+G-10  가용 재계산                                     PASS  검사 9 전부 PASS
+G-11  알림 9종                                      미검증  검사 12 · 통과 못한 1 — erp_upload_error: W2 — COL-010 ERP 업로드가 아직 없어 발생시킬 수 없다
+G-12  회차 교체                                      FAIL  W2 — 화면 · 기능이 아직 없다
+G-13  오류 행 · 미매핑                                 FAIL  W2 — 화면 · 기능이 아직 없다
+G-14  출하 대비 수금                                   FAIL  W2 — 화면 · 기능이 아직 없다
+G-15  대시보드 8 수치                                  FAIL  W3 — 화면 · 기능이 아직 없다
+G-16  데이터 질의 검증                                  FAIL  W3/W4 — RPT-130 데이터 질의 미구현
+G-17  키 없음                                       FAIL  W3/W4 — AI 호출(ai.py · sys_ai_call_log) 미구현
+G-18  SSO 토큰                                     FAIL  W3/W4 — DOC-010 SSO 미구현
+G-19  권한 403 전수                                  PASS  [check_security PASS] 검사 6 전부 PASS / [check_screens PASS] 검사 8 전부 PASS
+G-20  세션 상태                                      PASS  검사 9 전부 PASS
+G-21  비밀 · 시드 멱등                                 PASS  비밀 스캔 파일 206 · 비밀 값 0 / 시드 (예시) PASS / 시드 멱등 PASS 행 수 diff 0 (테이블 46 · 행 305)
+G-22  변경 감사 로그                                   PASS  검사 5 전부 PASS
+G-23  백업 · 복구                                    PASS  테이블 48개 전부 복구 · 테이블별 행 수 일치 (행 36,316)
+G-24  Docker · health                            BLOCKED  docker compose config 성립 · 환경변수 4 전달 — 컨테이너 기동 · /health 200 은 아직 재지 않음 — 차단 D-525
+
+PASS 13 · FAIL 9 · 미작성 0 · 미검증 1 · WARN 0 · BLOCKED 1 / 전체 24 · 통과 못한 게이트 10 → 종료코드 10
+```
+
+알아둘 것: 개발 · QA 에이전트를 같은 DB 에서 동시에 돌리면 조회 diff · 유니크 충돌로 검사기가 일시 FAIL 할 수 있다 — 종료 판정(`make gate-full`)은 전원이 멈춘 뒤 혼자 돌린다. `make gate` 는 앱을 띄우지 않은 상태에서도 스스로 띄워 잰다.
 
 ## 2026-10-21 Phase 0 실측 (Task 9 — Phase 0 끝)
 

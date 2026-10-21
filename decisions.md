@@ -184,6 +184,11 @@
 
 ---
 
+## D-524 앱 DB 역할은 superuser 가 아니다 · 상태: 가설
+- QA3 DEF-QA3-003: 로컬 · Docker(`POSTGRES_USER`) 모두 앱이 superuser 로 붙어 불변 이력 트리거(`stock_adjust` · `shipment_adjust`)를 `session_replication_role` 로 우회할 수 있고, 개발2 · 개발3 테스트 정리가 그 우회에 기댄다.
+- 가설: 운영의 앱 역할은 **테이블 소유자도 superuser 도 아닌** 별도 역할(`lcomfine_app` · 업무 테이블 SELECT/INSERT/UPDATE/DELETE · 불변 이력은 INSERT 만). 스키마 적용 · 시드 · 백업은 소유자 역할. 테스트 정리는 소유자 역할 또는 테스트 전용 DB 로 — W4(운영 · Docker G-24) 에서 `docker_init.py` · `compose` · 테스트 픽스처를 함께 바꾼다. W1~W3 은 로컬 개발 역할 그대로 둔다.
+- 사람 확인: 운영 DB 역할 이름 · 비밀번호 보관 위치(`.env` 만).
+
 ## 사람이 정할 것 (`차단` · 스펙 §9)
 
 ## D-516 ERP 수금현황 엑셀의 열 구성 · 상태: 차단
@@ -208,6 +213,15 @@
 - 그동안: 병목 칸은 `미확정 (D-520)` 이고 단계 소요일만 보인다. 배치는 수동 실행(`uv run python -m lcomfine.jobs due-check`)만 하고 스케줄을 걸지 않는다.
 
 ---
+
+## D-525 G-24 실기동 — Docker 데몬이 꺼져 있어 잴 수 없다 · 상태: 차단
+- 2026-10-21 실측: `docker info` → `failed to connect to the docker API at unix:///Users/gerardo92/.docker/run/docker.sock`. `docker compose config -q` 는 rc 0, Dockerfile COPY 원본 결함(DEF-QA3-001)은 고쳤다(정적 PASS).
+- 사람이 할 것: Docker Desktop 을 켠 뒤 `docker compose up -d --build` → `curl -s localhost:8020/health`(로컬 앱이 8020 을 쓰고 있으면 먼저 내리거나 `LCOMFINE_HOST_PORT` 를 바꾼다). 200 이 나오면 `progress.md` G-24 를 실측으로 바꾼다. 그때까지 G-24 는 `미검증`(FAIL 로 센다).
+
+## D-526 HOME-030 「개인 추가 알림」이 무엇인가 · 상태: 차단
+- 정본 HOME-030 logic: 「부서 기본 알림은 끌 수 없고, 개인 추가 알림만 켜고 끈다」. 그런데 알림은 부서 단위(D-511 · 9종 · 수신 부서 고정)이고 Ruling 24 는 다른 부서 이벤트 구독을 범위 밖으로 정했다. 그러면 켜고 끌 「개인 추가 알림」이 남지 않는다 — 정본 문장과 D-511 이 서로 맞지 않는다(정본 결함 기록 · 고치지 않는다).
+- 지금(W1): HOME-030 은 자기 부서가 받는 이벤트를 「부서 기본 · 끌 수 없음」으로 보여 주기만 하고, 다른 부서 이벤트 · 부서 기본 끄기 · 메일 · 메신저(D-518)는 저장하지 않는다(422 · 501). 화면에 `미확정 (D-526)` 을 적는다.
+- 사람이 정할 것: ① 개인 추가 알림 = 자기 부서 수신 이벤트 중 **나에게만** 끄기(개인 뮤트) 인가 ② 다른 부서 이벤트를 개인이 더 받는 것인가 ③ 메일 · 메신저 수단 선택(D-518)만을 뜻하는가. 정해지면 F-HOME-031 계약 한 행과 `notify.unread` 의 필터만 바뀐다.
 
 ## 개발 · QA 결정 (웨이브마다 이 아래에 덧붙인다)
 

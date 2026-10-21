@@ -3,8 +3,9 @@
 {% block body %}
 <section class="panel">
   <h1>{{ screen.name }} <small class="muted">{{ user.name }} · {{ user.role_name }}</small></h1>
-  <p class="muted">받을 알림 종류 · 부서 기본 알림은 끌 수 없고, 개인 추가 알림만 켜고 끈다 · 받는 방법은 MES 안(알림함)만 —
-    메일·메신저 연동은 확인 필요 {{ ui.undecided("D-518") }}.</p>
+  <p class="muted">받을 알림 종류 · 자기 부서가 수신하는 이벤트만 보인다 — 부서 기본 알림은 끌 수 없고, 다른 부서로 가는 알림의 구독은
+    범위 밖이다 (D-511) · 받는 방법은 MES 안(알림함)만 — 메일·메신저 연동은 확인 필요 {{ ui.undecided("D-518") }}.</p>
+  <p class="muted">개인 추가 알림의 범위는 {{ ui.undecided("D-526") }} — 정본 문장이 서로 달라 사람이 정한다(decisions.md D-526).</p>
 </section>
 <section class="panel">
   <form method="post" action="/home/notification-settings">
@@ -14,14 +15,14 @@
       {% for e in events %}
       <tr>
         <td>{{ e.name }} <code>{{ e.key }}</code><input type="hidden" name="events" value="{{ e.key }}"></td>
-        <td>{% if e.default %}<span class="chip chip--ok">부서 기본</span>{% else %}<span class="chip chip--muted">개인 추가</span>{% endif %}</td>
-        <td>{% if e.default %}
+        <td><span class="chip chip--ok">부서 기본</span></td>
+        <td>
           <input type="hidden" name="enabled" value="{{ e.key }}">
           <input type="checkbox" checked disabled aria-label="{{ e.name }} — 부서 기본 알림은 끌 수 없다">
-        {% else %}
-          <input type="checkbox" name="enabled" value="{{ e.key }}"{% if e.enabled %} checked{% endif %} aria-label="{{ e.name }}">
-        {% endif %}</td>
+        </td>
       </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">이 부서({{ user.role_name }})가 수신하는 알림이 없다 (D-511).</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
@@ -31,10 +32,9 @@
       <label class="field"><span>메일 — {{ mail_undecided }}</span><input type="checkbox" name="mail" disabled></label>
       <label class="field"><span>메신저 — {{ mail_undecided }}</span><input type="checkbox" name="messenger" disabled></label>
     </fieldset>
-    {% if fn_allowed.get("F-HOME-031") %}
+    {% if fn_allowed.get("F-HOME-031") and events %}
     <div class="actions"><button type="submit" class="btn btn-primary">저장</button></div>
     {% endif %}
   </form>
-  <p class="muted">개인 추가 알림은 저장된다. 다른 부서로 가는 알림을 알림함에 함께 보이는 일은 아직 알림 모듈이 하지 않는다 (progress-dev1 §3).</p>
 </section>
 {% endblock %}

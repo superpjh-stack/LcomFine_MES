@@ -58,7 +58,7 @@ def _render(request: Request, tpl: str, ctx: dict, screen_id: str, error: HTTPEx
 
 @router.get(nav.path_of("PRP-010"), response_class=HTMLResponse)
 def utilization(request: Request, year: str | None = None, month: str | None = None,
-                user: rbac.User = rbac.require_fn("F-PRP-011")) -> HTMLResponse:
+                user: rbac.User = rbac.require_screen("PRP-010")) -> HTMLResponse:
     """F-PRP-011 월별 가동률 — 설비별 가동 · 정지 분과 가동률(D-801). 일보가 없는 설비는 `미수집`."""
     today = date.today()
     form = {"year": year or str(today.year), "month": month or str(today.month)}
@@ -78,7 +78,7 @@ def utilization(request: Request, year: str | None = None, month: str | None = N
 
 @router.get(nav.path_of("PRP-020"), response_class=HTMLResponse)
 def machines(request: Request, date_from: str | None = None, date_to: str | None = None,
-             user: rbac.User = rbac.require_fn("F-PRP-021")) -> HTMLResponse:
+             user: rbac.User = rbac.require_screen("PRP-020")) -> HTMLResponse:
     """F-PRP-021 기계별통계 — 설비별 생산 · 양품 · 로스 수량. 로스율은 `미확정 (D-519)` 와 원 수량을 함께 보인다."""
     form = {"date_from": date_from or "", "date_to": date_to or ""}
     ctx: dict = {"form": form, "rows": [], "notice": None, "series": [], "loss_decision": stats.LOSS_RATE_DECISION}
@@ -97,7 +97,7 @@ def machines(request: Request, date_from: str | None = None, date_to: str | None
 
 @router.get(nav.path_of("PRP-030"), response_class=HTMLResponse)
 def completion(request: Request, date_from: str | None = None, date_to: str | None = None,
-               customer: str | None = None, user: rbac.User = rbac.require_fn("F-PRP-031")) -> HTMLResponse:
+               customer: str | None = None, user: rbac.User = rbac.require_screen("PRP-030")) -> HTMLResponse:
     """F-PRP-031 생산완료집계 — 제품 입고(취소 제외) 기준 거래처 · 제품별 완료 수량 · 월별 추이."""
     form = {"date_from": date_from or "", "date_to": date_to or "", "customer": customer or ""}
     ctx: dict = {"form": form, "data": None, "notice": None, "series": [],

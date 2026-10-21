@@ -78,7 +78,7 @@ def _sum(rows: list[dict], *keys: str) -> dict:
 
 # ── INS-010 검사일보 ──────────────────────────────────────────────────────
 @router.get(nav.path_of("INS-010"), response_class=HTMLResponse)
-def daily(request: Request, user: rbac.User = rbac.require_fn("F-INS-013")):
+def daily(request: Request, user: rbac.User = rbac.require_screen("INS-010")):
     f = {k: qs(request, k) for k in ("date", "wo")}
     return templating.render(request, "ins/daily.html", {
         "rows": _rows(f), "f": f, "work_orders": open_work_orders(), "defect_types": [d for d in defect_types() if d["use_yn"] == "Y"],
@@ -150,7 +150,7 @@ def update_daily(request: Request, id: str, inspected_qty: str = Form(""), defec
 
 # ── INS-020 검사일보출력 ──────────────────────────────────────────────────
 @router.get(nav.path_of("INS-020"), response_class=HTMLResponse)
-def daily_print(request: Request, user: rbac.User = rbac.require_fn("F-INS-021")):
+def daily_print(request: Request, user: rbac.User = rbac.require_screen("INS-020")):
     f = {"date": qs(request, "date") or date.today().isoformat()}
     rows = _rows(f)
     return templating.render(request, "ins/daily_print.html", {
@@ -160,7 +160,7 @@ def daily_print(request: Request, user: rbac.User = rbac.require_fn("F-INS-021")
 
 # ── INS-030 검사일보현황 ──────────────────────────────────────────────────
 @router.get(nav.path_of("INS-030"), response_class=HTMLResponse)
-def status(request: Request, user: rbac.User = rbac.require_fn("F-INS-031")):
+def status(request: Request, user: rbac.User = rbac.require_screen("INS-030")):
     f = {k: qs(request, k) for k in ("from", "to", "item")}
     rows = _rows(f)
     return templating.render(request, "ins/status.html", {
@@ -170,7 +170,7 @@ def status(request: Request, user: rbac.User = rbac.require_fn("F-INS-031")):
 
 # ── INS-040 생산지시서 대비 검사 로스율 ──────────────────────────────────────
 @router.get(nav.path_of("INS-040"), response_class=HTMLResponse)
-def loss_rate(request: Request, user: rbac.User = rbac.require_fn("F-INS-041")):
+def loss_rate(request: Request, user: rbac.User = rbac.require_screen("INS-040")):
     f = {k: qs(request, k) for k in ("from", "to", "wo")}
     d_from, d_to = date_in(f["from"], "시작일"), date_in(f["to"], "종료일")
     sql = """select w.id, w.work_order_no, w.qty as order_qty, w.status, i.item_code, i.item_name,

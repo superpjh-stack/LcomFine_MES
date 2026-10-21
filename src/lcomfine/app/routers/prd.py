@@ -80,7 +80,7 @@ def _sum(rows: list[dict], *keys: str) -> dict:
 
 # ── PRD-010 생산일보 ──────────────────────────────────────────────────────
 @router.get(nav.path_of("PRD-010"), response_class=HTMLResponse)
-def daily(request: Request, user: rbac.User = rbac.require_fn("F-PRD-013")):
+def daily(request: Request, user: rbac.User = rbac.require_screen("PRD-010")):
     f = {k: qs(request, k) for k in ("date", "equipment", "wo")}
     rows = _daily_rows(f)
     return templating.render(request, "prd/daily.html", {
@@ -141,7 +141,7 @@ def update_daily(request: Request, id: str, produced_qty: str = Form(""), good_q
 
 # ── PRD-020 생산일보출력 ──────────────────────────────────────────────────
 @router.get(nav.path_of("PRD-020"), response_class=HTMLResponse)
-def daily_print(request: Request, user: rbac.User = rbac.require_fn("F-PRD-021")):
+def daily_print(request: Request, user: rbac.User = rbac.require_screen("PRD-020")):
     f = {"date": qs(request, "date") or date.today().isoformat(), "equipment": qs(request, "equipment")}
     rows = _daily_rows(f)
     return templating.render(request, "prd/daily_print.html", {
@@ -151,7 +151,7 @@ def daily_print(request: Request, user: rbac.User = rbac.require_fn("F-PRD-021")
 
 # ── PRD-030 생산일보현황 ──────────────────────────────────────────────────
 @router.get(nav.path_of("PRD-030"), response_class=HTMLResponse)
-def status(request: Request, user: rbac.User = rbac.require_fn("F-PRD-031")):
+def status(request: Request, user: rbac.User = rbac.require_screen("PRD-030")):
     f = {k: qs(request, k) for k in ("from", "to", "equipment", "item")}
     rows = _daily_rows(f)
     return templating.render(request, "prd/status.html", {
@@ -161,7 +161,7 @@ def status(request: Request, user: rbac.User = rbac.require_fn("F-PRD-031")):
 
 # ── PRD-040 생산지시서 대비 생산 로스율 ──────────────────────────────────────
 @router.get(nav.path_of("PRD-040"), response_class=HTMLResponse)
-def loss_rate(request: Request, user: rbac.User = rbac.require_fn("F-PRD-041")):
+def loss_rate(request: Request, user: rbac.User = rbac.require_screen("PRD-040")):
     f = {k: qs(request, k) for k in ("from", "to", "wo")}
     d_from, d_to = date_in(f["from"], "시작일"), date_in(f["to"], "종료일")
     sql = """select w.id, w.work_order_no, w.qty as order_qty, w.status, i.item_code, i.item_name,

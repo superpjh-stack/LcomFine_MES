@@ -24,10 +24,16 @@ QTY_MAX = Decimal("99999999999.999")      # numeric(14,3)
 
 
 # ── 폼 헬퍼 (개발1 공용) ────────────────────────────────────────────────
-def s(v: str | None) -> str | None:
-    """앞뒤 공백을 걷어 낸 글자. 비면 None."""
+NUL_REASON = "글자에 NUL(0x00)을 넣을 수 없습니다"
+
+
+def s(v: str | None, label: str) -> str | None:
+    """앞뒤 공백을 걷어 낸 글자. 비면 None. NUL(0x00) 이 들어 있으면 422 — 어느 항목인지 `label` 로 짚는다
+    (api-contract §3: DataError 핸들러의 「입력」 한 줄은 마지막 방어선 · DEF-QA3-002)."""
     if v is None:
         return None
+    if "\x00" in v:
+        raise bad(label, NUL_REASON)
     v = v.strip()
     return v or None
 
@@ -37,8 +43,8 @@ def bad(label: str, reason: str, message: str | None = None):
 
 
 def need(v: str | None, label: str) -> str:
-    """필수 글자 — 비면 422 「<label>: 필수 항목입니다」."""
-    out = s(v)
+    """필수 글자 — 비면 422 「<label>: 필수 항목입니다」 · NUL 은 s() 가 422."""
+    out = s(v, label)
     if out is None:
         raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
     return out
@@ -54,7 +60,7 @@ def pk(v: str | int | None) -> int:
 
 def ref_id(v: str | None, label: str, *, required: bool = True) -> int | None:
     """폼으로 고른 행의 키 — 사용자가 입력한 값이므로 틀리면 422 (경로의 키와 다르다)."""
-    t = s(v)
+    t = s(v, label)
     if t is None:
         if required:
             raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
@@ -65,7 +71,7 @@ def ref_id(v: str | None, label: str, *, required: bool = True) -> int | None:
 
 
 def qty(v: str | None, label: str, *, required: bool = True, positive: bool = True) -> Decimal | None:
-    t = s(v)
+    t = s(v, label)
     if t is None:
         if required:
             raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
@@ -84,7 +90,7 @@ def qty(v: str | None, label: str, *, required: bool = True, positive: bool = Tr
 
 
 def integer(v: str | None, label: str, *, required: bool = False, minimum: int | None = None) -> int | None:
-    t = s(v)
+    t = s(v, label)
     if t is None:
         if required:
             raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
@@ -98,7 +104,7 @@ def integer(v: str | None, label: str, *, required: bool = False, minimum: int |
 
 
 def day(v: str | None, label: str, *, required: bool = True) -> date | None:
-    t = s(v)
+    t = s(v, label)
     if t is None:
         if required:
             raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
@@ -110,14 +116,14 @@ def day(v: str | None, label: str, *, required: bool = True) -> date | None:
 
 
 def yn(v: str | None, label: str = "사용 여부") -> str:
-    t = s(v) or "Y"
+    t = s(v, label) or "Y"
     if t not in ("Y", "N"):
         raise bad(label, "Y 또는 N 이어야 합니다")
     return t
 
 
 def choice(v: str | None, label: str, allowed: tuple[str, ...], *, required: bool = True) -> str | None:
-    t = s(v)
+    t = s(v, label)
     if t is None:
         if required:
             raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
@@ -130,6 +136,8 @@ def choice(v: str | None, label: str, allowed: tuple[str, ...], *, required: boo
 def kv_text(v: str | None, label: str) -> dict[str, str]:
     """`항목=값` 한 줄에 하나 → dict. 양식을 받은 적이 없어 항목 이름을 정하지 않는다(사람이 적는 그대로)."""
     out: dict[str, str] = {}
+    if v and "\x00" in v:
+        raise bad(label, NUL_REASON)
     for n, raw in enumerate((v or "").splitlines(), 1):
         line = raw.strip()
         if not line:
@@ -218,8 +226,8 @@ def edit_row(table: str, edit: str | None) -> dict | None:
     return row
 
 
-def like(v: str | None) -> str | None:
-    t = s(v)
+def like(v: str | None, label: str = "검색어") -> str | None:
+    t = s(v, label)
     return None if t is None else "%" + t.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
 
 
@@ -238,7 +246,7 @@ def items(request: Request, q: str | None = None, item_type: str | None = None, 
               and (%(t)s::text is null or item_type = %(t)s)
               and (%(u)s::text is null or use_yn = %(u)s)
             order by item_code limit 1000""",
-        {"q": like(q), "t": s(item_type), "u": s(use)})
+        {"q": like(q), "t": s(item_type, "구분"), "u": s(use, "사용 여부")})
     return templating.render(request, "bas/items.html",
                              {"rows": rows, "edit": edit_row("item", edit), "types": ITEM_TYPES,
                               "form": {"q": q or "", "item_type": item_type or "", "use": use or ""}},
@@ -258,7 +266,7 @@ def item_create(request: Request, item_code: str | None = Form(None), item_name:
             raise bad("품목 코드", code, "이미 있는 품목 코드입니다")
         cur.execute("""insert into item (item_code, item_name, item_type, spec, unit, note, created_by)
                        values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-                    (code, name, typ, s(spec), s(unit), s(note), user.login_id))
+                    (code, name, typ, s(spec, "규격"), s(unit, "단위"), s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     resp = http.saved(request, "품목을 등록했습니다", back=nav.path_of("BAS-010"), data={"id": new_id})
     audit.log_change(request, user, "F-BAS-011", f"item:{code}", "품목 등록")
@@ -276,11 +284,11 @@ def item_update(request: Request, id: str, item_code: str | None = Form(None), i
     use = yn(use_yn)
     with conn.tx() as cur:
         row = exists_or_404(cur, "item", iid, "id, item_code")
-        if s(item_code) is not None and s(item_code) != row["item_code"]:
+        if s(item_code, "품목 코드") is not None and s(item_code, "품목 코드") != row["item_code"]:
             raise bad("품목 코드", "품목 코드는 바꾸지 않습니다", "품목 코드는 바꿀 수 없습니다")
         cur.execute("""update item set item_name = %s, item_type = %s, spec = %s, unit = %s, note = %s, use_yn = %s,
                               updated_at = now(), updated_by = %s where id = %s""",
-                    (name, typ, s(spec), s(unit), s(note), use, user.login_id, iid))
+                    (name, typ, s(spec, "규격"), s(unit, "단위"), s(note, "비고"), use, user.login_id, iid))
     resp = http.saved(request, "품목을 수정했습니다", back=nav.path_of("BAS-010"), data={"id": iid})
     audit.log_change(request, user, "F-BAS-012", f"item:{row['item_code']}", f"품목 수정 · 사용 {use}")
     return resp
@@ -308,7 +316,7 @@ def customers(request: Request, q: str | None = None, use: str | None = None, ed
              from customer
             where (%(q)s::text is null or customer_code ilike %(q)s or customer_name ilike %(q)s)
               and (%(u)s::text is null or use_yn = %(u)s)
-            order by customer_code limit 1000""", {"q": like(q), "u": s(use)})
+            order by customer_code limit 1000""", {"q": like(q), "u": s(use, "사용 여부")})
     return templating.render(request, "bas/customers.html",
                              {"rows": rows, "edit": edit_row("customer", edit),
                               "form": {"q": q or "", "use": use or ""}}, screen_id="BAS-020")
@@ -327,7 +335,7 @@ def customer_create(request: Request, customer_code: str | None = Form(None), cu
             raise bad("거래처 코드", code, "이미 있는 거래처 코드입니다")
         cur.execute("""insert into customer (customer_code, customer_name, contact_name, phone, address, note, created_by)
                        values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-                    (code, name, s(contact_name), s(phone), s(address), s(note), user.login_id))
+                    (code, name, s(contact_name, "담당자"), s(phone, "연락처"), s(address, "주소"), s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     resp = http.saved(request, "거래처를 등록했습니다", back=nav.path_of("BAS-020"), data={"id": new_id})
     audit.log_change(request, user, "F-BAS-021", f"customer:{code}", "거래처 등록")
@@ -344,11 +352,11 @@ def customer_update(request: Request, id: str, customer_code: str | None = Form(
     use = yn(use_yn)
     with conn.tx() as cur:
         row = exists_or_404(cur, "customer", cid, "id, customer_code")
-        if s(customer_code) is not None and s(customer_code) != row["customer_code"]:
+        if s(customer_code, "거래처 코드") is not None and s(customer_code, "거래처 코드") != row["customer_code"]:
             raise bad("거래처 코드", "거래처 코드는 바꾸지 않습니다", "거래처 코드는 바꿀 수 없습니다")
         cur.execute("""update customer set customer_name = %s, contact_name = %s, phone = %s, address = %s, note = %s,
                               use_yn = %s, updated_at = now(), updated_by = %s where id = %s""",
-                    (name, s(contact_name), s(phone), s(address), s(note), use, user.login_id, cid))
+                    (name, s(contact_name, "담당자"), s(phone, "연락처"), s(address, "주소"), s(note, "비고"), use, user.login_id, cid))
     resp = http.saved(request, "거래처를 수정했습니다", back=nav.path_of("BAS-020"), data={"id": cid})
     audit.log_change(request, user, "F-BAS-022", f"customer:{row['customer_code']}", f"거래처 수정 · 사용 {use}")
     return resp
@@ -401,7 +409,7 @@ def warehouse_create(request: Request, target: str | None = Form(None), warehous
             if cur.fetchone():
                 raise bad("창고 코드", code, "이미 있는 창고 코드입니다")
             cur.execute("insert into warehouse (warehouse_code, warehouse_name, note, created_by) "
-                        "values (%s, %s, %s, %s) returning id", (code, name, s(note), user.login_id))
+                        "values (%s, %s, %s, %s) returning id", (code, name, s(note, "비고"), user.login_id))
             target_txt, msg = f"warehouse:{code}", "창고를 등록했습니다"
         else:
             wid = ref_id(warehouse_id, "창고")
@@ -438,15 +446,15 @@ def warehouse_update(request: Request, id: str, target: str | None = Form(None),
         if tgt == "warehouse":
             row = exists_or_404(cur, "warehouse", rid, "id, warehouse_code")
             name = need(warehouse_name, "창고명")
-            if s(warehouse_code) is not None and s(warehouse_code) != row["warehouse_code"]:
+            if s(warehouse_code, "창고 코드") is not None and s(warehouse_code, "창고 코드") != row["warehouse_code"]:
                 raise bad("창고 코드", "코드는 바꾸지 않습니다", "창고 코드는 바꿀 수 없습니다")
             cur.execute("update warehouse set warehouse_name = %s, note = %s, use_yn = %s, updated_at = now(), "
-                        "updated_by = %s where id = %s", (name, s(note), use, user.login_id, rid))
+                        "updated_by = %s where id = %s", (name, s(note, "비고"), use, user.login_id, rid))
             target_txt, msg = f"warehouse:{row['warehouse_code']}", "창고를 수정했습니다"
         else:
             row = exists_or_404(cur, "location", rid, "id, location_code")
             name = need(location_name, "위치명")
-            if s(location_code) is not None and s(location_code) != row["location_code"]:
+            if s(location_code, "위치 코드") is not None and s(location_code, "위치 코드") != row["location_code"]:
                 raise bad("위치 코드", "코드는 바꾸지 않습니다", "위치 코드는 바꿀 수 없습니다")
             cur.execute("update location set location_name = %s, use_yn = %s, updated_at = now(), updated_by = %s "
                         "where id = %s", (name, use, user.login_id, rid))

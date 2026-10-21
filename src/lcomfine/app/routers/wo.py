@@ -124,7 +124,7 @@ def request_create(request: Request, customer_id: str | None = Form(None), item_
         cur.execute("""insert into production_request (request_no, request_date, customer_id, item_id, qty, due_date, note,
                                                        created_by)
                        values (%s, coalesce(%s, current_date), %s, %s, %s, %s, %s, %s) returning id""",
-                    (no, rdate, cid, iid, q_, due, s(note), user.login_id))
+                    (no, rdate, cid, iid, q_, due, s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
         notify.emit(cur, "request_created", link=request_link(no), dedupe_key=f"request_created:{no}",
                     text=f"생산의뢰 등록 {no} · {cu['customer_code']} · {it['item_code']} · 납기 {due}")
@@ -147,7 +147,7 @@ def request_update(request: Request, id: str, request_no: str | None = Form(None
     st = choice(status, "상태", REQUEST_STATUSES)
     with conn.tx() as cur:
         row = exists_or_404(cur, "production_request", rid, "id, request_no, customer_id, item_id, status")
-        if s(request_no) is not None and s(request_no) != row["request_no"]:
+        if s(request_no, "의뢰번호") is not None and s(request_no, "의뢰번호") != row["request_no"]:
             raise bad("의뢰번호", "의뢰번호는 바꾸지 않습니다", "의뢰번호는 바꿀 수 없습니다")
         cur.execute("select count(*) as n from work_order where request_id = %s and status <> '취소'", (rid,))
         active = cur.fetchone()["n"]
@@ -161,7 +161,7 @@ def request_update(request: Request, id: str, request_no: str | None = Form(None
         item_choice(cur, iid, "제품", allow_inactive_id=row["item_id"])
         cur.execute("""update production_request set customer_id = %s, item_id = %s, qty = %s, due_date = %s, note = %s,
                               status = %s, updated_at = now(), updated_by = %s where id = %s""",
-                    (cid, iid, q_, due, s(note), st, user.login_id, rid))
+                    (cid, iid, q_, due, s(note, "비고"), st, user.login_id, rid))
     resp = http.saved(request, f"생산의뢰를 수정했습니다 ({row['request_no']})", back=nav.path_of("WO-010"),
                       data={"id": rid, "status": st})
     audit.log_change(request, user, "F-WO-012", f"production_request:{row['request_no']}",
@@ -200,13 +200,13 @@ def orders(request: Request, request_no: str | None = None, q: str | None = None
             order by w.id desc limit 1000""",
         {"q": like(q), "st": choice(status, "상태", ORDER_STATUSES, required=False)})
     picked = None
-    if s(request_no):
+    if s(request_no, "의뢰번호"):
         picked = conn.q1("""select r.id, r.request_no, r.qty, r.due_date, r.status, r.item_id, i.item_code, i.item_name,
                                    c.customer_name
                               from production_request r join item i on i.id = r.item_id
-                              join customer c on c.id = r.customer_id where r.request_no = %s""", (s(request_no),))
+                              join customer c on c.id = r.customer_id where r.request_no = %s""", (s(request_no, "의뢰번호"),))
         if picked is None:
-            raise bad("의뢰번호", s(request_no), "없는 의뢰번호입니다")
+            raise bad("의뢰번호", s(request_no, "의뢰번호"), "없는 의뢰번호입니다")
     ed = edit_row("work_order", edit)
     specs, arts = _load_for_item((ed or picked or {}).get("item_id"))
     open_requests = conn.q(
@@ -244,31 +244,31 @@ def order_create(request: Request, request_id: str | None = Form(None), request_
                  qty_: str | None = Form(None, alias="qty"), equipment_code: str | None = Form(None),
                  planned_on: str | None = Form(None), note: str | None = Form(None),
                  user: rbac.User = rbac.require_fn("F-WO-021")):
-    if s(request_id) is None and s(request_no) is None:
+    if s(request_id, "생산의뢰") is None and s(request_no, "의뢰번호") is None:
         raise bad("생산의뢰", "필수 항목입니다", "필수 항목을 입력해 주세요 — 생산의뢰")
     spec = ref_id(spec_sheet_id, "제조사양기준서", required=False)
     art = ref_id(artwork_id, "시안", required=False)
     q_ = qty(qty_, "지시 수량")
     planned = day(planned_on, "생산 예정일", required=False)
     with conn.tx() as cur:
-        if s(request_id) is not None:
+        if s(request_id, "생산의뢰") is not None:
             cur.execute("select id, request_no, item_id, status from production_request where id = %s for update",
                         (ref_id(request_id, "생산의뢰"),))
         else:
             cur.execute("select id, request_no, item_id, status from production_request where request_no = %s for update",
-                        (s(request_no),))
+                        (s(request_no, "의뢰번호"),))
         rq = cur.fetchone()
         if rq is None:
             raise http.not_found("없는 생산의뢰입니다")
         if rq["status"] not in REQUEST_ORDERABLE:
             raise bad("생산의뢰", f"{rq['status']} 의뢰로는 지시서를 만들 수 없습니다 ({rq['request_no']})")
         _spec_art(cur, rq["item_id"], spec, art)
-        eq = _equipment(cur, s(equipment_code))
+        eq = _equipment(cur, s(equipment_code, "설비"))
         no = numbering.next(numbering.WO, cur)
         cur.execute("""insert into work_order (work_order_no, request_id, item_id, spec_sheet_id, artwork_id, qty,
                                                equipment_code, planned_on, note, created_by)
                        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
-                    (no, rq["id"], rq["item_id"], spec, art, q_, eq, planned, s(note), user.login_id))
+                    (no, rq["id"], rq["item_id"], spec, art, q_, eq, planned, s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
         cur.execute("""update production_request set status = '지시완료', updated_at = now(), updated_by = %s
                         where id = %s and status in ('확인대기', '확정')""", (user.login_id, rq["id"]))
@@ -296,17 +296,17 @@ def order_update(request: Request, id: str, work_order_no: str | None = Form(Non
     with conn.tx() as cur:
         row = exists_or_404(cur, "work_order", wid, "id, work_order_no, request_id, item_id, spec_sheet_id, artwork_id, "
                                                     "equipment_code, status")
-        if s(work_order_no) is not None and s(work_order_no) != row["work_order_no"]:
+        if s(work_order_no, "지시번호") is not None and s(work_order_no, "지시번호") != row["work_order_no"]:
             raise bad("지시번호", "지시번호는 바꾸지 않습니다", "지시번호는 바꿀 수 없습니다")
-        if s(request_no) is not None:
+        if s(request_no, "의뢰번호") is not None:
             cur.execute("select request_no from production_request where id = %s", (row["request_id"],))
-            if cur.fetchone()["request_no"] != s(request_no):
+            if cur.fetchone()["request_no"] != s(request_no, "의뢰번호"):
                 raise bad("의뢰번호", "의뢰번호는 바꾸지 않습니다", "지시의 의뢰번호는 바꿀 수 없습니다")
         _spec_art(cur, row["item_id"], spec, art, keep_spec=row["spec_sheet_id"], keep_art=row["artwork_id"])
-        eq = _equipment(cur, s(equipment_code), allow=row["equipment_code"])
+        eq = _equipment(cur, s(equipment_code, "설비"), allow=row["equipment_code"])
         cur.execute("""update work_order set spec_sheet_id = %s, artwork_id = %s, qty = %s, equipment_code = %s,
                               planned_on = %s, note = %s, status = %s, updated_at = now(), updated_by = %s
-                        where id = %s""", (spec, art, q_, eq, planned, s(note), st, user.login_id, wid))
+                        where id = %s""", (spec, art, q_, eq, planned, s(note, "비고"), st, user.login_id, wid))
     resp = http.saved(request, f"생산지시서를 수정했습니다 ({row['work_order_no']})", back=nav.path_of("WO-020"),
                       data={"id": wid, "status": st})
     audit.log_change(request, user, "F-WO-022", f"work_order:{row['work_order_no']}",

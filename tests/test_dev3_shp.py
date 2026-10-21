@@ -174,13 +174,56 @@ def test_update_order_moves_allocation(c, w):
     r = c["sh"].post(f"/shp/orders/{oid}", data={"stock_id": [str(b["stock_id"])], "qty": ["1"]})
     assert r.status_code == 200
     assert (w.stock(a["stock_id"])["allocated_qty"], w.stock(b["stock_id"])["allocated_qty"]) == (0, Decimal("1"))
-    # 가용 초과 · 누락 · 없는 ID · 숫자 아닌 ID · 권한
+    # 가용 초과 · 누락(LOT 만 있고 수량 없음 — 줄을 전부 비운 것은 취소다 · Ruling 21) · 없는 ID · 숫자 아닌 ID · 권한
     assert c["sh"].post(f"/shp/orders/{oid}", data={"stock_id": [str(b["stock_id"])], "qty": ["9"]}).status_code == 422
-    assert c["sh"].post(f"/shp/orders/{oid}", data={}).status_code == 422
+    assert c["sh"].post(f"/shp/orders/{oid}", data={"stock_id": [str(b["stock_id"])], "qty": [""]}).status_code == 422
+    assert c["sh"].post(f"/shp/orders/{oid}", data={"stock_id": [""], "qty": ["1"]}).status_code == 422
     assert c["sh"].post("/shp/orders/999999999999", data={"stock_id": [str(b["stock_id"])], "qty": ["1"]}).status_code == 404
     assert c["sh"].post("/shp/orders/abc", data={"stock_id": [str(b["stock_id"])], "qty": ["1"]}).status_code == 404
     assert c["pr"].post(f"/shp/orders/{oid}", data={"stock_id": [str(b["stock_id"])], "qty": ["1"]}).status_code == 403
     assert w.stock(b["stock_id"])["allocated_qty"] == Decimal("1")
+
+
+@pytest.mark.fn("F-SHP-012")
+def test_update_with_no_lines_cancels_order(c, w):
+    """Ruling 21 — LOT 줄을 전부 지우고 저장 = 지시 취소: status 취소 · shipment_line 0 · 할당 전부 해제 · 알림 없음 · 변경 로그 1."""
+    a, b = w.lot("10"), w.lot("8")
+    r = _order(c["sl"], w, [(a["stock_id"], "6"), (b["stock_id"], "3")])
+    oid, no = r.json()["id"], r.json()["shipment_no"]
+    assert (w.stock(a["stock_id"])["allocated_qty"], w.stock(b["stock_id"])["allocated_qty"]) == (Decimal("6"), Decimal("3"))
+    n_notes = conn.q1("select count(*) n from notification where dedupe_key like %s", (f"%:{no}",))["n"]
+    # 폼의 줄을 전부 비워서 저장(빈 select · 빈 수량)
+    r = c["sl"].post(f"/shp/orders/{oid}", data={"stock_id": ["", "", "", "", ""], "qty": ["", "", "", "", ""]})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "취소" and "취소했습니다" in r.json()["message"]
+    o = w.order(no)
+    assert o["status"] == "취소" and o["confirmed_at"] is None
+    assert conn.q1("select count(*) n from shipment_line where shipment_order_id = %s", (oid,))["n"] == 0
+    assert (w.stock(a["stock_id"])["allocated_qty"], w.stock(b["stock_id"])["allocated_qty"]) == (0, 0)
+    assert (w.stock(a["stock_id"])["qty"], w.stock(b["stock_id"])["qty"]) == (Decimal("10"), Decimal("8"))   # 현재고 불변
+    assert conn.q1("select count(*) n from notification where dedupe_key like %s", (f"%:{no}",))["n"] == n_notes   # 알림 없음
+    assert conn.q1("select count(*) n from sys_change_log where function_id = 'F-SHP-012' and target = %s and detail like '%%취소%%'",
+                   (f"shipment_order:{no}",))["n"] == 1
+    # 취소된 출하: 확정 422 · 다시 고치기 422 · 할당은 그대로 0
+    r = c["sh"].post(f"/shp/confirm/{oid}/confirm")
+    assert r.status_code == 422 and "취소" in r.json()["message"]
+    r = c["sl"].post(f"/shp/orders/{oid}", data={"stock_id": [str(a["stock_id"])], "qty": ["1"]})
+    assert r.status_code == 422 and "취소된 출하" in r.json()["message"]
+    assert w.stock(a["stock_id"])["allocated_qty"] == 0
+    # 취소 출하는 의뢰의 지시 수량에 세지 않는다 (stats.request_shipments)
+    from lcomfine.app import stats
+    assert w.request_id not in stats.request_shipments([w.request_id]) or \
+        stats.request_shipments([w.request_id])[w.request_id]["ordered_qty"] in (0, None)
+    # 화면: 취소 상태로 보이고, 수정 패널은 안내 문장이 있다
+    html = c["sl"].get(f"/shp/orders?edit={oid}").text
+    assert "취소된 출하는 고칠 수 없습니다" in html
+    # 확정된 출하는 줄을 비워도 취소되지 않는다(422)
+    lot = w.lot("10")
+    oid2 = _order(c["sl"], w, [(lot["stock_id"], "2")]).json()["id"]
+    assert c["sh"].post(f"/shp/confirm/{oid2}/confirm").status_code == 200
+    r = c["sl"].post(f"/shp/orders/{oid2}", data={"stock_id": [""], "qty": [""]})
+    assert r.status_code == 422 and "확정된 출하" in r.json()["message"]
+    assert conn.q1("select status from shipment_order where id = %s", (oid2,))["status"] == "확정"
 
 
 @pytest.mark.fn("F-SHP-012")

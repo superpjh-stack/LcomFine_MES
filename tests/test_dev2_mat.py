@@ -164,3 +164,43 @@ def test_history_marks_canceled_and_exports_csv(world, pr):
     body = r.content.decode("utf-8-sig")
     assert body.splitlines()[0].startswith("구분,일자,LOT") and a in body and "취소" in body
     assert pr.get("/mat/history", params={"from": "2026-13-40"}).status_code == 422
+
+
+@pytest.mark.fn("F-MAT-012")
+def test_receipt_update_empty_body_is_422(world, pr):
+    (lot,) = world.receive(pr, 10)
+    rid = conn.q1("select receipt_id from material_lot where lot_no = %s", (lot,))["receipt_id"]
+    before = conn.q1("select supplier_name, received_on, note, updated_at from material_receipt where id = %s", (rid,))
+    for body in ({}, {"supplier_name": "", "received_on": "", "note": "", "cancel": ""},
+                 {"lot_id": [""], "qty": [""], "supplier_lot_no": [""]}):
+        r = pr.post(f"/mat/receipts/{rid}", data=body)
+        assert r.status_code == 422, r.text
+        assert "고칠 항목이 없습니다" in r.json()["message"] and "공급사" in r.json()["message"]
+    assert conn.q1("select supplier_name, received_on, note, updated_at from material_receipt where id = %s", (rid,)) == before
+    assert pr.post(f"/mat/receipts/{rid}", data={"note": "비고만 (예시)"}).status_code == 200    # 한 칸이면 통과
+
+
+@pytest.mark.fn("F-MAT-022")
+def test_issue_update_empty_body_is_422(world, pr):
+    (lot,) = world.receive(pr, 50)
+    world.pass_incoming(pr, lot)
+    iid = world.issue(pr, lot, 20).json()["issue_id"]
+    for body in ({}, {"issued_on": "", "note": "", "cancel": ""}):
+        r = pr.post(f"/mat/issues/{iid}", data=body)
+        assert r.status_code == 422, r.text
+        assert "고칠 항목이 없습니다" in r.json()["message"] and "불출일" in r.json()["message"]
+    assert conn.q1("select canceled_at from material_issue where id = %s", (iid,))["canceled_at"] is None
+    assert int(world.stock("원자재", lot)[0]["qty"]) == 30                                          # 재고 그대로
+    assert pr.post(f"/mat/issues/{iid}", data={"issued_on": "2026-10-20"}).status_code == 200
+
+
+@pytest.mark.fn("F-MAT-032")
+def test_product_receipt_update_empty_body_is_422(world, pr):
+    out = world.product_receive(pr, 30)
+    prid = out["product_receipt_id"]
+    for body in ({}, {"qty": "", "received_on": "", "note": "", "cancel": ""}):
+        r = pr.post(f"/mat/product-receipts/{prid}", data=body)
+        assert r.status_code == 422, r.text
+        assert "고칠 항목이 없습니다" in r.json()["message"] and "수량" in r.json()["message"]
+    assert int(world.stock("제품", out["lot_no"])[0]["qty"]) == 30
+    assert pr.post(f"/mat/product-receipts/{prid}", data={"note": "비고 (예시)"}).status_code == 200

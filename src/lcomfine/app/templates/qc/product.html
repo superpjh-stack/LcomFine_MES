@@ -8,7 +8,9 @@
   <form class="search" method="get" role="search">
     <label class="field">제품 LOT<input name="lot" value="{{ f.lot }}"></label>
     <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    {% if f.status %}<input type="hidden" name="status" value="{{ f.status }}">{% endif %}
     <button class="btn btn-primary">조회</button>
+    {% if f.status %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-020') }}">재고 상태 {{ f.status }} 조건 풀기</a>{% endif %}
   </form>
 </section>
 {{ u.readonly_note(can_w) }}

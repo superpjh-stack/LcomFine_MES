@@ -3,7 +3,7 @@
 {% import "inv/_ui.html" as u %}
 {% block body %}
 <section class="panel">
-  {{ u.head(screen, "지시 수량 대비 검사 로스를 비율로 본다 — 산식은 정해지지 않았다. 원 수량(지시 · 검사 · 불량)을 함께 보인다") }}
+  {{ u.head(screen, "지시 수량 대비 검사 로스를 비율로 본다 — 산식은 미확정 (D-519). 비율을 지어내지 않고 원 수량(지시 · 검사 · 불량)을 함께 보인다") }}
   <form class="search" method="get" role="search">
     <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
     <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
@@ -15,7 +15,7 @@
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">
-    <thead><tr><th>작업지시</th><th>품목</th><th>상태</th><th class="num">일보 일수</th><th class="num">지시 수량</th><th class="num">검사</th><th class="num">불량</th><th>검사 로스율</th></tr></thead>
+    <thead><tr><th>작업지시</th><th>품목</th><th>상태</th><th class="num">일보 일수</th><th class="num">지시 수량</th><th class="num">검사</th><th class="num">불량</th><th>검사 로스율 <small class="muted">산식 미확정 (D-519)</small></th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.status }}</td><td class="num">{{ r.days }}</td>

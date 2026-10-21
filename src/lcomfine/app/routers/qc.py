@@ -23,6 +23,13 @@ router = APIRouter()
 
 RESULTS = ("합격", "불합격")
 STATUS_OF = {"합격": "가용", "불합격": "보류"}
+STOCK_STATUSES = ("검사대기", "가용", "보류")   # lot_stock_status_chk
+
+
+def _status_in(value: str) -> None:
+    """조회 조건 `status` — 재고 상태 셋 중 하나. 그 밖은 422(조회 조건의 형식 오류)."""
+    if value and value not in STOCK_STATUSES:
+        raise _bad("재고 상태", f"검사대기 · 가용 · 보류 중 하나입니다: {value}")
 
 KIND = {   # 구분 → (LOT 테이블, 판정 테이블, 판정 FK, lot_stock.lot_kind, 화면)
     "원자재": ("material_lot", "incoming_inspection", "material_lot_id", "원자재", "QC-010"),
@@ -102,8 +109,9 @@ def _judge(cur, kind: str, lot: dict, result: str, items: dict, note: str | None
 
 # ── QC-010 입고검사 ────────────────────────────────────────────────────────
 @router.get(nav.path_of("QC-010"), response_class=HTMLResponse)
-def incoming(request: Request, user: rbac.User = rbac.require_fn("F-QC-013")):
-    f = {k: qs(request, k) for k in ("receipt", "lot")}
+def incoming(request: Request, user: rbac.User = rbac.require_screen("QC-010")):
+    f = {k: qs(request, k) for k in ("receipt", "lot", "status")}
+    _status_in(f["status"])
     sql = """select m.id, m.lot_no, m.qty, m.supplier_lot_no, r.id as receipt_id, r.supplier_name, r.received_on,
                     i.item_code, i.item_name,
                     (select string_agg(distinct s.status, '·') from lot_stock s where s.lot_kind = '원자재' and s.lot_id = m.id) as status,
@@ -121,6 +129,9 @@ def incoming(request: Request, user: rbac.User = rbac.require_fn("F-QC-013")):
     if f["lot"]:
         sql += " and m.lot_no ilike %s"
         params.append(f"%{f['lot']}%")
+    if f["status"]:   # HOME 카드 `?status=검사대기` — 그 재고 상태의 행이 있는 LOT 만
+        sql += " and exists (select 1 from lot_stock s where s.lot_kind = '원자재' and s.lot_id = m.id and s.status = %s)"
+        params.append(f["status"])
     rows = conn.q(sql + " order by q.seq is not null, r.received_on desc, m.lot_no limit 500", params)
     return templating.render(request, "qc/incoming.html", {
         "pending": [r for r in rows if r["seq"] is None], "judged": [r for r in rows if r["seq"] is not None],
@@ -170,8 +181,9 @@ def rejudge_incoming(request: Request, id: str, result: str = Form(""),
 
 # ── QC-020 제품검사 판정 ──────────────────────────────────────────────────
 @router.get(nav.path_of("QC-020"), response_class=HTMLResponse)
-def product(request: Request, user: rbac.User = rbac.require_fn("F-QC-023")):
-    f = {k: qs(request, k) for k in ("lot", "wo")}
+def product(request: Request, user: rbac.User = rbac.require_screen("QC-020")):
+    f = {k: qs(request, k) for k in ("lot", "wo", "status")}
+    _status_in(f["status"])
     sql = """select p.id, p.lot_no, p.qty, p.parent_lot_id, w.work_order_no, i.item_code, i.item_name,
                     (select string_agg(distinct s.status, '·') from lot_stock s where s.lot_kind = '제품' and s.lot_id = p.id) as status,
                     (select coalesce(sum(s.allocated_qty), 0) from lot_stock s where s.lot_kind = '제품' and s.lot_id = p.id) as allocated_qty,
@@ -191,6 +203,9 @@ def product(request: Request, user: rbac.User = rbac.require_fn("F-QC-023")):
     if f["wo"]:
         sql += " and w.work_order_no ilike %s"
         params.append(f"%{f['wo']}%")
+    if f["status"]:   # HOME 카드 `?status=검사대기`
+        sql += " and exists (select 1 from lot_stock s where s.lot_kind = '제품' and s.lot_id = p.id and s.status = %s)"
+        params.append(f["status"])
     rows = conn.q(sql + " order by q.seq is not null, p.created_at desc, p.lot_no limit 500", params)
     return templating.render(request, "qc/product.html", {
         "pending": [r for r in rows if r["seq"] is None], "judged": [r for r in rows if r["seq"] is not None],
@@ -260,7 +275,7 @@ select * from (
 
 
 @router.get(nav.path_of("QC-030"), response_class=HTMLResponse)
-def history(request: Request, user: rbac.User = rbac.require_fn("F-QC-031")):
+def history(request: Request, user: rbac.User = rbac.require_screen("QC-030")):
     f = {k: qs(request, k) for k in ("from", "to", "item", "result", "kind", "lot")}
     d_from, d_to = date_in(f["from"], "시작일"), date_in(f["to"], "종료일")
     if f["result"] and f["result"] not in RESULTS:

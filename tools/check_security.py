@@ -534,7 +534,7 @@ def _changes_since(since: int, login_id: str) -> list[dict]:
 
 def check_change_log(lab: Lab) -> list[Result]:
     """쓰기 성공마다 sys_change_log 정확히 1행(기능 ID · 대상 · 사용자 · 경로) · 실패한 쓰기(422 · 403)는 0행."""
-    from lcomfine.app import contracts
+    from lcomfine.app import contracts, notify
     from lcomfine.db import conn
 
     p = lab.prefix
@@ -548,39 +548,48 @@ def check_change_log(lab: Lab) -> list[Result]:
                       "('request_created', 'ADM', '/wo/requests', %s, %s) returning id",
                       (f"qa3:{p}:log", f"QA3 감사 로그 시험 {p} (예시)"))["id"]
     tmp_user = lab.make_user("SL", "logu")
+    # F-HOME-031 (Ruling 24 · D-526): 자기 부서가 수신하는 이벤트를 전부 켠 채 저장하는 것만 200 — 생산부(PR)로 잰다.
+    # 전산 관리자(ADM)는 수신 이벤트가 없어 어떤 본문도 422 다(아래 음성 표본).
+    pr_events = [k for k, roles in notify.EVENTS.items() if "PR" in roles]
     ctx: dict = {}
     cases = [
-        ("F-BAS-011", "/bas/items", lambda: {"item_code": f"{p}it", "item_name": f"{p} 품목 (예시)", "item_type": "제품"}),
-        ("F-BAS-012", lambda: f"/bas/items/{ctx['item']}", lambda: {"item_code": f"{p}it", "item_name": f"{p} 품목 수정 (예시)",
-                                                                       "item_type": "제품", "use_yn": "Y"}),
-        ("F-BAS-013", lambda: f"/bas/items/{ctx['item']}/delete", lambda: {}),
-        ("F-BAS-021", "/bas/customers", lambda: {"customer_code": f"{p}cu", "customer_name": f"{p} 거래처 (예시)"}),
-        ("F-BAS-031", "/bas/warehouses", lambda: {"target": "warehouse", "warehouse_code": f"{p}wh", "warehouse_name": f"{p} 창고 (예시)"}),
-        ("F-STD-021", "/std/standards", lambda: {"standard_code": f"{p}sd", "standard_name": f"{p} 표준 (예시)"}),
-        ("F-WO-011", "/wo/requests", lambda: {"customer_id": str(cu), "item_id": str(fg), "qty": "5", "due_date": "2027-01-31"}),
-        ("F-WO-012", lambda: f"/wo/requests/{ctx['req']}", lambda: {"customer_id": str(cu), "item_id": str(fg), "qty": "6",
-                                                                       "due_date": "2027-01-31", "status": "확인대기"}),
-        ("F-HOME-022", f"/home/notifications/{note_id}/handle", lambda: {}),
-        ("F-HOME-031", "/home/notification-settings", lambda: {"events": ["material_received"], "enabled": ["material_received"]}),
-        ("F-SYS-011", "/sys/users", lambda: {"login_id": f"{p}nu", "user_name": f"{p} 사용자 (예시)", "role_code": "SL",
-                                             "password": secrets.token_urlsafe(12)}),
-        ("F-SYS-012", f"/sys/users/{tmp_user[2]}", lambda: {"login_id": tmp_user[0], "user_name": "QA3 임시 수정 (예시)",
-                                                              "role_code": "SL", "status": "정상"}),
-        ("F-SYS-031", "/sys/codes", lambda: {"group_code": "설비", "code": f"{p}cd", "code_name": f"{p} 코드 (예시)", "sort_no": "1"}),
+        ("F-BAS-011", "ADM", "/bas/items", lambda: {"item_code": f"{p}it", "item_name": f"{p} 품목 (예시)", "item_type": "제품"}),
+        ("F-BAS-012", "ADM", lambda: f"/bas/items/{ctx['item']}", lambda: {"item_code": f"{p}it", "item_name": f"{p} 품목 수정 (예시)",
+                                                                              "item_type": "제품", "use_yn": "Y"}),
+        ("F-BAS-013", "ADM", lambda: f"/bas/items/{ctx['item']}/delete", lambda: {}),
+        ("F-BAS-021", "ADM", "/bas/customers", lambda: {"customer_code": f"{p}cu", "customer_name": f"{p} 거래처 (예시)"}),
+        ("F-BAS-022", "ADM", f"/bas/customers/{cu}", lambda: {"customer_code": f"{p}c2", "customer_name": f"{p} 거래처 수정 (예시)",
+                                                                "use_yn": "Y"}),
+        ("F-BAS-031", "ADM", "/bas/warehouses", lambda: {"target": "warehouse", "warehouse_code": f"{p}wh", "warehouse_name": f"{p} 창고 (예시)"}),
+        ("F-STD-021", "ADM", "/std/standards", lambda: {"standard_code": f"{p}sd", "standard_name": f"{p} 표준 (예시)"}),
+        ("F-STD-022", "ADM", lambda: f"/std/standards/{ctx['std']}", lambda: {"standard_code": f"{p}sd",
+                                                                                 "standard_name": f"{p} 표준 수정 (예시)", "use_yn": "Y"}),
+        ("F-WO-011", "ADM", "/wo/requests", lambda: {"customer_id": str(cu), "item_id": str(fg), "qty": "5", "due_date": "2027-01-31"}),
+        ("F-WO-012", "ADM", lambda: f"/wo/requests/{ctx['req']}", lambda: {"customer_id": str(cu), "item_id": str(fg), "qty": "6",
+                                                                              "due_date": "2027-01-31", "status": "확인대기"}),
+        ("F-HOME-022", "ADM", f"/home/notifications/{note_id}/handle", lambda: {}),
+        ("F-HOME-031", "PR", "/home/notification-settings", lambda: {"events": pr_events, "enabled": pr_events}),
+        ("F-SYS-011", "ADM", "/sys/users", lambda: {"login_id": f"{p}nu", "user_name": f"{p} 사용자 (예시)", "role_code": "SL",
+                                                    "password": secrets.token_urlsafe(12)}),
+        ("F-SYS-012", "ADM", f"/sys/users/{tmp_user[2]}", lambda: {"login_id": tmp_user[0], "user_name": "QA3 임시 수정 (예시)",
+                                                                     "role_code": "SL", "status": "정상"}),
+        ("F-SYS-031", "ADM", "/sys/codes", lambda: {"group_code": "설비", "code": f"{p}cd", "code_name": f"{p} 코드 (예시)", "sort_no": "1"}),
     ]
     bad, logs = [], []
-    for fid, path, body in cases:
+    for fid, role, path, body in cases:
         path = path() if callable(path) else path
         fn = contracts.function(fid)
         since = _max_change_id()
-        r = adm.post(path, data=body())
-        rows = _changes_since(since, adm_lid)
+        r = lab.client(role).post(path, data=body())
+        rows = _changes_since(since, lab.users[role][0])
         if r.status_code != 200:
             bad.append(f"{fid} 쓰기 {r.status_code} {r.text[:120]}")
             continue
         data = r.json()
         if fid == "F-BAS-011":
             ctx["item"] = data.get("id")
+        if fid == "F-STD-021":
+            ctx["std"] = data.get("id")
         if fid == "F-WO-011":
             ctx["req"] = data.get("id")
         if len(rows) != 1:
@@ -589,18 +598,28 @@ def check_change_log(lab: Lab) -> list[Result]:
         rw = rows[0]
         if (rw["function_id"], rw["screen_id"], rw["method"], rw["path"]) != (fid, fn.screen_id, "POST", path) or not rw["target"]:
             bad.append(f"{fid} 로그 값 {rw}")
-        logs.append(rw["target"])
-    out = [res("G-22", "쓰기 성공 → sys_change_log 1행", not bad, f"쓰기 표본 {len(cases)} (모듈 6) · 어긋남 {len(bad)}", bad)]
-    # 실패한 쓰기는 로그 0행
+        logs.append((lab.users[role][0], rw["target"]))
+    mods = len({contracts.function(fid).screen_id.split("-")[0] for fid, *_ in cases})
+    out = [res("G-22", "쓰기 성공 → sys_change_log 1행", not bad, f"쓰기 표본 {len(cases)} (모듈 {mods}) · 어긋남 {len(bad)}", bad)]
+    # 실패한 쓰기는 로그 0행 — 빈 본문 422 · 칸 없는 부서 403 · F-HOME-031 의 범위 밖(ADM 은 수신 이벤트 없음) 422 ·
+    # 부서 기본 끄기 422 · 메일 501(D-518). 응답 코드도 계약(function-list F-HOME-031 · D-526)과 맞아야 한다.
     bad2 = []
-    for role, path in (("ADM", "/bas/items"), ("SL", "/bas/warehouses"), ("ADM", "/wo/requests")):
+    neg = [
+        ("ADM", "/bas/items", {}, (422,)),
+        ("SL", "/bas/warehouses", {}, (403,)),
+        ("ADM", "/wo/requests", {}, (422,)),
+        ("ADM", "/home/notification-settings", {"events": ["material_received"], "enabled": ["material_received"]}, (422,)),
+        ("PR", "/home/notification-settings", {"events": pr_events, "enabled": pr_events[1:]}, (422,)),
+        ("PR", "/home/notification-settings", {"events": pr_events, "enabled": pr_events, "mail": "on"}, (501,)),
+    ]
+    for role, path, body, want in neg:
         lid = lab.users[role][0]
         since = _max_change_id()
-        got = lab.client(role).post(path, data={}).status_code
+        got = lab.client(role).post(path, data=body).status_code
         n = len(_changes_since(since, lid))
-        if n:
-            bad2.append(f"{role} {path} {got} 인데 로그 {n}행")
-    out.append(res("G-22", "실패한 쓰기(422·403) → 0행", not bad2, f"표본 3 · 어긋남 {len(bad2)}", bad2))
+        if got not in want or n:
+            bad2.append(f"{role} {path} → {got} (기대 {'/'.join(map(str, want))}) · 로그 {n}행")
+    out.append(res("G-22", "실패한 쓰기(422·403·501) → 0행", not bad2, f"표본 {len(neg)} · 어긋남 {len(bad2)}", bad2))
     # 화면 조회 · 로그인 성공/실패 → sys_access_log
     bad3 = []
     lid = lab.users["PR"][0]
@@ -624,11 +643,11 @@ def check_change_log(lab: Lab) -> list[Result]:
         bad3.append(f"로그인 성공 +{ok_a - ok_b} · 실패 +{fail_a - fail_b} (1·1 기대)")
     out.append(res("G-22", "화면 조회 · 로그인 → sys_access_log", not bad3, f"화면 4 · 로그인 2 · 어긋남 {len(bad3)}", bad3))
     # SYS-040 에서 보인다
-    page = adm.get("/sys/logs", params={"tab": "change", "login": adm_lid}).text if logs else ""
-    seen = [t for t in logs if t in page]
+    pages = {lid: adm.get("/sys/logs", params={"tab": "change", "login": lid}).text for lid in {lid for lid, _ in logs}}
+    seen = [t for lid, t in logs if t in pages[lid]]
     out.append(res("G-22", "SYS-040 에서 조회", bool(logs) and len(seen) == len(logs),
                    f"방금 쓴 변경 로그 {len(logs)} 중 SYS-040 화면에 보인 것 {len(seen)}",
-                   [t for t in logs if t not in seen]))
+                   [f"{lid} {t}" for lid, t in logs if t not in pages[lid]]))
     # 정적 — 라우터 POST 마다 log_change 를 부르는가(같은 모듈의 도우미 한 단계까지)
     out.append(check_static_log_change())
     return out
@@ -708,6 +727,9 @@ def malformed_cases(lab: Lab) -> list[tuple[str, str, str, dict, str]]:
     """(라벨, 부서, 경로, 본문, 기대) — 기대 '422' 는 422(또는 404 경로 키), 'reject' 는 2xx 가 아니어야 하고 500 도 아니어야 한다."""
     from lcomfine.db import conn
 
+    cached = getattr(lab, "_malformed_cases", None)
+    if cached is not None:  # 같은 Lab 에서 두 번 부르면(check_malformed 뒤 test_nul_…) 기준 행을 다시 넣지 않는다
+        return cached
     p = lab.prefix
     cu = conn.q1("insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id",
                  (f"{p}c3", f"{p} 거래처 (예시)"))["id"]
@@ -724,7 +746,7 @@ def malformed_cases(lab: Lab) -> list[tuple[str, str, str, dict, str]]:
     rec = {"supplier_name": f"{p} 공급사 (예시)", "received_on": "2026-10-21", "item_id": [str(rm)], "qty": ["10"],
            "location_id": [str(loc)], "supplier_lot_no": [f"{p}S1"]}
     shp = {"customer_id": str(cu), "due_date": "2027-01-31", "stock_id": ["1"], "qty": ["1"]}
-    return [
+    lab._malformed_cases = [
         ("품목 코드 NUL", "ADM", "/bas/items", {"item_code": f"{p}n\x00ul", "item_name": "x (예시)", "item_type": "제품"}, "reject"),
         ("품목명 10만 자", "ADM", "/bas/items", {"item_code": f"{p}big", "item_name": big, "item_type": "제품"}, "no500"),
         ("거래처명 NUL", "ADM", "/bas/customers", {"customer_code": f"{p}cn", "customer_name": "a\x00b"}, "reject"),
@@ -755,6 +777,7 @@ def malformed_cases(lab: Lab) -> list[tuple[str, str, str, dict, str]]:
         ("경로 id bigint 초과", "ADM", "/bas/items/99999999999999999999", {"item_code": "x", "item_name": "y", "item_type": "제품"}, "reject"),
         ("경로 id NUL", "ADM", "/bas/items/1%00", {"item_code": "x", "item_name": "y", "item_type": "제품"}, "reject"),
     ]
+    return lab._malformed_cases
 
 
 def check_malformed(lab: Lab) -> list[Result]:

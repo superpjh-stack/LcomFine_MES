@@ -34,7 +34,7 @@ stats.UTILIZATION_FORMULA · stats.LOSS_RATE_DECISION ("D-519")
 
 | 무엇 | 값 |
 |---|---|
-| `shipment_order.status` | `지시`(F-SHP-011) → `확정`(F-SHP-021). `취소` 로 바꾸는 기능은 아직 없다(§3-3) |
+| `shipment_order.status` | `지시`(F-SHP-011) → `확정`(F-SHP-021) / `취소`(F-SHP-012 에서 LOT 줄을 전부 지우고 저장 — Ruling 21 · 할당 전부 해제 · `shipment_line` 0 · 알림 없음 · 되돌리지 않는다). 취소 출하는 `request_shipments` 에 세지 않는다 |
 | 할당 | `shipment_line.qty` = 그 (LOT, 위치) `lot_stock.allocated_qty` 에 더한 양. 할당은 `select … from lot_stock … for update`(id 오름차순) 안에서 판정 |
 | 확정 | LOT 라인마다 `lot_stock.qty` · `allocated_qty` 를 같은 양만큼 줄이고 `stock_move` 1행: `move_kind='출하'` · `lot_kind='제품'` · `lot_id`=제품 LOT · `from_location_id`=위치 · `to_location_id` NULL · `ref_table='shipment_order'` · `ref_id`=출하 id |
 | 판정 판단 | LOT 의 판정 = 그 LOT(없으면 판정이 있는 가장 가까운 원 LOT — 분할)의 최대 seq 행(D-515 · 개발2 `trace` 와 같은 규칙). 미판정 · 불합격 · 재고 상태 가용 아님 → 확정 422 |
@@ -49,7 +49,7 @@ stats.UTILIZATION_FORMULA · stats.LOSS_RATE_DECISION ("D-519")
 | 기능 | API | 상태 | 테스트 (`@pytest.mark.fn`) |
 |---|---|---|---|
 | F-SHP-011 출하 지시 등록 | `POST /shp/orders` | 완료 | 6 — 할당·알림·변경 로그 · 의뢰 불러오기 · 422 11가지 · 403 · **동시 할당(스레드 2 → 200 1 · 422 1, 라우터 문장)** · **행 잠금 대기** |
-| F-SHP-012 출하 지시 수정 | `POST /shp/orders/{id}` | 완료 | 2 — 할당 이동·해제 · 가용 초과 · 누락 · 404 · 403 · 확정된 출하 422 |
+| F-SHP-012 출하 지시 수정 | `POST /shp/orders/{id}` | 완료 | 3 — 할당 이동·해제 · 가용 초과 · 누락(LOT 만 · 수량 만) · 404 · 403 · 확정된 출하 422 · **라인 전부 제거 = 지시 취소(Ruling 21)**: 상태 취소 · 할당 0 · 현재고 불변 · 알림 없음 · 변경 로그 1 · 취소 뒤 확정 422 · 수정 422 · 확정된 출하는 줄을 비워도 422 |
 | F-SHP-013 출하 지시 조회 | `GET /shp/orders` | 완료 | 1 — 목록 · 의뢰 채움 · `?lot=` · 422 · 404 · 403 |
 | F-SHP-021 출하 확정 | `POST /shp/confirm/{id}/confirm` | 완료 | 2 — qty·allocated 함께 감소 · stock_move 라인마다 1행 · 알림 · 재확정 422 · 미판정/재판정 불합격 422(재고 불변) |
 | F-SHP-022 출하 확정 대상 조회 | `GET /shp/confirm` | 완료 | 1 |
@@ -62,18 +62,30 @@ stats.UTILIZATION_FORMULA · stats.LOSS_RATE_DECISION ("D-519")
 
 | 항목 | 실측 | 검증 방법 |
 |---|---|---|
-| 개발3 테스트 | **18 passed** (2.9s) | `uv run pytest tests/test_dev3_*.py -q` |
+| 개발3 테스트 | **19 passed** (3.2s) | `uv run pytest tests/test_dev3_*.py -q` |
 | 테스트가 남긴 행 | customer · item · product_lot `T3%` 0 · 알림 0 | `psql -h /tmp lcomfine_db -c "select count(*) from customer where customer_code like 'T3%'"` |
 | G-02 SHP · PRP 고아 | 고아 ①②③ 목록에 SHP · PRP 0 | `uv run python tools/check_trace.py` |
-| G-03 SHP · PRP 화면 | 칸 있는 부서 전부 200 · 칸 없는 부서 403 · placeholder 개발3 16 (COL 7 · RPT 9 — W2 · W3) | `uv run python tools/check_routes.py` |
+| G-03 SHP · PRP 화면 | 칸 있는 부서 전부 200 · 칸 없는 부서 403 「이 화면을 볼 권한이 없습니다」(ST→SHP-010 · PR→SHP-020 · PR→SHP-030 · SH→PRP-010 · SH→PRP-020 · SL→PRP-030 실측) · placeholder 개발3 16 (COL 7 · RPT 9 — W2 · W3) | `uv run python tools/check_routes.py` |
 | G-04 쓰기 경계 | PASS (PRP 쓰기 0) | `uv run python tools/check_schema.py` |
 
 커밋: `d1c9a12` SHP · `c8aecd7` stats · PRP · D-801 · `b9bad23` 경로 인자 `{id}`.
 
+### 2.1 W1 QA 결함 · 아키텍트 판정 반영 (2026-10-21 · 커밋은 오케스트레이터)
+
+| 결함 | 고친 것 | 실측 | 검증 |
+|---|---|---|---|
+| QA1 — 화면 GET 의 403 문장 | 화면 GET 6 개(SHP-010 · 020 · 030 · PRP-010 · 020 · 030)의 의존성을 `rbac.require_fn("F-…")` → `rbac.require_screen("<화면 ID>")` 로. 쓰기 POST 4 개의 `require_fn` 은 그대로 | 칸 없는 부서 6 쌍 전부 403 `이 화면을 볼 권한이 없습니다` | `grep -n "require_" src/lcomfine/app/routers/{shp,prp}.py` · 위 G-03 행 |
+| QA2 — Ruling 21 (F-SHP-012 라인 전부 제거 = 지시 취소) | `_lines(…, allow_empty=True)` 로 빈 목록을 받고, 상태 `지시` 의 출하에서 줄이 0 이면 **같은 트랜잭션**에서 `shipment_order.status='취소'` · `shipment_line` 삭제 · 옛 할당 `lot_stock.allocated_qty` 전부 해제. 알림 없음. `http.saved` 「출하 지시 … 를 취소했습니다 — 할당 n줄(합) 해제」 · `audit.log_change` detail 「지시 취소(라인 전부 제거 · Ruling 21) …」. 확정·취소된 출하는 여전히 422(취소 문장은 「취소된 출하는 고칠 수 없습니다」 — 반품·정정 안내는 확정에만). SHP-010 수정 패널에 안내 한 줄 「LOT 줄을 전부 지우고 저장하면 지시가 취소됩니다(할당 전부 해제 …)」 | 테스트 `test_update_with_no_lines_cancels_order`: 200 · status 취소 · line 0 · allocated (0, 0) · qty 불변 · 알림 건수 불변 · change_log 1 · 확정 422 · 재수정 422 · 확정된 출하 빈 줄 422(상태 확정 유지) | `uv run pytest -q tests/test_dev3_shp.py -k cancels` |
+| (딸림) 「누락 422」 테스트 | `data={}` 는 이제 취소라서, 누락 검사는 LOT 만 있고 수량 없음 · 수량만 있고 LOT 없음 두 경우로 바꿈(지우지 않았다) | 둘 다 422 | 같은 파일 `test_update_order_moves_allocation` |
+
+실측 명령 결과(이 수정 뒤): `uv run pytest -q tests/test_dev3_*.py` → **19 passed**; 테스트 잔류 행 customer · product_lot · shipment_order `T3%` **0 · 0 · 0**; `check_routes` · `check_trace` 의 실패 목록에 SHP · PRP 는 0 건(실패는 개발1 WO-040 · SYS-010 · SYS-040 500 · DOC 고아 — 개발3 밖).
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 1. **[아키텍트 · function-list.md / db-schema.md §2.2]** F-SHP-021 계약 문장 「`stock_move` 한 행(사유 출하)」 → 「LOT 라인마다 `stock_move` 한 행」. 구현 · 브리프(w1-dev3)는 라인마다 1행이다(LOT 별 추적 · `stock_move.lot_id` 가 한 LOT 만 담는다).
+   **종결(Ruling 22)** — 계약 F-SHP-021 · db-schema §2.2 가 「LOT 라인마다 1행」으로 고쳐졌다(커밋 `1fd01fd`). 코드 변경 없음.
 2. **[아키텍트 · 사람]** D-801(가동률 = 가동 ÷ (가동 + 정지)) 을 `decisions.md` 에 `가설` 로 올렸다. 정본에 산식이 없다 — 확정되면 `stats._rate` 한 곳만 고친다. W3 RPT-020 도 같은 산식을 쓸 예정.
 3. **[아키텍트 · 계약]** 출하 지시를 `취소` 하는 기능이 없다(`shipment_order.status` 에 값은 있음). 지금은 F-SHP-012 가 LOT 줄을 1줄 이상 요구해 할당 전부 해제가 안 된다(D-515 「할당 해제는 출하 지시 수정으로 사람이 한다」는 다른 LOT 로 바꾸는 것까지만). F-SHP-012 에 「취소(할당 전부 해제)」를 넣을지 정해 주면 붙인다.
+   **종결(Ruling 21)** — 계약 F-SHP-012 에 「라인을 전부 제거하면 지시 취소(status 취소 · 할당 전부 해제) — 별도 취소 기능 없음」이 들어왔고 §2.1 대로 구현했다.
 4. **[QA 참고]** 테스트 정리에서 불변 이력 `shipment_adjust` 테스트 행은 `set local session_replication_role = replica`(슈퍼유저 필요) 한 트랜잭션 안에서만 지운다. 로컬 DB 역할이 슈퍼유저가 아니면 이 정리가 실패한다(조용히 넘어가지 않는다).
 5. `seed_dev3.py` 는 만들지 않았다 — 출하 시드는 개발2 의 제품 LOT 시드에 기대야 해서 W1 에서는 넣지 않았다. 시나리오 시드가 필요하면 알려 달라.

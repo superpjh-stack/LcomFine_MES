@@ -141,3 +141,27 @@ def test_history_shows_previous_judgement(world, pr, sl):
     assert r.status_code == 200 and a in r.text and "현재 판정" in r.text and "이전" in r.text
     assert r.text.count("불합격") >= 2                             # 1차 행 + 2차 행의 이전 판정
     assert sl.get("/qc/history", params={"result": "보통"}).status_code == 422
+
+
+@pytest.mark.fn("F-QC-013")
+def test_incoming_screen_filters_by_stock_status(world, pr):
+    a, b = world.receive(pr, 3, 4)
+    rid = str(conn.q1("select receipt_id from material_lot where lot_no = %s", (a,))["receipt_id"])
+    world.pass_incoming(pr, b)                                                   # b → 가용
+    r = pr.get("/qc/incoming", params={"status": "검사대기", "receipt": rid}, headers={"accept": "text/html"})   # HOME 카드 인자
+    assert r.status_code == 200 and a in r.text and b not in r.text and "조건 풀기" in r.text
+    r = pr.get("/qc/incoming", params={"status": "가용", "receipt": rid}, headers={"accept": "text/html"})
+    assert r.status_code == 200 and b in r.text and a not in r.text
+    assert pr.get("/qc/incoming", params={"status": "대기중"}).status_code == 422                     # 형식 오류
+
+
+@pytest.mark.fn("F-QC-023")
+def test_product_screen_filters_by_stock_status(world, pr):
+    a = world.product_receive(pr, 5)["lot_no"]
+    b = world.product_receive(pr, 6)["lot_no"]
+    pr.post("/qc/product", data={"lot_no": b, "result": "합격"})
+    r = pr.get("/qc/product", params={"status": "검사대기", "wo": world.wo_no}, headers={"accept": "text/html"})
+    assert r.status_code == 200 and a in r.text and b not in r.text and "조건 풀기" in r.text
+    r = pr.get("/qc/product", params={"status": "가용", "wo": world.wo_no}, headers={"accept": "text/html"})
+    assert r.status_code == 200 and b in r.text and a not in r.text
+    assert pr.get("/qc/product", params={"status": "x"}).status_code == 422

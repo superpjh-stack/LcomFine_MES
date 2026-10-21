@@ -70,19 +70,27 @@ def test_notification_handle(p):
 
 @pytest.mark.fn("F-HOME-031")
 def test_notification_settings_save(p):
+    """Ruling 24 · D-511: 자기 부서가 수신하는 이벤트만 — 부서 기본은 끌 수 없고(422), 다른 부서 이벤트 구독은 저장하지 않고 422."""
     login_id, pw, uid = make_user(p, "SL")
     c = login(login_id, pw)
     all_keys = list(notify.EVENTS)
     defaults = [k for k, roles in notify.EVENTS.items() if "SL" in roles]
-    r = c.post("/home/notification-settings", data={"events": all_keys, "enabled": defaults + ["order_issued"]})
+    assert "order_issued" not in defaults
+    # 범위 밖 행이 남아 있던 경우 — 저장이 지운다
+    conn.x("insert into notification_setting (user_id, event_key, enabled, created_by) values (%s, 'order_issued', true, 'test')",
+           (uid,))
+    r = c.post("/home/notification-settings", data={"events": defaults, "enabled": defaults})
     assert r.status_code == 200, r.text
-    rows = {x["event_key"]: x["enabled"] for x in
-            conn.q("select event_key, enabled from notification_setting where user_id = %s", (uid,))}
-    assert rows["order_issued"] is True and rows["request_created"] is False
-    assert not set(defaults) & set(rows)                       # 부서 기본은 행을 만들지 않는다(끌 수 없다)
-    r = c.post("/home/notification-settings", data={"events": all_keys, "enabled": ["order_issued"]})
+    assert r.json()["removed_out_of_scope"] == 1
+    assert conn.q1("select count(*) as n from notification_setting where user_id = %s", (uid,))["n"] == 0
+    # 다른 부서 이벤트 — 보이는 칸이 없고, 보내도 저장하지 않고 422
+    r = c.post("/home/notification-settings", data={"events": all_keys, "enabled": defaults + ["order_issued"]})
+    assert r.status_code == 422 and "범위 밖" in r.json()["message"], r.text
+    assert conn.q1("select count(*) as n from notification_setting where user_id = %s", (uid,))["n"] == 0
+    # 부서 기본 알림 끄기 — 422
+    r = c.post("/home/notification-settings", data={"events": defaults, "enabled": defaults[1:]})
     assert r.status_code == 422 and "부서 기본 알림은 끌 수 없습니다" in r.json()["message"]
-    assert c.post("/home/notification-settings", data={"events": all_keys, "enabled": defaults,
+    assert c.post("/home/notification-settings", data={"events": defaults, "enabled": defaults,
                                                        "mail": "on"}).status_code == 501
     assert c.post("/home/notification-settings", data={}).status_code == 422
     assert c.post("/home/notification-settings", data={"events": ["nope"]}).status_code == 422
@@ -91,4 +99,10 @@ def test_notification_settings_save(p):
 @pytest.mark.fn("F-HOME-032")
 def test_notification_settings_view(p):
     r = client("pr").get("/home/notification-settings")
-    assert r.status_code == 200 and "부서 기본" in r.text and "개인 추가" in r.text and "미확정 (D-518)" in r.text
+    assert r.status_code == 200 and "부서 기본" in r.text and "미확정 (D-518)" in r.text
+    assert "<code>order_issued</code>" in r.text and "<code>shipment_confirmed</code>" not in r.text   # PR 수신분만 · 개인 추가 칸 없음
+    assert 'chip--muted">개인 추가' not in r.text
+    assert "개인 추가 알림의 범위는 <span class=\"undecided\">미확정 (D-526)</span>" in r.text   # D-526 차단 — 화면 본문에 보인다
+    # 수신하는 이벤트가 없는 부서(전산 관리자) — 칸 없음 · 저장 버튼 없음
+    r = client("admin").get("/home/notification-settings")
+    assert r.status_code == 200 and "수신하는 알림이 없다" in r.text and 'name="events"' not in r.text

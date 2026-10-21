@@ -183,14 +183,13 @@ EVENT_NAMES: dict[str, str] = {
 
 
 def _settings(user: rbac.User) -> list[dict]:
-    rows = {r["event_key"]: r["enabled"] for r in
-            conn.q("select event_key, enabled from notification_setting where user_id = %s", (user.id,))}
-    out = []
-    for key, roles in notify.EVENTS.items():
-        default = user.role_code in roles
-        out.append({"key": key, "name": EVENT_NAMES.get(key, key), "default": default,
-                    "enabled": True if default else rows.get(key, False), "saved": key in rows})
-    return out
+    """자기 부서가 수신하는 이벤트만 — 다른 부서 이벤트 구독은 범위 밖(D-511 · Ruling 24). 부서 기본 알림은 끌 수 없다."""
+    return [{"key": key, "name": EVENT_NAMES.get(key, key)} for key, roles in notify.EVENTS.items()
+            if user.role_code in roles]
+
+
+def _mine(user: rbac.User) -> set[str]:
+    return {key for key, roles in notify.EVENTS.items() if user.role_code in roles}
 
 
 @router.get(nav.path_of("HOME-030"), response_class=HTMLResponse)
@@ -205,31 +204,36 @@ def notification_settings(request: Request, user: rbac.User = rbac.require_scree
 def notification_settings_save(request: Request, events: list[str] = Form([]), enabled: list[str] = Form([]),
                                mail: str | None = Form(None), messenger: str | None = Form(None),
                                user: rbac.User = rbac.require_fn("F-HOME-031")):
-    """F-HOME-031 — 개인 추가 알림만 켜고 끈다. 부서 기본 알림을 끄려 하면 422 · 메일·메신저는 저장하지 않는다(501 D-518).
+    """F-HOME-031 — 자기 부서가 수신하는 이벤트만 다룬다(Ruling 24 · D-511). 부서 기본 알림을 끄려 하면 422 ·
+    다른 부서 이벤트는 저장하지 않고 422 · 메일·메신저는 저장하지 않는다(501 D-518).
 
-    폼: `events` = 화면에 보인 이벤트 키 전부(hidden) · `enabled` = 켠 이벤트 키(체크박스)."""
+    폼: `events` = 화면에 보인 이벤트 키 전부(hidden) · `enabled` = 켜진 이벤트 키."""
     if mail or messenger:
         raise http.undecided("D-518", "알림 메일·메신저 연동")
     if not events:
         raise bad("받을 알림 종류", "필수 항목입니다", "필수 항목을 입력해 주세요 — 받을 알림 종류")
-    unknown = sorted((set(events) | set(enabled)) - set(notify.EVENTS))
+    keys = set(events) | set(enabled)
+    unknown = sorted(keys - set(notify.EVENTS))
     if unknown:
         raise bad("받을 알림 종류", f"없는 알림 종류입니다: {', '.join(unknown)}")
+    mine = _mine(user)
+    foreign = sorted(keys - mine)
+    if foreign:
+        raise bad("받을 알림 종류",
+                  f"다른 부서로 가는 알림은 구독할 수 없습니다 — 범위 밖 (D-511): {', '.join(EVENT_NAMES[k] for k in foreign)}",
+                  "다른 부서로 가는 알림은 구독할 수 없습니다 — 범위 밖 (D-511)")
     on = set(enabled)
-    defaults_off = [k for k in events if user.role_code in notify.EVENTS[k] and k not in on]
+    defaults_off = [k for k in dict.fromkeys(events) if k not in on]
     if defaults_off:
         raise bad("받을 알림 종류", f"부서 기본 알림은 끌 수 없습니다: {', '.join(EVENT_NAMES[k] for k in defaults_off)}",
                   "부서 기본 알림은 끌 수 없습니다")
-    personal = [k for k in dict.fromkeys(events) if user.role_code not in notify.EVENTS[k]]
     with conn.tx() as cur:
-        for k in personal:
-            cur.execute("""insert into notification_setting (user_id, event_key, enabled, created_by)
-                           values (%s, %s, %s, %s)
-                           on conflict (user_id, event_key) do update
-                              set enabled = excluded.enabled, updated_at = now(), updated_by = excluded.created_by""",
-                        (user.id, k, k in on, user.login_id))
-    resp = http.saved(request, "알림 설정을 저장했습니다", back=nav.path_of("HOME-030"),
-                      data={"personal_on": sorted(k for k in personal if k in on)})
+        # 범위 밖이 된 행(다른 부서 이벤트 구독)이 남아 있으면 지운다 — 이 화면이 보이는 것만 저장 상태로 둔다
+        cur.execute("delete from notification_setting where user_id = %s and not (event_key = any(%s))",
+                    (user.id, sorted(mine)))
+        removed = cur.rowcount
+    resp = http.saved(request, "알림 설정을 저장했습니다 — 부서 기본 알림은 전부 켜져 있습니다", back=nav.path_of("HOME-030"),
+                      data={"department_on": sorted(k for k in events if k in mine), "removed_out_of_scope": removed})
     audit.log_change(request, user, "F-HOME-031", f"notification_setting:{user.login_id}",
-                     "개인 추가 알림 " + (", ".join(k for k in personal if k in on) or "없음"))
+                     f"부서 기본 알림 {len(set(events))}종 확인 · 범위 밖 행 {removed} 삭제")
     return resp

@@ -84,19 +84,19 @@ def progress(where: str = "true", params: dict | None = None, *, order: str = "r
 
 def _filters(q, customer, item, request_no) -> tuple[str, dict]:
     conds, params = ["true"], {}
-    if s(q):
+    if s(q, "검색어"):
         conds.append("(r.request_no ilike %(q)s or c.customer_name ilike %(q)s or c.customer_code ilike %(q)s "
                      "or i.item_code ilike %(q)s or i.item_name ilike %(q)s)")
         params["q"] = like(q)
-    if s(customer):
+    if s(customer, "거래처"):
         conds.append("r.customer_id = %(cu)s")
         params["cu"] = ref_id(customer, "거래처")
-    if s(item):
+    if s(item, "제품"):
         conds.append("r.item_id = %(it)s")
         params["it"] = ref_id(item, "제품")
-    if s(request_no):
+    if s(request_no, "의뢰번호"):
         conds.append("r.request_no = %(rn)s")
-        params["rn"] = s(request_no)
+        params["rn"] = s(request_no, "의뢰번호")
     return " and ".join(conds), params
 
 
@@ -116,9 +116,9 @@ def orders(request: Request, q: str | None = None, customer: str | None = None, 
     request_no = request.query_params.get("request")
     where, params = _filters(q, customer, item, request_no)
     rows = progress(where, params)
-    if s(request_no) and not rows:
-        raise bad("의뢰번호", s(request_no), "없는 의뢰번호입니다")
-    detail = rows[0] if (s(request_no) or len(rows) == 1) and rows else None
+    if s(request_no, "의뢰번호") and not rows:
+        raise bad("의뢰번호", s(request_no, "의뢰번호"), "없는 의뢰번호입니다")
+    detail = rows[0] if (s(request_no, "의뢰번호") or len(rows) == 1) and rows else None
     orders_of = []
     if detail:
         orders_of = conn.q("""select v.work_order_no, v.order_qty, v.daily_good_qty, v.receipt_qty, v.shipped_qty, v.status

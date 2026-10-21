@@ -29,9 +29,10 @@
 <section class="panel">
   <h2>출하 지시 수정 — {{ edit.shipment_no }} {{ ui.chip(edit.status) }}</h2>
   {% if edit.status != "지시" %}
-  <p class="muted">{{ edit.status }}된 출하는 고칠 수 없습니다. 확정 후 정정은 <a href="{{ nav.path_of('SHP-020') }}">출하 확정</a>의 반품·정정 등록으로 남긴다.</p>
+  <p class="muted">{{ edit.status }}된 출하는 고칠 수 없습니다.{% if edit.status == "확정" %} 확정 후 정정은 <a href="{{ nav.path_of('SHP-020') }}">출하 확정</a>의 반품·정정 등록으로 남긴다.{% endif %}</p>
   {% elif fn_allowed.get("F-SHP-012") %}
   <p class="muted">거래처 {{ edit.customer_name }} · 의뢰 {{ edit.request_no | txt }} — 할당 줄을 통째로 바꾼다(이전 할당은 풀린다).</p>
+  <p class="muted">LOT 줄을 전부 지우고 저장하면 지시가 취소됩니다(할당 전부 해제 · 되돌릴 수 없다 — 별도 취소 기능 없음).</p>
   <form class="search" method="post" action="{{ nav.path_of('SHP-010') }}/{{ edit.id }}">
     {{ f.input("due_date", "납기", edit.due_date, type="date") }}
     {{ f.input("note", "비고", edit.note) }}

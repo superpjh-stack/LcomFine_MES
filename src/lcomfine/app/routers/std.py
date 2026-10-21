@@ -43,7 +43,7 @@ def spec_sheets(request: Request, item: str | None = None, q: str | None = None,
               and (%(q)s::text is null or s.title ilike %(q)s or i.item_code ilike %(q)s or i.item_name ilike %(q)s)
               and (%(u)s::text is null or s.use_yn = %(u)s)
             order by i.item_code, s.revision desc limit 1000""",
-        {"item": ref_id(item, "제품", required=False), "q": like(q), "u": s(use)})
+        {"item": ref_id(item, "제품", required=False), "q": like(q), "u": s(use, "사용 여부")})
     ed = edit_row("spec_sheet", edit)
     return templating.render(request, "std/spec_sheets.html",
                              {"rows": rows, "edit": ed, "edit_content": kv_lines(ed["content"]) if ed else "",
@@ -69,7 +69,7 @@ def spec_sheet_create(request: Request, item_id: str | None = Form(None), revisi
             raise bad("개정 차수", str(rev), f"그 제품에 이미 있는 개정 차수입니다 ({it['item_code']} · {rev})")
         cur.execute("""insert into spec_sheet (item_id, revision, title, content, note, created_by)
                        values (%s, %s, %s, %s, %s, %s) returning id""",
-                    (iid, rev, ttl, Jsonb(body), s(note), user.login_id))
+                    (iid, rev, ttl, Jsonb(body), s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     return _saved(request, user, "F-STD-011", "STD-010", "제조사양기준서를 등록했습니다",
                   f"spec_sheet:{it['item_code']}#{rev}", data={"id": new_id, "revision": rev})
@@ -87,7 +87,7 @@ def spec_sheet_update(request: Request, id: str, title: str | None = Form(None),
         row = exists_or_404(cur, "spec_sheet", sid, "id, item_id, revision")
         cur.execute("""update spec_sheet set title = %s, content = %s, note = %s, use_yn = %s, updated_at = now(),
                               updated_by = %s where id = %s""",
-                    (ttl, Jsonb(body), s(note), use, user.login_id, sid))
+                    (ttl, Jsonb(body), s(note, "비고"), use, user.login_id, sid))
     return _saved(request, user, "F-STD-012", "STD-010", "제조사양기준서를 수정했습니다",
                   f"spec_sheet:{sid}#{row['revision']}", f"사양 수정 · 사용 {use}", data={"id": sid})
 
@@ -110,7 +110,7 @@ def standards(request: Request, q: str | None = None, use: str | None = None, ed
     rows = conn.q("""select id, standard_code, standard_name, content, note, use_yn from standard
                       where (%(q)s::text is null or standard_code ilike %(q)s or standard_name ilike %(q)s)
                         and (%(u)s::text is null or use_yn = %(u)s)
-                      order by standard_code limit 1000""", {"q": like(q), "u": s(use)})
+                      order by standard_code limit 1000""", {"q": like(q), "u": s(use, "사용 여부")})
     ed = edit_row("standard", edit)
     return templating.render(request, "std/standards.html",
                              {"rows": rows, "edit": ed, "edit_content": kv_lines(ed["content"]) if ed else "",
@@ -129,7 +129,7 @@ def standard_create(request: Request, standard_code: str | None = Form(None), st
         if cur.fetchone():
             raise bad("표준 코드", code, "이미 있는 표준 코드입니다")
         cur.execute("""insert into standard (standard_code, standard_name, content, note, created_by)
-                       values (%s, %s, %s, %s, %s) returning id""", (code, name, Jsonb(body), s(note), user.login_id))
+                       values (%s, %s, %s, %s, %s) returning id""", (code, name, Jsonb(body), s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     return _saved(request, user, "F-STD-021", "STD-020", "표준을 등록했습니다", f"standard:{code}", data={"id": new_id})
 
@@ -145,10 +145,10 @@ def standard_update(request: Request, id: str, standard_code: str | None = Form(
     use = yn(use_yn)
     with conn.tx() as cur:
         row = exists_or_404(cur, "standard", sid, "id, standard_code")
-        if s(standard_code) is not None and s(standard_code) != row["standard_code"]:
+        if s(standard_code, "표준 코드") is not None and s(standard_code, "표준 코드") != row["standard_code"]:
             raise bad("표준 코드", "코드는 바꾸지 않습니다", "표준 코드는 바꿀 수 없습니다")
         cur.execute("""update standard set standard_name = %s, content = %s, note = %s, use_yn = %s, updated_at = now(),
-                              updated_by = %s where id = %s""", (name, Jsonb(body), s(note), use, user.login_id, sid))
+                              updated_by = %s where id = %s""", (name, Jsonb(body), s(note, "비고"), use, user.login_id, sid))
     return _saved(request, user, "F-STD-022", "STD-020", "표준을 수정했습니다", f"standard:{row['standard_code']}",
                   f"표준 수정 · 사용 {use}", data={"id": sid})
 
@@ -167,18 +167,18 @@ def standard_delete(request: Request, id: str, user: rbac.User = rbac.require_fn
 def _usage(cur, plate_id: int, used_on, work_order_no: str | None, usage_note: str | None, user) -> str | None:
     """사용 이력 한 행 — 사용일이 있을 때만. 지시번호는 사용자가 입력한 값이라 없으면 422."""
     if used_on is None:
-        if s(work_order_no) or s(usage_note):
+        if s(work_order_no, "지시번호") or s(usage_note, "사용 비고"):
             raise bad("사용일", "필수 항목입니다", "사용 이력을 남기려면 사용일을 입력해 주세요")
         return None
     wo_id = None
-    if s(work_order_no):
-        cur.execute("select id from work_order where work_order_no = %s", (s(work_order_no),))
+    if s(work_order_no, "지시번호"):
+        cur.execute("select id from work_order where work_order_no = %s", (s(work_order_no, "지시번호"),))
         hit = cur.fetchone()
         if hit is None:
-            raise bad("지시번호", s(work_order_no), "없는 지시번호입니다")
+            raise bad("지시번호", s(work_order_no, "지시번호"), "없는 지시번호입니다")
         wo_id = hit["id"]
     cur.execute("insert into plate_usage (plate_id, work_order_id, used_on, note, created_by) values (%s, %s, %s, %s, %s)",
-                (plate_id, wo_id, used_on, s(usage_note), user.login_id))
+                (plate_id, wo_id, used_on, s(usage_note, "사용 비고"), user.login_id))
     return f" · 사용 이력 {used_on}"
 
 
@@ -193,7 +193,7 @@ def plates(request: Request, q: str | None = None, use: str | None = None, edit:
              from plate p left join item i on i.id = p.item_id
             where (%(q)s::text is null or p.plate_code ilike %(q)s or p.plate_name ilike %(q)s)
               and (%(u)s::text is null or p.use_yn = %(u)s)
-            order by p.plate_code limit 1000""", {"q": like(q), "u": s(use)})
+            order by p.plate_code limit 1000""", {"q": like(q), "u": s(use, "사용 여부")})
     pid = pk(plate) if plate else None
     usage = conn.q(
         """select u.id, p.plate_code, u.used_on, w.work_order_no, u.note, u.created_by
@@ -224,7 +224,7 @@ def plate_create(request: Request, plate_code: str | None = Form(None), plate_na
             raise bad("판 코드", code, "이미 있는 판 코드입니다")
         cur.execute("""insert into plate (plate_code, plate_name, item_id, made_on, storage, note, created_by)
                        values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-                    (code, name, iid, made, s(storage), s(note), user.login_id))
+                    (code, name, iid, made, s(storage, "보관 위치"), s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
         extra = _usage(cur, new_id, used, work_order_no, usage_note, user) or ""
     return _saved(request, user, "F-STD-031", "STD-030", "판을 등록했습니다", f"plate:{code}", "판 등록" + extra,
@@ -245,12 +245,12 @@ def plate_update(request: Request, id: str, plate_code: str | None = Form(None),
     use = yn(use_yn)
     with conn.tx() as cur:
         row = exists_or_404(cur, "plate", pid, "id, plate_code, item_id")
-        if s(plate_code) is not None and s(plate_code) != row["plate_code"]:
+        if s(plate_code, "판 코드") is not None and s(plate_code, "판 코드") != row["plate_code"]:
             raise bad("판 코드", "코드는 바꾸지 않습니다", "판 코드는 바꿀 수 없습니다")
         item_choice(cur, iid, "제품", allow_inactive_id=row["item_id"])
         cur.execute("""update plate set plate_name = %s, item_id = %s, made_on = %s, storage = %s, note = %s, use_yn = %s,
                               updated_at = now(), updated_by = %s where id = %s""",
-                    (name, iid, made, s(storage), s(note), use, user.login_id, pid))
+                    (name, iid, made, s(storage, "보관 위치"), s(note, "비고"), use, user.login_id, pid))
         extra = _usage(cur, pid, used, work_order_no, usage_note, user) or ""
     return _saved(request, user, "F-STD-032", "STD-030", "판을 수정했습니다", f"plate:{row['plate_code']}",
                   f"판 수정 · 사용 {use}{extra}", data={"id": pid})
@@ -310,7 +310,7 @@ def artworks(request: Request, item: str | None = None, use: str | None = None, 
              from artwork a join item i on i.id = a.item_id
             where (%(item)s::bigint is null or a.item_id = %(item)s) and (%(u)s::text is null or a.use_yn = %(u)s)
             order by i.item_code, a.version desc limit 200""",
-        {"item": ref_id(item, "제품", required=False), "u": s(use)})
+        {"item": ref_id(item, "제품", required=False), "u": s(use, "사용 여부")})
     for r in rows:
         r["src"] = data_uri(r["content_type"], r.pop("image"))
     ed = edit_row("artwork", edit)
@@ -334,7 +334,7 @@ async def artwork_create(request: Request, item_id: str | None = Form(None), tit
         ver = cur.fetchone()["v"]
         cur.execute("""insert into artwork (item_id, title, version, file_name, content_type, image, note, created_by)
                        values (%s, %s, %s, %s, %s, %s, %s, %s) returning id""",
-                    (iid, ttl, ver, file_name, ctype, data, s(note), user.login_id))
+                    (iid, ttl, ver, file_name, ctype, data, s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     return _saved(request, user, "F-STD-041", "STD-040", "시안을 등록했습니다", f"artwork:{it['item_code']}#{ver}",
                   data={"id": new_id, "version": ver})
@@ -351,7 +351,7 @@ async def artwork_update(request: Request, id: str, title: str | None = Form(Non
     with conn.tx() as cur:
         row = exists_or_404(cur, "artwork", aid, "id, item_id, version")
         cur.execute("update artwork set title = %s, note = %s, use_yn = %s, updated_at = now(), updated_by = %s "
-                    "where id = %s", (ttl, s(note), use, user.login_id, aid))
+                    "where id = %s", (ttl, s(note, "비고"), use, user.login_id, aid))
         if new_image:
             cur.execute("update artwork set file_name = %s, content_type = %s, image = %s where id = %s",
                         (*new_image, aid))
@@ -369,7 +369,7 @@ def sample_sheets(request: Request, item: str | None = None, use: str | None = N
              from sample_sheet s join item i on i.id = s.item_id
             where (%(item)s::bigint is null or s.item_id = %(item)s) and (%(u)s::text is null or s.use_yn = %(u)s)
             order by i.item_code, s.id desc limit 1000""",
-        {"item": ref_id(item, "제품", required=False), "u": s(use)})
+        {"item": ref_id(item, "제품", required=False), "u": s(use, "사용 여부")})
     ed = edit_row("sample_sheet", edit)
     return templating.render(request, "std/sample_sheets.html",
                              {"rows": rows, "edit": ed, "edit_content": kv_lines(ed["content"]) if ed else "",
@@ -389,7 +389,7 @@ def sample_sheet_create(request: Request, item_id: str | None = Form(None), titl
         it = item_choice(cur, iid, "제품")
         cur.execute("""insert into sample_sheet (item_id, title, content, issued_on, note, created_by)
                        values (%s, %s, %s, %s, %s, %s) returning id""",
-                    (iid, ttl, Jsonb(body), issued, s(note), user.login_id))
+                    (iid, ttl, Jsonb(body), issued, s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     return _saved(request, user, "F-STD-051", "STD-050", "표준견본서를 등록했습니다",
                   f"sample_sheet:{it['item_code']}#{new_id}", data={"id": new_id})
@@ -408,7 +408,7 @@ def sample_sheet_update(request: Request, id: str, title: str | None = Form(None
         exists_or_404(cur, "sample_sheet", sid, "id")
         cur.execute("""update sample_sheet set title = %s, content = %s, issued_on = %s, note = %s, use_yn = %s,
                               updated_at = now(), updated_by = %s where id = %s""",
-                    (ttl, Jsonb(body), issued, s(note), use, user.login_id, sid))
+                    (ttl, Jsonb(body), issued, s(note, "비고"), use, user.login_id, sid))
     return _saved(request, user, "F-STD-052", "STD-050", "표준견본서를 수정했습니다", f"sample_sheet:{sid}",
                   f"견본서 수정 · 사용 {use}", data={"id": sid})
 
@@ -432,7 +432,7 @@ def exception_items(request: Request, use: str | None = None, edit: str | None =
     rows = conn.q("""select e.id, e.item_id, i.item_code, i.item_name, e.reason, e.note, e.use_yn, e.updated_at
                        from exception_item e join item i on i.id = e.item_id
                       where (%(u)s::text is null or e.use_yn = %(u)s)
-                      order by i.item_code""", {"u": s(use)})
+                      order by i.item_code""", {"u": s(use, "사용 여부")})
     return templating.render(request, "std/exception_items.html",
                              {"rows": rows, "edit": edit_row("exception_item", edit), "items": items_for_select(),
                               "form": {"use": use or ""}}, screen_id="STD-060")
@@ -449,7 +449,7 @@ def exception_item_create(request: Request, item_id: str | None = Form(None), re
         if cur.fetchone():
             raise bad("제품", it["item_code"], "이미 예외로 지정된 제품입니다")
         cur.execute("insert into exception_item (item_id, reason, note, created_by) values (%s, %s, %s, %s) returning id",
-                    (iid, why, s(note), user.login_id))
+                    (iid, why, s(note, "비고"), user.login_id))
         new_id = cur.fetchone()["id"]
     return _saved(request, user, "F-STD-061", "STD-060", "예외제품을 지정했습니다", f"exception_item:{it['item_code']}",
                   data={"id": new_id})
@@ -464,7 +464,7 @@ def exception_item_update(request: Request, id: str, reason: str | None = Form(N
     with conn.tx() as cur:
         exists_or_404(cur, "exception_item", eid, "id")
         cur.execute("update exception_item set reason = %s, note = %s, use_yn = %s, updated_at = now(), updated_by = %s "
-                    "where id = %s", (why, s(note), use, user.login_id, eid))
+                    "where id = %s", (why, s(note, "비고"), use, user.login_id, eid))
     return _saved(request, user, "F-STD-062", "STD-060", "예외제품을 수정했습니다", f"exception_item:{eid}",
                   f"예외제품 수정 · 사용 {use}", data={"id": eid})
 

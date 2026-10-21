@@ -2,7 +2,7 @@
 
 기능 7 (contracts/function-list.md):
   F-SHP-011 POST /shp/orders                 출하 지시 등록 — 가용 안에서 LOT 할당 (`lot_stock.allocated_qty` · 행 잠금)
-  F-SHP-012 POST /shp/orders/{id}            출하 지시 수정 — 할당을 풀고 다시 잡는다 · 확정된 출하 422
+  F-SHP-012 POST /shp/orders/{id}            출하 지시 수정 — 할당을 풀고 다시 잡는다 · 확정된 출하 422 · 라인 전부 제거 = 지시 취소(Ruling 21)
   F-SHP-013 GET  /shp/orders                 출하 지시 조회 (화면)
   F-SHP-021 POST /shp/confirm/{id}/confirm   출하 확정 — 미판정·불합격 LOT 422 · qty · allocated_qty 함께 감소 · stock_move LOT 라인마다 1행
   F-SHP-022 GET  /shp/confirm                출하 확정 대상 조회 (화면)
@@ -94,17 +94,23 @@ def _opt_id(raw: str | None, label: str) -> int | None:
     return int(text)
 
 
-def _text(raw: str | None, limit: int = 1000) -> str | None:
-    text = (raw or "").strip()
-    if "\x00" in text:
-        raise http.validation_error("쓸 수 없는 글자(NUL)가 들어 있습니다", fields=[{"name": "입력", "reason": "NUL"}])
+def _text(raw: str | None, label: str, limit: int = 1000) -> str | None:
+    """글자 입력 — 앞뒤 공백 걷기 · 비면 None · NUL 과 길이 초과는 422 로 항목 이름을 짚는다(api-contract §3 · DEF-QA1-003)."""
+    if raw is None:
+        return None
+    if "\x00" in raw:
+        raise http.validation_error(f"{label}: 글자에 NUL(0x00)을 넣을 수 없습니다",
+                                    fields=[{"name": label, "reason": "글자에 NUL(0x00)을 넣을 수 없습니다"}])
+    text = raw.strip()
     if len(text) > limit:
-        raise http.validation_error(f"{limit}자까지 입력할 수 있습니다", fields=[{"name": "입력", "reason": f"{len(text)}자"}])
+        raise http.validation_error(f"{label}: {limit}자까지 입력할 수 있습니다",
+                                    fields=[{"name": label, "reason": f"{len(text)}자 — {limit}자까지"}])
     return text or None
 
 
-def _lines(stock_ids: list[str], qtys: list[str]) -> list[tuple[int, Decimal]]:
-    """LOT 할당 줄 — (재고 행 id, 수량). 둘 다 빈 줄은 건너뛴다. 한 줄도 없으면 422(누락)."""
+def _lines(stock_ids: list[str], qtys: list[str], *, allow_empty: bool = False) -> list[tuple[int, Decimal]]:
+    """LOT 할당 줄 — (재고 행 id, 수량). 둘 다 빈 줄은 건너뛴다. 한 줄도 없으면 422(누락) —
+    단 `allow_empty`(F-SHP-012 · Ruling 21: 라인 전부 제거 = 지시 취소)면 빈 목록을 돌려준다."""
     out: list[tuple[int, Decimal]] = []
     n = max(len(stock_ids), len(qtys))
     for i in range(n):
@@ -117,7 +123,7 @@ def _lines(stock_ids: list[str], qtys: list[str]) -> list[tuple[int, Decimal]]:
             raise http.validation_error("할당할 LOT 를 골라 주세요", fields=[{"name": label, "reason": "LOT 없음"}])
         stock_id = _opt_id(sid, f"{label} LOT")
         out.append((stock_id, _qty(q, f"{label} 수량")))
-    if not out:
+    if not out and not allow_empty:
         raise http.validation_error("할당할 LOT 가 없습니다 — LOT 와 수량을 한 줄 이상 입력해 주세요",
                                     fields=[{"name": "LOT 할당", "reason": "필수 항목입니다"}])
     seen: set[int] = set()
@@ -295,7 +301,7 @@ def _bad_request_screen(request: Request, template: str, ctx: dict, screen_id: s
 def orders_screen(request: Request, customer: str | None = None, status: str | None = None,
                   due_from: str | None = None, due_to: str | None = None, request_no: str | None = None,
                   edit: str | None = None, lot: str | None = None,
-                  user: rbac.User = rbac.require_fn("F-SHP-013")) -> HTMLResponse:
+                  user: rbac.User = rbac.require_screen("SHP-010")) -> HTMLResponse:
     """F-SHP-013 출하 지시 조회 — 거래처 · 납기 · 상태로 검색. `?request_no=` 는 의뢰의 거래처 · 제품 · 수량 · 납기를 채운다.
     `?lot=<제품 LOT>`(판정 완료 알림 `judged` 의 link) 는 그 LOT 의 가용 재고를 1번 줄에 골라 둔다."""
     form = {"customer": customer or "", "status": status or "", "due_from": due_from or "", "due_to": due_to or "",
@@ -376,8 +382,8 @@ def create_order(request: Request, request_no: str | None = Form(None), customer
     lines = _lines(stock_id, qty)
     cid = _opt_id(customer_id, "거래처")
     due = _date(due_date, "납기", required=False)
-    memo = _text(note)
-    rno = _text(request_no, 100)
+    memo = _text(note, "비고")
+    rno = _text(request_no, "생산의뢰 번호", 100)
     with conn.tx() as cur:
         req = _request(cur, rno)
         if req is not None:
@@ -420,15 +426,17 @@ def create_order(request: Request, request_no: str | None = Form(None), customer
 def update_order(request: Request, id: str, due_date: str | None = Form(None), note: str | None = Form(None),
                  stock_id: list[str] = Form([]), qty: list[str] = Form([]),
                  user: rbac.User = rbac.require_fn("F-SHP-012")):
-    """F-SHP-012 출하 지시 수정 — 할당 줄을 통째로 바꾼다(이전 할당은 풀고 새 할당을 잡는다). 확정 · 취소된 출하는 422."""
+    """F-SHP-012 출하 지시 수정 — 할당 줄을 통째로 바꾼다(이전 할당은 풀고 새 할당을 잡는다). 확정 · 취소된 출하는 422.
+    LOT 줄을 전부 지우면 **지시 취소**(Ruling 21): 같은 트랜잭션에서 `status = '취소'` · `shipment_line` 제거 · 할당 전부 해제. 알림 없음."""
     order_id = _path_id(id)
-    lines = _lines(stock_id, qty)
+    lines = _lines(stock_id, qty, allow_empty=True)
     due = _date(due_date, "납기", required=False)
-    memo = _text(note)
+    memo = _text(note, "비고")
     with conn.tx() as cur:
         o = _lock_order(cur, order_id)
         if o["status"] != "지시":
-            raise http.validation_error(f"{o['status']}된 출하는 고칠 수 없습니다 — 확정 후 정정은 반품·정정 등록으로",
+            hint = " — 확정 후 정정은 반품·정정 등록으로" if o["status"] == "확정" else ""
+            raise http.validation_error(f"{o['status']}된 출하는 고칠 수 없습니다{hint}",
                                         fields=[{"name": "출하 번호", "reason": o["shipment_no"]}])
         cur.execute(
             """select l.id, l.qty, s.id as stock_id
@@ -456,10 +464,20 @@ def update_order(request: Request, id: str, due_date: str | None = Form(None), n
             if s["allocated_qty"] != before[sid]:
                 cur.execute("""update lot_stock set allocated_qty = %s, updated_at = now(), updated_by = %s
                                 where id = %s""", (s["allocated_qty"], user.login_id, sid))
+        cancelled = not lines
         cur.execute(
-            """update shipment_order set due_date = coalesce(%s, due_date), note = coalesce(%s, note),
-                      updated_at = now(), updated_by = %s where id = %s""", (due, memo, user.login_id, order_id))
-    resp = http.saved(request, f"출하 지시 {o['shipment_no']} 를 고쳤습니다", data={"id": order_id})
+            """update shipment_order set status = case when %(cancel)s then '취소' else status end,
+                      due_date = coalesce(%(due)s, due_date), note = coalesce(%(note)s, note),
+                      updated_at = now(), updated_by = %(by)s where id = %(id)s""",
+            {"cancel": cancelled, "due": due, "note": memo, "by": user.login_id, "id": order_id})
+    released = sum((r["qty"] for r in old), Decimal(0))
+    if cancelled:
+        resp = http.saved(request, f"출하 지시 {o['shipment_no']} 를 취소했습니다 — 할당 {len(old)}줄({released:,}) 해제",
+                          data={"id": order_id, "status": "취소"})
+        audit.log_change(request, user, "F-SHP-012", f"shipment_order:{o['shipment_no']}",
+                         f"지시 취소(라인 전부 제거 · Ruling 21) · 할당 {len(old)}줄({released:,}) 해제")
+        return resp
+    resp = http.saved(request, f"출하 지시 {o['shipment_no']} 를 고쳤습니다", data={"id": order_id, "status": "지시"})
     audit.log_change(request, user, "F-SHP-012", f"shipment_order:{o['shipment_no']}",
                      f"할당 {len(old)}줄 → {len(lines)}줄")
     return resp
@@ -469,7 +487,7 @@ def update_order(request: Request, id: str, due_date: str | None = Form(None), n
 
 @router.get(P_CONFIRM, response_class=HTMLResponse)
 def confirm_screen(request: Request, no: str | None = None,
-                   user: rbac.User = rbac.require_fn("F-SHP-022")) -> HTMLResponse:
+                   user: rbac.User = rbac.require_screen("SHP-020")) -> HTMLResponse:
     """F-SHP-022 출하 확정 대상 조회 — 지시 상태의 출하와 LOT 별 판정 · 재고 상태. 아래에 최근 확정(반품·정정 등록 대상)."""
     q = (no or "").strip() or None
     pending = conn.q(
@@ -572,10 +590,10 @@ def adjust_order(request: Request, id: str, kind: str | None = Form(None), qty: 
     if k not in ADJUST_KINDS:
         raise http.validation_error("구분을 골라 주세요 (반품 · 정정)", fields=[{"name": "구분", "reason": k or "필수 항목입니다"}])
     v = _qty(qty, "수량", allow_negative=True)
-    why = _text(reason)
+    why = _text(reason, "사유")
     if not why:
         raise http.validation_error("사유를 입력해 주세요", fields=[{"name": "사유", "reason": "필수 항목입니다"}])
-    lot = _text(lot_no, 100)
+    lot = _text(lot_no, "LOT 번호", 100)
     stored = -abs(v) if k == "반품" else v
     with conn.tx() as cur:
         o = _lock_order(cur, order_id)
@@ -616,7 +634,7 @@ def adjust_order(request: Request, id: str, kind: str | None = Form(None), qty: 
 @router.get(P_HISTORY, response_class=HTMLResponse)
 def history_screen(request: Request, date_from: str | None = None, date_to: str | None = None,
                    customer: str | None = None, item: str | None = None, no: str | None = None,
-                   user: rbac.User = rbac.require_fn("F-SHP-031")) -> HTMLResponse:
+                   user: rbac.User = rbac.require_screen("SHP-030")) -> HTMLResponse:
     """F-SHP-031 출하 이력 — 확정된 출하(기간 = 확정일 · 거래처 · 품목). 반품·정정 행을 원 출하 아래에 묶는다."""
     form = {"date_from": date_from or "", "date_to": date_to or "", "customer": customer or "", "item": item or "",
             "no": (no or "").strip()}

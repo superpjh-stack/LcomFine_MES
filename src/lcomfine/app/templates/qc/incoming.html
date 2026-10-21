@@ -8,8 +8,10 @@
   <form class="search" method="get" role="search">
     <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
     {% if f.receipt %}<input type="hidden" name="receipt" value="{{ f.receipt }}">{% endif %}
+    {% if f.status %}<input type="hidden" name="status" value="{{ f.status }}">{% endif %}
     <button class="btn btn-primary">조회</button>
     {% if f.receipt %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-010') }}">입고 {{ f.receipt }} 조건 풀기</a>{% endif %}
+    {% if f.status %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-010') }}">재고 상태 {{ f.status }} 조건 풀기</a>{% endif %}
   </form>
 </section>
 {{ u.readonly_note(can_w) }}

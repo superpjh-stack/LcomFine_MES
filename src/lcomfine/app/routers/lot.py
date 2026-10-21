@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get(nav.path_of("LOT-010"), response_class=HTMLResponse)
-def forward(request: Request, user: rbac.User = rbac.require_fn("F-LOT-011")):
+def forward(request: Request, user: rbac.User = rbac.require_screen("LOT-010")):
     f = {"lot_no": qs(request, "lot_no")}
     result, error = None, None
     if f["lot_no"]:
@@ -28,7 +28,7 @@ def forward(request: Request, user: rbac.User = rbac.require_fn("F-LOT-011")):
 
 
 @router.get(nav.path_of("LOT-020"), response_class=HTMLResponse)
-def backward(request: Request, user: rbac.User = rbac.require_fn("F-LOT-021")):
+def backward(request: Request, user: rbac.User = rbac.require_screen("LOT-020")):
     f = {"shipment_no": qs(request, "shipment_no"), "product_lot_no": qs(request, "product_lot_no")}
     result, error = None, None
     if f["shipment_no"] and f["product_lot_no"]:

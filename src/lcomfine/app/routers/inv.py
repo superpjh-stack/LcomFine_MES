@@ -209,7 +209,7 @@ select s.id, s.lot_kind, s.lot_id, coalesce(m.lot_no, p.lot_no) as lot_no,
 
 
 @router.get(nav.path_of("INV-010"), response_class=HTMLResponse)
-def stock(request: Request, user: rbac.User = rbac.require_fn("F-INV-011")):
+def stock(request: Request, user: rbac.User = rbac.require_screen("INV-010")):
     f = {k: qs(request, k) for k in ("item", "warehouse", "lot", "status", "kind")}
     if f["status"] and f["status"] not in (*STATUSES, "할당"):
         raise _bad("상태", f"모르는 상태입니다: {f['status'][:20]}")
@@ -261,7 +261,7 @@ def _split_no(cur, table: str, parent: dict) -> str:
 
 
 @router.get(nav.path_of("INV-020"), response_class=HTMLResponse)
-def moves(request: Request, user: rbac.User = rbac.require_fn("F-INV-023")):
+def moves(request: Request, user: rbac.User = rbac.require_screen("INV-020")):
     f = {k: qs(request, k) for k in ("lot", "location")}
     sql = """select mv.id, mv.move_kind, mv.lot_kind, coalesce(m.lot_no, p.lot_no) as lot_no,
                     coalesce(sm.lot_no, sp.lot_no) as source_lot_no,
@@ -366,8 +366,12 @@ def update_move(request: Request, id: str, from_location_id: str = Form(""), to_
         raise _bad("이동 구분", f"{mv['move_kind']} 행은 여기서 고칠 수 없습니다 — 위치 이동 행만 고칩니다")
     src = location_in(from_location_id, "출발 위치") if from_location_id.strip() else {"id": mv["from_location_id"]}
     dst = location_in(to_location_id, "도착 위치") if to_location_id.strip() else {"id": mv["to_location_id"]}
-    q = num_in(qty, "수량", required=False) or mv["qty"]
+    q_new = num_in(qty, "수량", required=False)
+    q = q_new or mv["qty"]
     memo = text_in(note, "비고")
+    if not from_location_id.strip() and not to_location_id.strip() and q_new is None and memo is None:
+        raise _bad("수정", "고칠 항목이 없습니다 — 출발 위치 · 도착 위치 · 수량 · 비고 중 하나 이상",
+                   "고칠 항목이 없습니다 — 출발 위치 · 도착 위치 · 수량 · 비고 중 하나 이상")
     if src["id"] == dst["id"]:
         raise _bad("도착 위치", "출발 위치와 같습니다")
     kind, lot_id = mv["lot_kind"], mv["lot_id"]
@@ -404,7 +408,7 @@ def update_move(request: Request, id: str, from_location_id: str = Form(""), to_
 
 # ── INV-030 재고 조정 · 실사 ────────────────────────────────────────────────
 @router.get(nav.path_of("INV-030"), response_class=HTMLResponse)
-def adjustments(request: Request, user: rbac.User = rbac.require_fn("F-INV-032")):
+def adjustments(request: Request, user: rbac.User = rbac.require_screen("INV-030")):
     f = {k: qs(request, k) for k in ("lot",)}
     sql = """select a.id, a.lot_kind, coalesce(m.lot_no, p.lot_no) as lot_no, i.item_code, i.item_name,
                     l.location_code, a.book_qty, a.actual_qty, a.diff_qty, a.reason, a.adjusted_at, a.created_by

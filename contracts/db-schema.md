@@ -110,6 +110,8 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | F-INV-021 | `product_lot` `material_lot` | 분할 LOT 의 새 LOT 행 — `parent_lot_id` = 원 LOT · 번호 원 번호 + `-01` 순번 | D-509 · function-list F-INV-021 |
 | F-DOC-011 | `sys_access_log` | SSO 진입 로그(구분 SSO) | D-514 · G-18 |
 | F-RPT-132 | `sys_ai_call_log` | AI 호출 로그 | D-513 |
+| 모든 채번 (의뢰 · 지시 · 원자재 입고 LOT · 제품 LOT · 출하 · ERP 회차 · 데이터 질의 로그 — `numbering.KINDS` 7) | `sys_number_seq` | `numbering.next` 한 곳 — 종류 · 범위별 카운터 행 upsert. 라우터는 번호를 조립하지 않는다. 분할 LOT 번호(원 번호 + `-NN`)와 불출은 채번이 아니다(F-INV-021 행 · D-509) | CLAUDE.md 한 곳 규칙 · D-509 · QA2 G-05 (DEF-QA2-003) |
+| 로그인 · 로그아웃 (`auth`) | `sys_user` | fail_count · last_login_at · revoked_sessions 만 — 비밀번호 · 부서 · 상태는 SYS-010 (F-SYS-011~013) 만 쓴다 | G-20 세션 상태 · QA2 G-05 |
 
 ### 2.3 화면 → 쓰는 테이블 (렌더본 — `function-list.md` 에서 찍는다)
 

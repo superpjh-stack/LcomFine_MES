@@ -54,7 +54,7 @@ def _item_in(value: str, name: str = "품목", *, item_type: str = "원자재") 
 
 # ── MAT-010 원자재 입고 ────────────────────────────────────────────────────
 @router.get(nav.path_of("MAT-010"), response_class=HTMLResponse)
-def receipts(request: Request, user: rbac.User = rbac.require_fn("F-MAT-013")):
+def receipts(request: Request, user: rbac.User = rbac.require_screen("MAT-010")):
     f = {k: qs(request, k) for k in ("supplier", "lot", "label")}
     sql = """select r.id, r.supplier_name, r.received_on, r.note, r.canceled_at, r.created_by,
                     m.id as lot_id, m.lot_no, m.qty, m.supplier_lot_no, i.item_code, i.item_name,
@@ -159,14 +159,19 @@ def update_receipt(request: Request, id: str, supplier_name: str = Form(""), rec
     if rec["canceled_at"]:
         raise _bad("입고", "취소된 입고는 고칠 수 없습니다")
     is_cancel = (cancel or "").strip() in TRUTHY
-    supplier = text_in(supplier_name, "공급사") or rec["supplier_name"]
-    on = date_in(received_on, "입고일") or rec["received_on"]
+    supplier_new = text_in(supplier_name, "공급사")
+    on_new = date_in(received_on, "입고일")
+    supplier = supplier_new or rec["supplier_name"]
+    on = on_new or rec["received_on"]
     memo = text_in(note, "비고")
     edits = []
     for n, (lid, q, slot) in enumerate(_rows(lot_id, qty, supplier_lot_no), start=1):
         if not lid.strip():
             continue
         edits.append((id_in(lid, f"{n}행 LOT"), num_in(q, f"{n}행 수량", required=False), text_in(slot, f"{n}행 공급사 LOT")))
+    if not is_cancel and supplier_new is None and on_new is None and memo is None and not edits:
+        raise _bad("수정", "고칠 항목이 없습니다 — 공급사 · 입고일 · 비고 · LOT 행 중 하나 이상",
+                   "고칠 항목이 없습니다 — 공급사 · 입고일 · 비고 · LOT 행 중 하나 이상")
     with conn.tx() as cur:
         cur.execute("select id, lot_no, qty from material_lot where receipt_id = %s and parent_lot_id is null for update", (rid,))
         lots = {r["id"]: r for r in cur.fetchall()}
@@ -213,7 +218,7 @@ def _issuable(wo: str = "") -> list[dict]:
 
 
 @router.get(nav.path_of("MAT-020"), response_class=HTMLResponse)
-def issues(request: Request, user: rbac.User = rbac.require_fn("F-MAT-023")):
+def issues(request: Request, user: rbac.User = rbac.require_screen("MAT-020")):
     f = {k: qs(request, k) for k in ("wo", "lot")}
     sql = """select h.id as issue_id, h.issued_on, h.note, h.canceled_at, h.created_by,
                     l.id as line_id, w.work_order_no, m.lot_no, i.item_code, i.item_name, loc.location_code, l.qty
@@ -317,6 +322,9 @@ def update_issue(request: Request, id: str, issued_on: str = Form(""), note: str
     is_cancel = (cancel or "").strip() in TRUTHY
     on = date_in(issued_on, "불출일")
     memo = text_in(note, "비고")
+    if not is_cancel and on is None and memo is None:
+        raise _bad("수정", "고칠 항목이 없습니다 — 불출일 · 비고 중 하나 이상 (LOT 을 바꾸려면 취소 뒤 다시 불출)",
+                   "고칠 항목이 없습니다 — 불출일 · 비고 중 하나 이상 (LOT 을 바꾸려면 취소 뒤 다시 불출)")
     with conn.tx() as cur:
         if is_cancel:
             cur.execute("select * from material_issue_line where issue_id = %s", (iid,))
@@ -349,7 +357,7 @@ def default_receipt_qty(work_order_id: int) -> Decimal:
 
 
 @router.get(nav.path_of("MAT-030"), response_class=HTMLResponse)
-def product_receipts(request: Request, user: rbac.User = rbac.require_fn("F-MAT-033")):
+def product_receipts(request: Request, user: rbac.User = rbac.require_screen("MAT-030")):
     f = {k: qs(request, k) for k in ("wo", "lot")}
     sql = """select pr.id, pr.received_on, pr.qty, pr.note, pr.canceled_at, pr.created_by,
                     w.work_order_no, p.lot_no, i.item_code, i.item_name, loc.location_code,
@@ -428,6 +436,9 @@ def update_product_receipt(request: Request, id: str, qty: str = Form(""), recei
     q = num_in(qty, "수량", required=False)
     on = date_in(received_on, "입고일")
     memo = text_in(note, "비고")
+    if not is_cancel and q is None and on is None and memo is None:
+        raise _bad("수정", "고칠 항목이 없습니다 — 수량 · 입고일 · 비고 중 하나 이상",
+                   "고칠 항목이 없습니다 — 수량 · 입고일 · 비고 중 하나 이상")
     with conn.tx() as cur:
         if is_cancel or (q is not None and q != rec["qty"]):
             why = _lot_untouched(cur, "제품", rec["product_lot_id"], rec["lot_qty"])
@@ -478,7 +489,7 @@ HISTORY_COLS = [("kind", "구분"), ("on_date", "일자"), ("lot_no", "LOT"), ("
 
 
 @router.get(nav.path_of("MAT-040"), response_class=HTMLResponse)
-def history(request: Request, user: rbac.User = rbac.require_fn("F-MAT-041")):
+def history(request: Request, user: rbac.User = rbac.require_screen("MAT-040")):
     f = {k: qs(request, k) for k in ("from", "to", "item", "supplier", "kind", "format")}
     d_from, d_to = date_in(f["from"], "시작일"), date_in(f["to"], "종료일")
     sql, params = HISTORY_SQL, []

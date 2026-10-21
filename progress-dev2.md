@@ -87,7 +87,7 @@ trace.NotFound      # LookupError 의 하위 — 입력한 번호가 없다 (라
 
 | 항목 | 실측 | 검증 방법 |
 |---|---|---|
-| 개발2 테스트 | **39 passed** (두 번 연속 실행 · 남은 테스트 행 0) | `uv run pytest tests/test_dev2_*.py -q` |
+| 개발2 테스트 | **46 passed** (두 번 연속 실행 · 남은 테스트 행 0 · QA1 결함 수정 뒤) | `uv run pytest tests/test_dev2_*.py -q` |
 | 전체 테스트 | 180 passed | `uv run pytest -q` |
 | 개발2 기능 ↔ 라우트 ↔ 표식 | 37 기능 전부 라우트 글자 그대로 · 표식 있음 · 개발2 경로의 계약 없는 라우트 0 | `tools/check_trace.py` 의 `all_routes` · `fn_marks` 로 개발2 줄만 대조 |
 | G-03 placeholder | 개발2 0 (남은 24 = 개발1 5 · 개발3 19) | `make gate` |
@@ -98,6 +98,18 @@ trace.NotFound      # LookupError 의 하위 — 입력한 번호가 없다 (라
 | trace 읽기 전용 | 추적 전후 척추 테이블 행 수 diff 0 · `trace.py` 에 쓰기 문 0 | `tests/test_dev2_lot.py::test_trace_writes_nothing` |
 | G-09 (개발2 몫) | 검사대기 · 보류 LOT 불출 422 · 사용 중지 품목 입고 422 | `test_dev2_mat.py::test_issue_blocks_waiting_and_held_lots_and_moves_stock` · `test_receipt_numbers_lots_waiting_and_notifies` |
 | G-10 (개발2 몫) | INV-010 가용 = qty − allocated = `v_dq_stock` 재계산 · 할당 칩 | `test_dev2_inv.py::test_stock_available_is_qty_minus_allocated_and_chips` |
+
+### 2.1 W1 QA1 결함 수정 (2026-10-21)
+
+| # | 결함 | 수정 | 실측 | 검증 |
+|---|---|---|---|---|
+| 1 | 화면 GET 20 개가 `require_fn` → 칸 없는 부서에 「이 기능을 실행할 권한이 없습니다」 | `@router.get(nav.path_of(…))` 20 개 전부 `rbac.require_screen("<화면 ID>")` (MAT 4 · PRD 4 · INS 4 · QC 3 · INV 3 · LOT 2). 조회 API · 쓰기 POST 의 `require_fn` 은 그대로 | 20 화면 × 칸 없는 시드 부서 → 403 `이 화면을 볼 권한이 없습니다` · 칸 있는 부서 → 200 | `tests/test_dev2_screens.py` (`sys_permission` 에서 칸 없는 부서를 골라 두드린다) · `grep -c require_screen src/lcomfine/app/routers/{mat,prd,ins,qc,inv,lot}.py` = 20 |
+| 2 | 수정 기능 빈 본문 `{}` → 200 「…고쳤습니다」 | F-MAT-012 · F-MAT-022 · F-MAT-032 · F-INV-022: 고칠 칸이 전부 비고(빈 글자 포함) · LOT 행 없음 · 취소 아님 → **422** `고칠 항목이 없습니다 — <칸 목록> 중 하나 이상`. 검사는 404 · 취소된 행 422 뒤, 트랜잭션 전 (DB 는 건드리지 않음) | `{}` · 전부 빈 글자 · 빈 LOT 행 → 422 · 행 `updated_at` 그대로 · 한 칸만 주면 200 | `test_dev2_mat.py::test_receipt_update_empty_body_is_422` · `::test_issue_update_empty_body_is_422` · `::test_product_receipt_update_empty_body_is_422` · `test_dev2_inv.py::test_move_update_empty_body_is_422` |
+| 3 | PRD-040 · INS-040 본문에 「미확정 (D-519)」 없음 (행이 없으면 `ui.undecided` 셀도 없음) | 화면 머리말 `산식은 미확정 (D-519)` + 로스율 열 머리 `산식 미확정 (D-519)` — 행이 없어도 본문에 보인다 | `<main>` ~ `<aside class="contract"` 사이에 글자 그대로 있음 (행 있을 때 · 없을 때) | `test_dev2_prd.py::test_loss_rate_is_undecided_with_raw_qty` · `::test_ins_loss_rate_is_undecided` (`_body()` 로 메뉴 · 계약 패널 제외) |
+| 4 | (개발1 §3-3) HOME 카드 `QC-010` · `QC-020` `?status=검사대기` 를 받지 않았다 | `status` 조회 인자 추가 — `lot_stock.status` 가 그 값인 LOT 만 (`exists`). 값은 `검사대기 · 가용 · 보류` 중 하나, 그 밖은 422(조회 조건 형식 오류). 폼에 hidden 으로 유지 · 「조건 풀기」 링크 | `?status=검사대기` 는 판정 전 LOT 만 · `?status=가용` 은 합격 LOT 만 · `?status=x` 422 | `test_dev2_qc.py::test_incoming_screen_filters_by_stock_status` · `::test_product_screen_filters_by_stock_status` |
+
+- 전체 테스트: 첫 실행 4 failed / 208 passed — `test_dev2_lot.py::test_trace_writes_nothing` · `test_arch_smoke.py::test_screen_without_cell_403` 는 단독 재실행 시 passed(다른 개발자가 같은 DB 에서 동시에 작업 중이던 시각 — 행 수 diff 가 외부에서 흔들림). `test_qa3_audit.py::test_g22_change_and_access_log` · `test_qa3_robustness.py::test_nul_input_names_the_field` 는 QA3 파일(개발2 소유 아님) — 보고만 한다. 재실행: **210 passed · 2 failed**(그 QA3 둘만).
+- `make check-trace`: G-01 PASS · G-02 FAIL 은 라우트 · 표식 없는 기능 27 (RPT · COL · DOC — W2~W4 몫) 로 개발2 몫 0.
 
 기능별:
 
@@ -121,6 +133,7 @@ trace.NotFound      # LookupError 의 하위 — 입력한 번호가 없다 (라
 
 1. **(아키텍트 · 개발1) 시드 시나리오** — G-07 을 시드 데이터로도 보이려면 개발1 시드(품목 · 위치 · 의뢰 · 지시)의 코드가 정해진 뒤 `seed_dev2.run()` 이 그 위에 입고 → 판정 → 불출 → 일보 → 제품 입고 → 판정을 HTTP 없이 SQL 로 깔 수 있다. 개발1 이 시드 행 코드(품목 · 위치 · 지시 번호)를 `progress-dev1.md` §1 에 공표하면 만든다.
 2. **(아키텍트) `function-list.md` 계약 문장 보강** — D-701(재판정 경로 `{id}` = LOT id) · D-703(수정 · 취소 범위) 를 F-QC-012 · F-QC-022 · F-MAT-012 · F-MAT-022 · F-MAT-032 · F-INV-022 의 계약 문장에 이어 적어 주기를 요청한다(코드가 원본).
+   **종결** — 아키텍트가 D-701 · D-703 을 F-QC-022 · F-MAT-012 · F-MAT-022 행에 반영했다(`function-list.md` 확인).
 3. **(아키텍트 · 선택) 템플릿 필터** — `screen.num` 의 기본 자릿수 0 은 numeric(14,3) 수량의 소수를 반올림해 보인다. 개발2 화면은 자체 매크로 `templates/inv/_ui.html` `q()`(뒤 0 없이)를 쓴다. 공용 `qty` 필터가 생기면 그것으로 바꾼다.
 4. **(개발1) `order_issued` 알림 링크** — `/mat/issues?wo=<지시번호>` 꼴이면 불출 등록 때 닫힌다(D-704).
 5. **(개발3) 출하 쪽 연결** — 판정 알림 링크는 `/shp/orders?lot=<제품 LOT>`. 「출하 후 불합격」 은 `trace.backward(...)["rejected_after_shipment"]` 로 읽을 수 있다(§1.1).

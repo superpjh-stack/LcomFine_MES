@@ -42,7 +42,7 @@ def users(request: Request, q: str | None = None, role: str | None = None, statu
               and (%(r)s::text is null or u.role_code = %(r)s)
               and (%(st)s::text is null or u.status = %(st)s)
             order by r.sort_no, u.login_id limit 1000""",
-        {"q": like(q), "r": s(role), "st": choice(status, "상태", USER_STATUSES, required=False)})
+        {"q": like(q), "r": s(role, "부서"), "st": choice(status, "상태", USER_STATUSES, required=False)})
     ed = None
     if edit:
         ed = conn.q1("select user_id, login_id, user_name, role_code, status from sys_user where user_id = %s",
@@ -90,7 +90,7 @@ def user_update(request: Request, id: str, login_id: str | None = Form(None), us
         row = cur.fetchone()
         if row is None:
             raise http.not_found()
-        if s(login_id) is not None and s(login_id) != row["login_id"]:
+        if s(login_id, "사번(로그인 ID)") is not None and s(login_id, "사번(로그인 ID)") != row["login_id"]:
             raise bad("사번(로그인 ID)", "사번은 바꾸지 않습니다", "사번은 바꿀 수 없습니다")
         if row["login_id"] == user.login_id and (st != "정상" or rc != row["role_code"]):
             raise bad("상태", "자기 계정의 부서·상태는 바꿀 수 없습니다 — 다른 관리자가 바꾼다")
@@ -280,15 +280,15 @@ def code_save(request: Request, id: str | None = Form(None), action: str | None 
                     raise bad("코드 값", cd, f"그 그룹에 이미 있는 코드입니다 ({grp} · {cd})")
                 cur.execute("""insert into sys_common_code (group_code, code, code_name, sort_no, note, use_yn, created_by)
                                values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-                            (grp, cd, name, order, s(note), use, user.login_id))
+                            (grp, cd, name, order, s(note, "비고"), use, user.login_id))
                 cid = cur.fetchone()["id"]
                 target, msg, data = f"sys_common_code:{grp}/{cd}", "공통코드를 등록했습니다", {"id": cid, "result": "등록"}
             else:
-                if (s(group_code) and s(group_code) != row["group_code"]) or (s(code) and s(code) != row["code"]):
+                if (s(group_code, "코드 그룹") and s(group_code, "코드 그룹") != row["group_code"]) or (s(code, "코드 값") and s(code, "코드 값") != row["code"]):
                     raise bad("코드 값", "그룹·코드 값은 바꾸지 않습니다", "코드 그룹·값은 바꿀 수 없습니다")
                 cur.execute("""update sys_common_code set code_name = %s, sort_no = %s, note = %s, use_yn = %s,
                                       updated_at = now(), updated_by = %s where id = %s""",
-                            (name, order, s(note), use, user.login_id, cid))
+                            (name, order, s(note, "비고"), use, user.login_id, cid))
                 target, msg, data = (f"sys_common_code:{row['group_code']}/{row['code']}", "공통코드를 수정했습니다",
                                      {"id": cid, "result": "수정"})
     resp = http.saved(request, msg, back=nav.path_of("SYS-030"), data=data)
@@ -307,7 +307,7 @@ def logs(request: Request, tab: str | None = None, login: str | None = None, log
     """F-SYS-041 — 접속 로그 · 변경 감사 로그 · AI 호출 로그. 읽기만 한다(최근 500행)."""
     t = choice(tab or "access", "탭", LOG_TABS)
     params = {"login": like(login), "from": day(date_from, "시작일", required=False),
-              "to": day(date_to, "끝일", required=False), "type": s(log_type), "limit": LOG_LIMIT}
+              "to": day(date_to, "끝일", required=False), "type": s(log_type, "구분"), "limit": LOG_LIMIT}
     if t == "access":
         rows = conn.q("""select logged_at as at, log_type, login_id, role_code, method, path, screen_id, function_id,
                                 target, result, detail, client_ip

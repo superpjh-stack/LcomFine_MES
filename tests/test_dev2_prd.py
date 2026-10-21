@@ -7,6 +7,11 @@ from tests.test_dev2_world import pr, sh, sl, world  # noqa: F401 — 픽스처
 H = {"accept": "text/html"}
 
 
+def _body(html: str) -> str:
+    """화면 본문(<main>) 만 — 좌측 메뉴 · 계약 패널(aside.contract)을 뺀다."""
+    return html.split('<main class="main"', 1)[1].split('<aside class="contract"', 1)[0]
+
+
 @pytest.mark.fn("F-PRD-011")
 def test_daily_register_unique_per_wo_date_equipment(world, pr, sl):
     did = world.daily(pr, 40)
@@ -62,6 +67,9 @@ def test_loss_rate_is_undecided_with_raw_qty(world, pr):
     r = pr.get("/prd/loss-rate", params={"wo": world.wo_no}, headers=H)
     assert r.status_code == 200 and "미확정 (D-519)" in r.text and world.wo_no in r.text and ">38<" in r.text  # 생산 = 33 + 5
     assert "%" not in r.text.split(world.wo_no, 1)[1].split("</tr>")[0]                                  # 비율을 지어내지 않는다
+    assert "미확정 (D-519)" in _body(r.text)                                                             # 계약 패널 말고 본문에
+    r = pr.get("/prd/loss-rate", params={"wo": world.p + "없음"}, headers=H)                              # 행이 없어도 본문에
+    assert r.status_code == 200 and "미확정 (D-519)" in _body(r.text)
 
 
 @pytest.mark.fn("F-INS-011")
@@ -122,3 +130,6 @@ def test_ins_loss_rate_is_undecided(world, pr):
     _ins(world, pr)
     r = pr.get("/ins/loss-rate", params={"wo": world.wo_no}, headers=H)
     assert r.status_code == 200 and "미확정 (D-519)" in r.text and world.wo_no in r.text
+    assert "미확정 (D-519)" in _body(r.text)
+    r = pr.get("/ins/loss-rate", params={"wo": world.p + "없음"}, headers=H)
+    assert r.status_code == 200 and "미확정 (D-519)" in _body(r.text)

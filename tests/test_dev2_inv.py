@@ -101,3 +101,16 @@ def test_adjust_list(world, pr, sl):
     r = pr.get("/inv/adjustments", params={"lot": m}, headers={"accept": "text/html"})
     assert r.status_code == 200 and m in r.text and "실사 (예시)" in r.text
     assert sl.get("/inv/adjustments").status_code == 403
+
+
+@pytest.mark.fn("F-INV-022")
+def test_move_update_empty_body_is_422(world, pr):
+    (m,) = world.receive(pr, 40)
+    mid = pr.post("/inv/moves", data={"lot_kind": "원자재", "lot_no": m, "from_location_id": str(world.loc1),
+                                      "to_location_id": str(world.loc2), "qty": "10"}).json()["move_id"]
+    for body in ({}, {"from_location_id": "", "to_location_id": "", "qty": "", "note": ""}):
+        r = pr.post(f"/inv/moves/{mid}", data=body)
+        assert r.status_code == 422, r.text
+        assert "고칠 항목이 없습니다" in r.json()["message"] and "도착 위치" in r.json()["message"]
+    assert [(s["location_id"], int(s["qty"])) for s in world.stock("원자재", m)] == [(world.loc1, 30), (world.loc2, 10)]
+    assert pr.post(f"/inv/moves/{mid}", data={"note": "비고 (예시)"}).status_code == 200
