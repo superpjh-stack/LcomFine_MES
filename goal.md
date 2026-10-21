@@ -174,7 +174,7 @@ W1 핵심 흐름 → W2 수금 → W3 대시보드 → W4 문서 SSO      (멈�
 | **개발3** 출하·수금·분석 | SHP 출하(3) · PRP 생산 보고서(3) · COL 수금리포트(7, W2) · RPT 대시보드(9, W3) | **22** | `stats.py` · `erp_upload.py` · `dashboard.py` · `ai.py` · `dataquery.py` |
 
 합계 **25 + 20 + 22 = 67**. 각 개발자는 자기 모듈의 `src/lcomfine/app/routers/<module>.py` · `src/lcomfine/app/templates/<module>/` · `src/lcomfine/db/seed_devN.py` · `tests/test_devN_*.py` 와 위 공용 모듈을 소유한다.
-아키텍트 소유: `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`). 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다.
+아키텍트 소유: `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/gen_function_list.py` · `tools/gen_permissions.py` · `tools/gen_contracts.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`). 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다.
 
 - 화면 간 흐름(계약): WO-010 생산의뢰(의뢰번호 = 수주 키) → WO-020 생산지시 → MAT-010 원자재 입고(입고 LOT 자동 채번 · 검사대기) → QC-010 입고검사(합격 → 가용) → MAT-020 불출(가용 LOT 만) → PRD-010 생산일보 · INS-010 검사일보 → MAT-030 제품 입고(일보 완료 수량 기본값 · 제품 LOT) → QC-020 제품검사 판정 → SHP-010 출하 지시(가용 안에서 LOT 할당) → SHP-020 출하 확정 → COL-010 ERP 수금 업로드 → LOT-020 역추적.
 - 공용 함수 · 시그니처는 **먼저 정한 사람이 `progress-devN.md` §1 에 공표**하고 나머지가 그대로 쓴다. 시그니처 원본은 `contracts/interfaces.md`.

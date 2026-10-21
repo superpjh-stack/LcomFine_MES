@@ -168,6 +168,13 @@ def _parse_functions(text: str) -> tuple[Function, ...]:
     return tuple(out)
 
 
+def owner_path(api_path: str) -> str:
+    """API 경로를 덮는 nav 화면 경로 중 가장 구체적인(가장 긴) 것 — 없으면 `/`.
+    예: `/prd/daily/{id}` → `/prd/daily` (PRD-010), `/prd/daily/print` → `/prd/daily/print` (PRD-020)."""
+    hits = [s.path for s in nav.SCREENS if s.path != "/" and (api_path == s.path or api_path.startswith(s.path + "/"))]
+    return max(hits, key=len) if hits else "/"
+
+
 def _validate(fns: list[Function]) -> None:
     errs: list[str] = []
     ids = [f.id for f in fns]
@@ -200,8 +207,8 @@ def _validate(fns: list[Function]) -> None:
         base = s.path
         if not am:
             errs.append(f"{f.id}: API 는 'GET|POST <경로>' — {f.api!r}")
-        elif not (am.group(2) == base or am.group(2).startswith(base.rstrip("/") + "/")):
-            errs.append(f"{f.id}: 경로 {am.group(2)} 의 접두가 nav.path_of({s.screen_id}) = {base} 가 아니다")
+        elif owner_path(am.group(2)) != base:
+            errs.append(f"{f.id}: 경로 {am.group(2)} 의 가장 구체적인 nav 경로 {owner_path(am.group(2))} ≠ nav.path_of({s.screen_id}) = {base}")
         elif (am.group(1) == "GET") != (f.kind in READ_KINDS):
             errs.append(f"{f.id}: 읽기 기능은 GET, 쓰기 기능은 POST — {f.api}")
         if f.is_write:

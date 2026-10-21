@@ -67,6 +67,8 @@ def test_function_ids_unique_and_api_prefix_matches_nav_path():
         assert method == ("GET" if f.kind in {"조회", "출력"} else "POST"), f.id
         base = nav.path_of(f.screen_id)
         assert path == base or path.startswith(base.rstrip("/") + "/"), f"{f.id}: {path} ⊄ {base}"
+        covering = [x.path for x in nav.SCREENS if x.path != "/" and (path == x.path or path.startswith(x.path + "/"))]
+        assert (max(covering, key=len) if covering else "/") == base, f"{f.id}: 더 구체적인 화면 경로가 {path} 를 덮는다"
         assert contracts.function(f.id) is f
     assert {f.menu_code for f in fns} == {m.code for m in nav.MENUS}
     assert sum(len(contracts.functions_of_menu(m.code)) for m in nav.MENUS) == len(fns)

@@ -103,6 +103,6 @@
 | **QA1** 기능·계약 | G-01~G-04 · 기능 목록 1:1 · 오류 계약 · 화면별 계약 문장 대조 | `tools/check_screens.py` · `tests/test_qa1_*` · `outputs/qa1-기능계약.md` |
 | **QA2** 흐름·데이터 | G-05~G-15 | `tools/check_data.py` · `tests/test_qa2_*` · `outputs/qa2-흐름데이터.md` |
 | **QA3** 보안·운영 | G-16~G-24 | `tools/check_security.py` · `tests/test_qa3_*` · `outputs/qa3-보안운영.md` · `outputs/e2e/` |
-| **아키텍트** | 공통 화면(§2) | `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`) |
+| **아키텍트** | 공통 화면(§2) | `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/gen_function_list.py` · `tools/gen_permissions.py` · `tools/gen_contracts.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`) |
 
 합계 **25 + 20 + 22 = 67**. 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다. 공용 함수 · 시그니처는 먼저 정한 사람이 `progress-devN.md` §1 에 공표하고, 시그니처 원본은 `contracts/interfaces.md`.
