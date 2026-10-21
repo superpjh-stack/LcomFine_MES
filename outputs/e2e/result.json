@@ -1,0 +1,178 @@
+[
+ {
+  "account": "sl",
+  "path": "/wo/requests",
+  "width": 1280,
+  "status": 200,
+  "url": "/wo/requests",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "sl_wo_requests-1280.png"
+ },
+ {
+  "account": "pr",
+  "path": "/lot/backward",
+  "width": 1280,
+  "status": 200,
+  "url": "/lot/backward",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "pr_lot_backward-1280.png"
+ },
+ {
+  "account": "sh",
+  "path": "/shp/orders",
+  "width": 1280,
+  "status": 200,
+  "url": "/shp/orders",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "sh_shp_orders-1280.png"
+ },
+ {
+  "account": "admin",
+  "path": "/",
+  "width": 1280,
+  "status": 200,
+  "url": "/",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_home-1280.png"
+ },
+ {
+  "account": "admin",
+  "path": "/wo/requests",
+  "width": 1280,
+  "status": 200,
+  "url": "/wo/requests",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_wo_requests-1280.png"
+ },
+ {
+  "account": "admin",
+  "path": "/shp/orders",
+  "width": 1280,
+  "status": 200,
+  "url": "/shp/orders",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_shp_orders-1280.png"
+ },
+ {
+  "account": "admin",
+  "path": "/lot/backward",
+  "width": 1280,
+  "status": 200,
+  "url": "/lot/backward",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_lot_backward-1280.png"
+ },
+ {
+  "account": "admin",
+  "path": "/ia",
+  "width": 1280,
+  "status": 200,
+  "url": "/ia",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_ia-1280.png"
+ },
+ {
+  "account": "sl",
+  "path": "/wo/requests",
+  "width": 390,
+  "status": 200,
+  "url": "/wo/requests",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "sl_wo_requests-390.png"
+ },
+ {
+  "account": "pr",
+  "path": "/lot/backward",
+  "width": 390,
+  "status": 200,
+  "url": "/lot/backward",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "pr_lot_backward-390.png"
+ },
+ {
+  "account": "sh",
+  "path": "/shp/orders",
+  "width": 390,
+  "status": 200,
+  "url": "/shp/orders",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "sh_shp_orders-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/",
+  "width": 390,
+  "status": 200,
+  "url": "/",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_home-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/wo/requests",
+  "width": 390,
+  "status": 200,
+  "url": "/wo/requests",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_wo_requests-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/shp/orders",
+  "width": 390,
+  "status": 200,
+  "url": "/shp/orders",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_shp_orders-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/lot/backward",
+  "width": 390,
+  "status": 200,
+  "url": "/lot/backward",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_lot_backward-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/ia",
+  "width": 390,
+  "status": 200,
+  "url": "/ia",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_ia-390.png"
+ }
+]
