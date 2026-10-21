@@ -152,6 +152,7 @@ notify.handle_by_link(cur, link, user) -> int               # 같은 부서 · �
 notify.recipients(event) -> tuple[str, ...]                 # 모르는 이벤트 KeyError
 ```
 - `emit` · `handle` · `handle_by_link` 은 **쓰기 트랜잭션의 커서**를 받는다 — 자체 연결을 열지 않는다. 모르는 이벤트는 `KeyError`(조용히 무시하지 않는다).
+- 수신 = `role_code` · 설정은 끄기만 (자기 부서가 받는 이벤트를 끄는 것뿐 · 다른 부서 이벤트 구독은 범위 밖).
 - `notification` 에 쓰는 곳은 `notify` 뿐. 개인 설정 `notification_setting(user_id, event_key, enabled=false)` 는 `unread` 에서 숨기기만 한다(행은 생긴다 · 행이 없으면 켜짐).
 - 처리 화면의 쓰기 트랜잭션 안에서 `notify.handle_by_link(cur, 그 화면 경로, user)` 를 부르면 「알림을 눌러 연 화면에서 처리하면 닫힌다」.
 
@@ -163,7 +164,8 @@ trace.backward(shipment_no=None, product_lot_no=None) -> dict   # 단계별 노�
 trace.forward(material_lot_no) -> dict                          # 원자재 LOT → 불출 → 지시 → 제품 입고 → 출하
 
 # app.stats (개발3 · W1) — 집계 SQL (읽기만)
-stats.customer_receivable(customer_id)                          # TRK-030 의 수금 칸 (W2 에서 개발1에게 공표)
+stats.customer_receivable(customer_id)                          # TRK-030 의 수금 칸 (W2 공표 예정 · 개발1에게)
+stats.due_compliance(period)                                    # TRK-020 의 납기 준수율 (W2 공표 예정 · Ruling 23)
 
 # app.erp_upload (개발3 · W2)
 erp_upload.read_xlsx(file: bytes) -> list[dict]

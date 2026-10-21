@@ -101,7 +101,7 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 |---|---|---|---|
 | F-QC-011 F-QC-012 F-QC-021 F-QC-022 | `lot_stock` | `status` 만 — 검사대기 → 가용 / 보류, 재판정 | 스펙 §4.3 · D-510 · D-515 |
 | F-SHP-011 F-SHP-012 | `lot_stock` | `allocated_qty` 만 — 할당을 잡고 다시 잡는다 | 스펙 §4.3 · D-510 |
-| F-SHP-021 | `lot_stock` `stock_move` | 확정 수량만큼 `qty` · `allocated_qty` 를 함께 줄이고 `stock_move` 한 행(출하) | D-510 · function-list F-SHP-021 |
+| F-SHP-021 | `lot_stock` `stock_move` | 확정 수량만큼 `qty` · `allocated_qty` 를 함께 줄이고 `stock_move` 를 LOT 라인마다 1행(출하) | D-510 · function-list F-SHP-021 |
 | 모든 쓰기 | `notification` | `notify.emit` 한 곳 · 쓰기 트랜잭션 안 | 스펙 §4.3 · D-511 |
 | 모든 쓰기 | `sys_change_log` | 쓰기 성공 직후 `audit.log_change` 한 행 (「쓰는 테이블」 열에 적지 않는 공통 규칙) | §2.1 규칙 3 · G-18 |
 | 모든 화면 조회 | `sys_access_log` | 화면 GET 마다 `templating.render` 가 조회 로그 한 행 (로그인 · 오류도 같은 표) | G-18 |

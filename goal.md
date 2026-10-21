@@ -279,7 +279,7 @@ FAIL 중 가장 앞선 웨이브의 항목 하나를 골라 §5 프롬프트로 
 
 **개발1 (HOME · BAS · STD · WO · SYS · TRK · DOC / 화면 25)**
 > 담당 화면: HOME-010 내 할 일 · HOME-020 알림함 · HOME-030 알림 설정 / BAS-010 품목 관리 · BAS-020 거래처 관리 · BAS-030 창고·위치 관리 / STD-010 제조사양기준서 · STD-020 표준관리 · STD-030 판관리 · STD-040 시안등록 · STD-050 표준견본서 · STD-060 예외제품관리 / WO-010 생산의뢰서 · WO-020 생산지시서 · WO-030 생산순서관리 · WO-040 공정상태 / SYS-010 사용자 관리 · SYS-020 역할·권한 · SYS-030 공통코드 · SYS-040 로그 / TRK-010 주문 진행 조회 · TRK-020 납기 현황 · TRK-030 거래처 종합 조회 / (W4) DOC-010 문서관리 바로가기 · DOC-020 문서관리 계정 매핑.
-> 소유 파일: `routers/{home,bas,std,wo,sys,trk,doc}.py` · `templates/{home,bas,std,wo,sys,trk,doc}/` · `db/seed_dev1.py` · `tests/test_dev1_*.py` · `app/jobs.py` · (W4) `app/sso.py`.
+> 소유 파일: `routers/{home,bas,std,wo,sys,trk,doc}.py` · `templates/{home,bas,std,wo,sys,trk,doc}/` · `db/seed_dev1.py` · `tests/test_dev1_*.py` · `src/lcomfine/jobs.py` · (W4) `app/sso.py`.
 > 먼저 공표(`progress-dev1.md` §1): WO-010 · WO-020 이 쓰는 의뢰 · 지시의 상태값과 「지시 대기 · 불출 대기」 판정 조건(개발2 · 개발3 의 대기 카드 · 출하 지시가 쓴다). HOME-010 의 부서별 대기 카드는 저장하지 않고 질의로 센다. 의뢰 · 지시 등록은 같은 트랜잭션에서 `notify.emit`(D-511). 번호는 `numbering.next` 만. STD-020 · STD-060 의 적용 규칙과 로스율은 `차단`(D-519). SYS-020 은 `sys_permission` 행을 바꾸고 `rbac.invalidate()`. TRK-030 의 수금 칸은 W2 에 개발3 `stats.customer_receivable` 로 붙인다. W4 의 SSO 는 D-514 규격, 주소가 없으면 `미확정 (D-517)`.
 
 **개발2 (MAT · PRD · INS · QC · INV · LOT / 화면 20)**
@@ -292,7 +292,7 @@ FAIL 중 가장 앞선 웨이브의 항목 하나를 골라 §5 프롬프트로 
 > 담당 화면: SHP-010 출하 지시 · SHP-020 출하 확정 · SHP-030 출하 이력 / PRP-010 월별 가동률 · PRP-020 기계별통계 · PRP-030 생산완료집계 / (W2) COL-010 ERP 수금현황 업로드 · COL-020 업로드 이력 · COL-030 거래처 코드 매핑 · COL-040 수금 현황 조회 · COL-050 거래처별 미수 조회 · COL-060 미수 연령 조회 · COL-070 출하 대비 수금 조회 / (W3) RPT-010 수주 리포트 · RPT-020 생산 리포트 · RPT-030 품질 리포트 · RPT-040 재고·창고 리포트 · RPT-050 출하 리포트 · RPT-060 수금 리포트 · RPT-070 주문 흐름 리포트 · RPT-080 경영 요약 · RPT-130 데이터 질의 (대메뉴 이름은 「대시보드」 — D-505).
 > 소유 파일: `routers/{shp,prp,col,rpt}.py` · `templates/{shp,prp,col,rpt}/` · `db/seed_dev3.py` · `tests/test_dev3_*.py` · `app/stats.py` · `app/erp_upload.py` · `app/dashboard.py` · `app/ai.py` · `app/dataquery.py`.
 > W1: 출하 지시는 가용 안에서만 LOT 를 할당하고(`lot_stock` 할당 — 계약된 예외), 미판정 · 불합격 LOT 가 있으면 확정 422, 확정 후 정정은 `shipment_adjust` 행. 지시 · 확정은 같은 트랜잭션에서 `notify.emit`. PRP 집계 SQL 은 `stats.py` 한 곳.
-> **W2 먼저 공표**(`progress-dev3.md` §1): `stats.customer_receivable(…)` 시그니처와 반환 모양(개발1 의 TRK-030 이 쓴다). ERP 업로드는 회차 교체 · 이전 회차 보존 · 오류 행 제외 · MES 는 수금을 고치지 않음(G-12~14). 열 구성은 `차단`(D-516) — 매핑 화면이 흡수한다.
+> **W2 먼저 공표**(`progress-dev3.md` §1): `stats.customer_receivable(…)` 시그니처와 반환 모양(개발1 의 TRK-030 이 쓴다) · `stats.due_compliance(period)` (개발1 의 TRK-020 납기 준수율이 쓴다 · Ruling 23). ERP 업로드는 회차 교체 · 이전 회차 보존 · 오류 행 제외 · MES 는 수금을 고치지 않음(G-12~14). 열 구성은 `차단`(D-516) — 매핑 화면이 흡수한다.
 > W3: 대시보드 8 은 화면을 열 때 `dashboard.py` 로 집계(D-512 · 캐시 테이블 없음), 차트는 인라인 SVG + 표. 데이터 질의는 D-513 검증을 통과한 SELECT 만, AI 는 `ai.py` 로만 부르고 키가 없으면 명시적 오류(G-17).
 
 **QA1 (기능·계약)**
