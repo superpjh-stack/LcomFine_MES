@@ -33,7 +33,7 @@ def test_function_list_covers_every_screen_by_expansion_rule():
         expected = list(EXPANSION[s["type"]])
         if "수정 없음" in text:
             expected.remove("수정")
-        if "유형 예외" in text:                       # 정본 type 밖 쓰기 기능 하나를 뒤에 더한다 (RPT-130 · D-513)
+        if "유형 예외" in text:                       # 정본 type 밖 쓰기 기능 하나를 화면 끝에 더한다 (예외 3)
             extra = kinds[len(expected):]
             assert len(extra) == 1 and extra[0] in contracts.WRITE_KINDS, f"{s['id']}: 유형 예외 — {kinds}"
             kinds = kinds[:len(expected)]
@@ -43,9 +43,14 @@ def test_function_list_covers_every_screen_by_expansion_rule():
     # 예외 문구는 정해진 화면에만
     exc = sorted({f.screen_id for f in contracts.functions() if "수정 없음" in f.contract})
     assert exc == ["COL-010", "INV-030"]
-    assert sorted({f.screen_id for f in contracts.functions() if "유형 예외" in f.contract}) == ["RPT-130"]
-    total = sum(len(EXPANSION[s["type"]]) for s in screens) - len(exc) + 1
-    assert len(contracts.functions()) == total
+    # 유형 예외는 정확히 셋 — 질의 실행 (D-513) · 반품·정정 (D-515) · 알림 처리 (D-511)
+    kind_exc = sorted(f.id for f in contracts.functions() if "유형 예외" in f.contract)
+    assert kind_exc == ["F-HOME-022", "F-RPT-132", "F-SHP-023"]
+    assert [(f.kind, f.api) for f in map(contracts.function, kind_exc)] == [
+        ("처리", "POST /home/notifications/{id}/handle"), ("처리", "POST /rpt/query"),
+        ("처리", "POST /shp/confirm/{id}/adjust")]
+    total = sum(len(EXPANSION[s["type"]]) for s in screens) - len(exc) + len(kind_exc)
+    assert len(contracts.functions()) == total == 136
 
 
 def test_function_ids_unique_and_api_prefix_matches_nav_path():
@@ -85,6 +90,7 @@ def test_every_write_function_has_w_role():
     assert writes and all(f.kind in contracts.WRITE_KINDS for f in writes)
     for f in contracts.functions():
         if f.is_write and "권한 예외" in f.contract:   # 정본 칸에 W 가 없는 화면의 쓰기 — 화면 R 이상이 실행
+            assert f.permission_exception and f.read_ok, f.id
             assert f.roles_w == () and not w[f.screen_id], f.id
             assert f.tables, f.id
         elif f.is_write:
@@ -94,4 +100,11 @@ def test_every_write_function_has_w_role():
         else:
             assert f.roles_w == () and f.tables == (), f"{f.id}: 읽기 기능은 R 이상 · 테이블 -"
         assert f.contract.strip(), f"{f.id}: 계약이 비었다"
-    assert sorted(f.id for f in writes if "권한 예외" in f.contract) == ["F-DOC-011", "F-RPT-132"]
+    exc_ids = ["F-DOC-011", "F-HOME-022", "F-RPT-132"]
+    assert sorted(f.id for f in writes if "권한 예외" in f.contract) == exc_ids
+    assert sorted(f.id for f in contracts.functions() if f.permission_exception) == exc_ids
+    assert all(not f.read_ok for f in writes if f.id not in exc_ids)
+    # 권한 칸은 글자 그대로 `R 이상(권한 예외)`
+    rows = [ln for ln in contracts.FUNCTION_LIST.read_text(encoding="utf-8").splitlines() if "R 이상(권한 예외)" in ln and ln.startswith("| F-")]
+    assert sorted(r.split("|")[1].strip() for r in rows) == exc_ids
+    assert all(r.split("|")[7].strip() == "R 이상(권한 예외)" for r in rows)

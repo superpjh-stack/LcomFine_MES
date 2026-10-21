@@ -31,6 +31,7 @@ DB_SCHEMA = CONTRACTS_DIR / "db-schema.md"
 WRITE_KINDS: frozenset[str] = frozenset({"등록", "수정", "삭제", "처리", "저장", "진입"})
 READ_KINDS: frozenset[str] = frozenset({"조회", "출력"})
 READ_ROLE_LABEL = "R 이상"
+EXCEPTION_ROLE_LABEL = "R 이상(권한 예외)"   # 정본 칸에 W 가 없는 화면의 쓰기 기능 — 화면 R 이상이 실행
 
 #: 부서 이름 → 코드 (정본 순서). 앱은 ia.json 을 읽지 않으므로 리터럴이다 — 게이트가 정본과 대조한다.
 ROLE_CODES: dict[str, str] = {
@@ -55,7 +56,7 @@ EXPANSION: dict[str, tuple[str, ...]] = {
 }
 NO_EDIT_MARK = "수정 없음"          # 정본 logic 이 수정을 막는 등록 화면 — 수정 기능을 전개하지 않는다
 KIND_EXCEPTION_MARK = "유형 예외"   # 정본 type 밖 쓰기 기능 하나를 뒤에 더한다 (RPT-130 질의 실행)
-ROLE_EXCEPTION_MARK = "권한 예외"   # 정본 칸에 W 가 없는 화면의 쓰기 기능 — 화면 R 이상이 실행
+ROLE_EXCEPTION_MARK = "권한 예외"   # 정본 칸에 W 가 없는 화면의 쓰기 기능 — 권한 칸 EXCEPTION_ROLE_LABEL · 화면 R 이상이 실행
 
 ID_RE = re.compile(r"F-([A-Z]+)-(\d{2})(\d)")
 API_RE = re.compile(r"(GET|POST) (/\S*)")
@@ -122,10 +123,16 @@ class Function:
     api: str                      # 'POST /wo/requests'
     owner: str                    # 개발1 · 개발2 · 개발3
     contract: str                 # 계약 문장
+    permission_exception: bool = False   # 권한 칸이 'R 이상(권한 예외)' — 쓰기지만 화면 R 이상이 실행 (rbac.require_fn)
 
     @property
     def is_write(self) -> bool:
         return self.kind in WRITE_KINDS
+
+    @property
+    def read_ok(self) -> bool:
+        """화면 R 이상이면 실행할 수 있는가 — 읽기 기능이거나 권한 예외 쓰기 기능."""
+        return not self.is_write or self.permission_exception
 
     @property
     def method(self) -> str:
@@ -147,13 +154,14 @@ def _parse_functions(text: str) -> tuple[Function, ...]:
             raise RuntimeError(f"{FUNCTION_LIST.name}: 칸 수가 {len(FUNCTION_HEADER)} 이 아닌 행 — {r[:2]}")
         fid, menu_code, sid, name, kind, tables, roles, api, owner, body = r
         codes: tuple[str, ...] = ()
-        if roles != READ_ROLE_LABEL:
+        if roles not in (READ_ROLE_LABEL, EXCEPTION_ROLE_LABEL):
             try:
                 codes = _role_codes(roles)
             except ValueError as exc:
                 errs.append(f"{fid}: {exc}")
         out.append(Function(id=fid, menu_code=menu_code, screen_id=sid, name=name, kind=kind,
-                            tables=_split(tables, ","), roles_w=codes, api=api, owner=owner, contract=body))
+                            tables=_split(tables, ","), roles_w=codes, api=api, owner=owner, contract=body,
+                            permission_exception=(roles == EXCEPTION_ROLE_LABEL)))
     if errs:
         raise RuntimeError(f"{FUNCTION_LIST.name} 검증 실패 {len(errs)}건:\n  - " + "\n  - ".join(errs))
     _validate(out)
@@ -199,9 +207,14 @@ def _validate(fns: list[Function]) -> None:
         if f.is_write:
             if not f.tables:
                 errs.append(f"{f.id}: 쓰기 기능은 쓰는 테이블이 있어야 한다")
-            if not f.roles_w and ROLE_EXCEPTION_MARK not in f.contract:
-                errs.append(f"{f.id}: 쓰기 기능은 W 부서가 있어야 한다 (예외는 계약에 「{ROLE_EXCEPTION_MARK}」)")
-        elif f.tables or f.roles_w:
+            marked = ROLE_EXCEPTION_MARK in f.contract
+            if marked != f.permission_exception:
+                errs.append(f"{f.id}: 계약의 「{ROLE_EXCEPTION_MARK}」와 권한 칸 '{EXCEPTION_ROLE_LABEL}' 은 함께 있어야 한다")
+            if f.permission_exception and f.roles_w:
+                errs.append(f"{f.id}: 권한 예외 기능에는 W 부서를 적지 않는다")
+            if not f.roles_w and not f.permission_exception:
+                errs.append(f"{f.id}: 쓰기 기능은 W 부서가 있어야 한다 (또는 권한 '{EXCEPTION_ROLE_LABEL}' + 계약 「{ROLE_EXCEPTION_MARK}」)")
+        elif f.tables or f.roles_w or f.permission_exception:
             errs.append(f"{f.id}: 읽기 기능은 권한 '{READ_ROLE_LABEL}' · 쓰는 테이블 '-'")
         if not f.contract.strip():
             errs.append(f"{f.id}: 계약이 비었다")

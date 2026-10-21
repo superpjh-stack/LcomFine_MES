@@ -36,6 +36,11 @@ EXPANSION: dict[str, list[tuple[str, str]]] = {
     "설정": [("저장", "POST {p}"), ("조회", "GET {p}")],
     "외부 연계(SSO)": [("진입", "POST {p}"), ("조회", "GET {p}")],
 }
+EXTRA = {                                              # 유형 예외 (D-508 · D-511 · D-513 · D-515)
+    "RPT-130": [("처리", "POST {p}")],                 # 질의 실행
+    "SHP-020": [("처리", "POST {p}/{{id}}/adjust")],   # 반품·정정 등록
+    "HOME-020": [("처리", "POST {p}/{{id}}/handle")],  # 알림 처리
+}
 VERBS = {"WO-030": "move", "SHP-020": "confirm"}       # 처리 화면의 동사 (addendum §A)
 NO_EDIT = {"INV-030", "COL-010"}                       # 정본 logic 이 수정을 막는 등록 화면 — 「수정 없음」
 WRITE_KINDS = {"등록", "수정", "삭제", "처리", "저장", "진입"}
@@ -76,8 +81,7 @@ def draft_rows() -> list[str]:
         for s in m["screens"]:
             p = nav.path_of(s["id"])
             plan = [k for k in EXPANSION[s["type"]] if not (s["id"] in NO_EDIT and k[0] == "수정")]
-            if s["id"] == "RPT-130":                     # 유형 예외 — 질의 실행 (D-513)
-                plan = plan + [("처리", "POST {p}")]
+            plan = plan + EXTRA.get(s["id"], [])          # 유형 예외 3 — 화면 끝에 더한다
             head, num = s["id"].split("-")
             w = [names[r] for r in sorted((r for r, v in s["roles"].items() if v == "W"), key=order.index)]
             draft = " · ".join(s["logic"])
@@ -89,7 +93,7 @@ def draft_rows() -> list[str]:
                 rows.append("| " + " | ".join([
                     f"F-{head}-{num[:2]}{i}", m["code"], s["id"], f"{s['name']} {kind}", kind,
                     ", ".join(TABLES.get(s["id"], [])) if write else "-",
-                    ("·".join(w) or "R 이상") if write else "R 이상",
+                    ("·".join(w) or "R 이상(권한 예외)") if write else "R 이상",
                     f"`{path}`", nav.by_id(s["id"]).owner, draft,
                 ]) + " |")
     return rows
