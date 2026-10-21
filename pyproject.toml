@@ -1,7 +1,7 @@
 [project]
 name = "lcomfine-mes"
 version = "0.1.0"
-description = "엘컴화인 MES — Job-Lot-Roll 계보 (FastAPI + Jinja2 + psycopg)"
+description = "엘컴화인 MES v2 — LOT 단위 생산 · 출하 · 수금 흐름"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "python-multipart>=0.0.20",
     "itsdangerous>=2.2",
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]

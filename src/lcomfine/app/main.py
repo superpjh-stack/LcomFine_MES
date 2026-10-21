@@ -21,7 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..db import conn
-from . import auth, contracts, erp, nav, rbac, templating
+from . import auth, contracts, nav, rbac, templating
 from .settings import get_settings
 from .templating import STATIC_DIR, render
 from .util import audit, http
@@ -83,6 +83,14 @@ def create_app() -> FastAPI:
     for module in nav.MODULES:
         try:
             mod = importlib.import_module(f"lcomfine.app.routers.{module}")
+        except ModuleNotFoundError as exc:
+            if exc.name == f"lcomfine.app.routers.{module}":   # 라우터 파일이 아직 없는 모듈 — 건너뛴다 (placeholder 가 대신 나온다)
+                log.info("라우터 없음, 건너뜀: %s", module)
+                continue
+            log.exception("라우터 임포트 실패: %s", module)
+            include_errors.append(f"{module}: {type(exc).__name__}: {exc}")
+            include_error_names.append(f"{module}: {type(exc).__name__}")
+            continue
         except Exception as exc:  # noqa: BLE001 — 임포트 실패를 숨기지 않는다: /health(모듈·예외 종류)와 게이트·서버 로그(원문)에 나온다
             log.exception("라우터 임포트 실패: %s", module)
             include_errors.append(f"{module}: {type(exc).__name__}: {exc}")
@@ -107,44 +115,43 @@ def create_app() -> FastAPI:
         return None
 
     def _login_page(request: Request, *, message: str = "", login_id: str = "", next: str | None = None,
-                    device: str | None = None, status_code: int = 200) -> HTMLResponse:
+                    status_code: int = 200) -> HTMLResponse:
         """로그인 화면 한 장 — 퀵 로그인 패널(D-416)은 켜진 환경에서만 그린다. 비밀번호 값은 어디에도 싣지 않는다."""
         quick = auth.quick_login_accounts() if auth.quick_login_enabled() else None
         return render(request, "login.html",
                       {"message": message, "login_id": login_id, "next": _safe_next(next) or "",
-                       "login_device": device if device in nav.DEVICE_CHANNEL else "web", "quick": quick},
+                       "quick": quick},
                       screen_id="login", status_code=status_code)
 
     def _after_login(request: Request, result: auth.LoginResult, *, login_id: str, next: str | None,
-                     device: str | None, failed_prefix: str = ""):
+                     failed_prefix: str = ""):
         if not result.ok or result.user is None:
             if not http.wants_html(request):
                 return JSONResponse({"code": "unauthorized", "message": failed_prefix + result.reason}, status_code=401)
             return _login_page(request, message=failed_prefix + result.reason, login_id=login_id, next=next,
-                               device=device, status_code=401)
-        auth.login_session(request, result.user, device)
+                               status_code=401)
+        auth.login_session(request, result.user)
         return RedirectResponse(_safe_next(next) or auth.home_path_for(request, result.user), status_code=303)
 
     @app.get("/login", response_class=HTMLResponse)
-    def login_form(request: Request, next: str | None = None, device: str | None = None) -> HTMLResponse:
-        return _login_page(request, message="로그인이 필요합니다" if next else "", next=next, device=device)
+    def login_form(request: Request, next: str | None = None) -> HTMLResponse:
+        return _login_page(request, message="로그인이 필요합니다" if next else "", next=next)
 
     @app.post("/login")
     def login_submit(request: Request, login_id: str = Form(...), password: str = Form(...),
-                     next: str | None = Form(None), device: str | None = Form(None)):
+                     next: str | None = Form(None)):
         result = auth.authenticate(login_id, password, client_ip=audit.client_ip(request))
-        return _after_login(request, result, login_id=login_id, next=next, device=device)
+        return _after_login(request, result, login_id=login_id, next=next)
 
     @app.post("/login/quick")
-    def login_quick(request: Request, quick_id: str = Form(...), next: str | None = Form(None),
-                    device: str | None = Form(None)):
+    def login_quick(request: Request, quick_id: str = Form(...), next: str | None = Form(None)):
         """퀵 로그인(D-416) — 고른 계정을 **시드 비밀번호**로 인증한다. 판정·접근 로그·실패 횟수는 보통 로그인과 같다.
         꺼진 환경(운영 · 플래그 없음 · 시드 비밀번호 없음)에서는 404 — 단추도 없고 주소도 없다."""
         if not auth.quick_login_enabled():
             raise http.not_found(auth.QUICK_OFF)
         result = auth.authenticate(quick_id, get_settings().seed_password or "", client_ip=audit.client_ip(request),
                                    via=auth.QUICK_VIA)
-        return _after_login(request, result, login_id=quick_id, next=next, device=device,
+        return _after_login(request, result, login_id=quick_id, next=next,
                             failed_prefix="" if result.ok else f"{auth.QUICK_VIA} 실패 — ")
 
     @app.post("/logout")
@@ -170,17 +177,6 @@ def create_app() -> FastAPI:
         if not rbac.can_read_menu(user.role_code, nav.by_id("SYS-01").menu_code):
             raise http.forbidden()
         return JSONResponse(app.openapi())
-
-    # ── ERP 연계 (G-16 · D-02) — 연계가 정해지기 전에는 무엇을 부르든 501 `ERP 연계 미확정 (D-02)` ──
-    @app.get("/erp/{kind}")
-    def erp_receive(kind: str, user: rbac.User = Depends(rbac.require_login)):
-        erp_adapter = erp.adapter()
-        return erp_adapter.status() if kind == "status" else erp_adapter.receive(kind)
-
-    @app.post("/erp/{kind}")
-    def erp_send(kind: str, user: rbac.User = Depends(rbac.require_login)):
-        erp_adapter = erp.adapter()
-        return erp_adapter.status() if kind == "status" else erp_adapter.send(kind, {})
 
     # ── /health (인증 없이 열린다 — 상태값과 건수만 싣는다. 접속 문자열·호스트·사용자·DB 이름은 **가리는 것이 아니라 싣지 않는다**, D-32) ──
     @app.get("/health")
@@ -211,7 +207,7 @@ def create_app() -> FastAPI:
         """오류 화면. DB 가 끊긴 상태에서도 그려져야 하므로 메뉴·접근 로그를 타지 않는다."""
         html = templating.env.get_template("_error.html").render(
             request=request, system_name=nav.SYSTEM_NAME, asset_v=templating.asset_version(), status=status,
-            code=code, message=message, fields=fields or [], detail_note=note, guide=False, device=auth.device_of(request),
+            code=code, message=message, fields=fields or [], detail_note=note, guide=False,
             board_refresh_seconds=s.board_refresh_seconds)
         return HTMLResponse(html, status_code=status, headers=http.SECURITY_HEADERS)
 
