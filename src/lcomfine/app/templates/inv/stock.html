@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "가용 수량 = 현재고 − 출하 지시 할당량 · 상태 칩 4: 검사대기 · 가용 · 보류 · 할당 (D-510)") }}
+  <form class="search" method="get" role="search">
+    <label class="field">품목<input name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
+    <label class="field">창고<input name="warehouse" value="{{ f.warehouse }}"></label>
+    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
+    <label class="field">구분<select name="kind"><option value="">전체</option>{% for k in kinds %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+    <label class="field">상태<select name="status"><option value="">전체</option>{% for s in statuses + ("할당",) %}<option{% if f.status == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>구분</th><th>LOT</th><th>품목 코드</th><th>품목명</th><th>창고</th><th>위치</th>
+      <th class="num">현재고</th><th class="num">할당</th><th class="num">가용</th><th>상태</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr data-lot="{{ r.lot_no }}">
+        <td>{{ r.lot_kind }}</td><td><code>{{ r.lot_no }}</code>{% if r.parent_lot_id %} <small class="muted">분할</small>{% endif %}</td>
+        <td>{{ r.item_code }}</td><td>{{ r.item_name }}</td><td>{{ r.warehouse_code }}</td><td>{{ r.location_code }}</td>
+        <td class="num">{{ u.q(r.qty) }}</td><td class="num">{{ u.q(r.allocated_qty) }}</td>
+        <td class="num" data-available>{{ u.q(r.available_qty) }}</td><td>{{ u.stock_chips(r.status, r.allocated_qty) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="6">합계 {{ rows | length }}행</th><td class="num">{{ u.q(totals.qty) }}</td>
+      <td class="num">{{ u.q(totals.allocated) }}</td><td class="num">{{ u.q(totals.available) }}</td><td></td></tr></tfoot>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "작업지시는 생산지시서 목록에서 고른다 · 검사대기 · 보류(불합격) LOT 은 불출할 수 없다 · 불출 수량은 가용 수량 안에서") }}
+  <form class="search" method="get" role="search">
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+
+{% if can_w %}
+<section class="panel">
+  <h2>불출 등록</h2>
+  {% if not work_orders %}{{ ui.empty("불출할 생산지시가 없습니다 — 생산지시서(WO-020)") }}
+  {% elif not stock %}{{ ui.empty("원자재 재고가 없습니다 — 원자재 입고(MAT-010) · 입고검사(QC-010)") }}
+  {% else %}
+  <form method="post" action="{{ nav.path_of('MAT-020') }}">
+    <div class="search">
+      <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}"{% if f.wo == w.work_order_no %} selected{% endif %}>{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }} · {{ u.q(w.qty) }}</option>{% endfor %}</select></label>
+      <label class="field">불출일<input type="date" name="issued_on"></label>
+      <label class="field">비고<input name="note"></label>
+    </div>
+    <div class="grid-wrap">
+    <table class="grid plain">
+      <thead><tr><th>LOT</th><th>품목</th><th>위치</th><th class="num">가용</th><th>상태</th><th>불출 수량</th></tr></thead>
+      <tbody>
+      {% for s in stock %}
+        <tr{% if s.status != "가용" %} class="dim"{% endif %}>
+          <td><code>{{ s.lot_no }}</code></td><td>{{ s.item_code }} {{ s.item_name }}</td><td>{{ s.location_code }}</td>
+          <td class="num">{{ u.q(s.available_qty) }}</td><td>{{ u.stock_chips(s.status, s.allocated_qty) }}</td>
+          <td>
+            <input type="hidden" name="lot_no" value="{{ s.lot_no }}">
+            <input type="hidden" name="location_id" value="{{ s.location_id }}">
+            <input name="qty" inputmode="decimal" size="8" aria-label="{{ s.lot_no }} 불출 수량"{% if s.status != "가용" %} disabled title="{{ s.status }} LOT 은 불출할 수 없습니다"{% endif %}>
+            {% if s.status != "가용" %}<input type="hidden" name="qty" value="">{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button class="btn btn-primary">불출 등록</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>불출</th><th>불출일</th><th>작업지시</th><th>LOT</th><th>품목</th><th>위치</th><th class="num">수량</th><th>상태</th><th>비고</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if r.canceled_at %} class="dim"{% endif %}>
+        <td>{{ r.issue_id }}</td><td>{{ r.issued_on | dt }}</td><td>{{ r.work_order_no }}</td><td><code>{{ r.lot_no }}</code></td>
+        <td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.location_code }}</td><td class="num">{{ u.q(r.qty) }}</td>
+        <td>{% if r.canceled_at %}{{ ui.chip("취소") }}{% else %}{{ ui.chip("불출") }}{% endif %}</td><td>{{ r.note | txt }}</td>
+        {% if can_w %}<td>{% if not r.canceled_at %}
+          <form method="post" action="{{ nav.path_of('MAT-020') }}/{{ r.issue_id }}" class="inline">
+            <input type="hidden" name="cancel" value="1">
+            <button class="btn btn-sm btn-ghost" data-confirm="불출 {{ r.issue_id }} 전체를 취소할까요? 재고가 되돌아가고 기록은 남습니다.">취소</button>
+          </form>{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

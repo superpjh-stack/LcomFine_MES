@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% import "qc/_judge.html" as j %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "합격 → 가용, 불합격 → 보류로 재고 상태가 바뀐다 (D-510) · 재판정은 새 행 — 이전 판정은 검사 이력(QC-030)에 함께 보인다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
+    {% if f.receipt %}<input type="hidden" name="receipt" value="{{ f.receipt }}">{% endif %}
+    <button class="btn btn-primary">조회</button>
+    {% if f.receipt %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-010') }}">입고 {{ f.receipt }} 조건 풀기</a>{% endif %}
+  </form>
+</section>
+{{ u.readonly_note(can_w) }}
+<section class="panel panel--grid">
+  <h2 class="ph__owner">검사 대기 LOT</h2>
+  {% if not pending %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead><tr><th>LOT</th><th>품목</th><th class="num">수량</th><th>공급사</th><th>입고일</th><th>재고 상태</th>{% if can_w %}<th>판정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in pending %}
+      <tr><td><code>{{ r.lot_no }}</code></td><td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td>
+        <td>{{ r.supplier_name }}</td><td>{{ r.received_on | dt }}</td><td>{{ u.stock_chips(r.status) }}</td>
+        {% if can_w %}<td>{{ j.form(nav.path_of('QC-010'), "material_lot_id", r.id) }}</td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+<section class="panel panel--grid">
+  <h2 class="ph__owner">판정한 LOT</h2>
+  {% if not judged %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead><tr><th>LOT</th><th>품목</th><th class="num">수량</th><th>차수</th><th>판정</th><th>판정 일시</th><th>판정자</th><th>재고 상태</th>{% if can_w %}<th>재판정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in judged %}
+      <tr><td><code>{{ r.lot_no }}</code></td><td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td>
+        <td class="num">{{ r.seq }}</td><td>{{ ui.chip(r.result) }}</td><td>{{ r.inspected_at | dt }}</td><td>{{ r.inspector | txt }}</td>
+        <td>{{ u.stock_chips(r.status) }}</td>
+        {% if can_w %}<td>{{ j.form(nav.path_of('QC-010') ~ '/' ~ r.id, label="재판정") }}</td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

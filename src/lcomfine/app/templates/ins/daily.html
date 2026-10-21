@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "공정 검사 결과를 일 단위로 입력한다 (지시 × 일자) · 입고검사 · 제품검사 판정(품질 검사 메뉴)과는 다른 기록이다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    <button class="btn btn-primary">조회</button>
+    <a class="btn btn-ghost" href="{{ nav.path_of('INS-020') }}?date={{ f.date or today }}">출력</a>
+  </form>
+</section>
+{% if can_w %}
+<section class="panel">
+  <h2>검사일보 등록</h2>
+  {% if not work_orders %}{{ ui.empty("검사일보를 쓸 생산지시가 없습니다 — 생산지시서(WO-020)") }}{% else %}
+  <form method="post" action="{{ nav.path_of('INS-010') }}">
+    <div class="search">
+      <label class="field">일자<input type="date" name="work_date" value="{{ f.date or today }}" required></label>
+      <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+      <label class="field">검사 수량<input name="inspected_qty" inputmode="decimal" required></label>
+      <label class="field">불량 수량 <small class="muted">비우면 유형별 합</small><input name="defect_qty" inputmode="decimal"></label>
+      {% for d in defect_types %}
+      <input type="hidden" name="defect_code" value="{{ d.code }}">
+      <label class="field">{{ d.code_name }}<input name="defect_code_qty" inputmode="decimal" size="5"></label>
+      {% endfor %}
+      <label class="field">비고<input name="note"></label>
+      <button class="btn btn-primary">등록</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>일자</th><th>작업지시</th><th>품목</th><th class="num">검사</th><th class="num">불량</th><th>불량유형</th><th>비고</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.work_date | dt }}</td><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
+        <td class="num">{{ u.q(r.inspected_qty) }}</td><td class="num">{{ u.q(r.defect_qty) }}</td>
+        <td>{% for k, v in r.defects.items() %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% else %}-{% endfor %}</td><td>{{ r.note | txt }}</td>
+        {% if can_w %}<td><form method="post" action="{{ nav.path_of('INS-010') }}/{{ r.id }}" class="inline">
+          <input name="inspected_qty" value="{{ u.q(r.inspected_qty) }}" size="6" aria-label="검사 수량">
+          <input name="defect_qty" value="{{ u.q(r.defect_qty) }}" size="6" aria-label="불량 수량">
+          <button class="btn btn-sm">수정</button></form></td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  <form class="search" method="get" role="search">
+    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
+    <label class="field">설비<select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary">조회</button>
+    <span class="muted">인쇄는 브라우저 인쇄(메뉴 · 머리 · 계약 패널은 인쇄에서 빠진다)</span>
+  </form>
+</section>
+<section class="panel print-sheet">
+  <h1>생산일보 <small>{{ f.date }}{% if f.equipment %} · {{ f.equipment }}{% endif %}</small></h1>
+  <p class="muted">PRD-010 에 입력한 일보를 그대로 찍는다 — 양식(결재란 등)은 받은 적이 없다.</p>
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <table class="grid plain">
+    <thead><tr><th>설비</th><th>작업지시</th><th>품목</th><th class="num">지시 수량</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th><th class="num">가동(분)</th><th class="num">정지(분)</th><th>비고</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.equipment_name or r.equipment_code }}</td><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
+        <td class="num">{{ u.q(r.order_qty) }}</td><td class="num">{{ u.q(r.produced_qty) }}</td><td class="num">{{ u.q(r.good_qty) }}</td>
+        <td class="num">{{ u.q(r.loss_qty) }}</td><td class="num">{{ r.run_minutes | txt }}</td><td class="num">{{ r.stop_minutes | txt }}</td><td>{{ r.note | txt }}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4">합계</th><td class="num">{{ u.q(totals.produced_qty) }}</td><td class="num">{{ u.q(totals.good_qty) }}</td>
+      <td class="num">{{ u.q(totals.loss_qty) }}</td><td colspan="3"></td></tr></tfoot>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}
+{% block aside %}{% endblock %}

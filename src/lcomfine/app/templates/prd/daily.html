@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "지시 × 일자 × 설비 한 행 · 지시번호별로 생산량과 로스를 일 단위로 입력한다 · 설비는 공통코드(SYS-030)") }}
+  <form class="search" method="get" role="search">
+    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
+    <label class="field">설비<select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    <button class="btn btn-primary">조회</button>
+    <a class="btn btn-ghost" href="{{ nav.path_of('PRD-020') }}?date={{ f.date or today }}">출력</a>
+  </form>
+</section>
+{% if can_w %}
+<section class="panel">
+  <h2>생산일보 등록</h2>
+  {% if not work_orders %}{{ ui.empty("일보를 쓸 생산지시가 없습니다 — 생산지시서(WO-020)") }}
+  {% elif not equipments %}{{ ui.empty("사용 중인 설비 공통코드가 없습니다 — 공통코드(SYS-030)") }}
+  {% else %}
+  <form method="post" action="{{ nav.path_of('PRD-010') }}" class="search">
+    <label class="field">일자<input type="date" name="work_date" value="{{ f.date or today }}" required></label>
+    <label class="field">설비<select name="equipment_code" required>{% for e in equipments %}<option value="{{ e.code }}">{{ e.code_name }}</option>{% endfor %}</select></label>
+    <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+    <label class="field">생산 수량<input name="produced_qty" inputmode="decimal" required></label>
+    <label class="field">완료(양품)<input name="good_qty" inputmode="decimal" required></label>
+    <label class="field">로스<input name="loss_qty" inputmode="decimal" value="0"></label>
+    <label class="field">가동(분)<input name="run_minutes" inputmode="numeric"></label>
+    <label class="field">정지(분)<input name="stop_minutes" inputmode="numeric"></label>
+    <label class="field">비고<input name="note"></label>
+    <button class="btn btn-primary">등록</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>일자</th><th>설비</th><th>작업지시</th><th>품목</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th>
+      <th class="num">가동(분)</th><th class="num">정지(분)</th><th>비고</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.work_date | dt }}</td><td>{{ r.equipment_name or r.equipment_code }}</td><td>{{ r.work_order_no }}</td>
+        <td>{{ r.item_code }} {{ r.item_name }}</td>
+        {% if can_w %}
+        <td colspan="5"><form method="post" action="{{ nav.path_of('PRD-010') }}/{{ r.id }}" class="inline" id="pd-{{ r.id }}">
+          <input name="produced_qty" value="{{ u.q(r.produced_qty) }}" size="6" aria-label="생산">
+          <input name="good_qty" value="{{ u.q(r.good_qty) }}" size="6" aria-label="양품">
+          <input name="loss_qty" value="{{ u.q(r.loss_qty) }}" size="6" aria-label="로스">
+          <input name="run_minutes" value="{{ r.run_minutes if r.run_minutes is not none else '' }}" size="4" aria-label="가동(분)">
+          <input name="stop_minutes" value="{{ r.stop_minutes if r.stop_minutes is not none else '' }}" size="4" aria-label="정지(분)">
+        </form></td>
+        <td>{{ r.note | txt }}</td><td><button class="btn btn-sm" form="pd-{{ r.id }}">수정</button></td>
+        {% else %}
+        <td class="num">{{ u.q(r.produced_qty) }}</td><td class="num">{{ u.q(r.good_qty) }}</td><td class="num">{{ u.q(r.loss_qty) }}</td>
+        <td class="num">{{ r.run_minutes | txt }}</td><td class="num">{{ r.stop_minutes | txt }}</td><td>{{ r.note | txt }}</td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

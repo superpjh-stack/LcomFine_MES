@@ -1,0 +1,50 @@
+{# trace 결과 렌더 — 단계(steps) 순서대로 노드 표. 읽기만 한다. #}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+
+{% macro step_table(key, rows) -%}
+{% if not rows %}{{ ui.empty() }}{% else %}
+<div class="grid-wrap">
+<table class="grid" data-step="{{ key }}">
+{% if key == "shipments" %}
+  <thead><tr><th>출하 번호</th><th>상태</th><th>확정 일시</th><th>납기</th><th>거래처</th><th>의뢰번호</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><code>{{ r.shipment_no }}</code></td><td>{{ ui.chip(r.status) }}</td><td>{{ r.confirmed_at | dt }}</td>
+    <td>{{ r.due_date | dt }}</td><td>{{ r.customer_code }} {{ r.customer_name }}</td><td>{{ r.request_no | txt }}</td></tr>{% endfor %}</tbody>
+{% elif key == "product_lots" %}
+  <thead><tr><th>제품 LOT</th><th>원 LOT</th><th>품목</th><th>작업지시</th><th class="num">출하 수량</th><th>현재 판정</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><code>{{ r.lot_no }}</code></td><td>{% if r.root_lot_no != r.lot_no %}<code>{{ r.root_lot_no }}</code>{% else %}-{% endif %}</td>
+    <td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.work_order_no }}</td><td class="num">{{ u.q(r.shipped_qty) }}</td>
+    <td>{% if r.judgement %}{{ ui.chip(r.judgement) }} <small class="muted">{{ r.judgement_seq }}차</small>{% else %}{{ ui.chip("미판정") }}{% endif %}</td></tr>{% endfor %}</tbody>
+{% elif key == "work_orders" %}
+  <thead><tr><th>작업지시</th><th>상태</th><th>품목</th><th class="num">지시 수량</th><th>의뢰번호</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><code>{{ r.work_order_no }}</code></td><td>{{ r.status }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
+    <td class="num">{{ u.q(r.qty) }}</td><td>{{ r.request_no }}</td></tr>{% endfor %}</tbody>
+{% elif key == "issues" %}
+  <thead><tr><th>불출</th><th>불출일</th><th>작업지시</th><th>원자재 LOT</th><th>위치</th><th class="num">수량</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td>{{ r.issue_id }}</td><td>{{ r.issued_on | dt }}</td><td>{{ r.work_order_no }}</td>
+    <td><code>{{ r.material_lot_no }}</code></td><td>{{ r.location_code }}</td><td class="num">{{ u.q(r.qty) }}</td></tr>{% endfor %}</tbody>
+{% elif key == "material_lots" %}
+  <thead><tr><th>원자재 LOT</th><th>원 입고 LOT</th><th>품목</th><th class="num">수량</th><th>공급사</th><th>공급사 LOT</th><th>입고일</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><code>{{ r.lot_no }}</code></td><td>{% if r.root_lot_no != r.lot_no %}<code>{{ r.root_lot_no }}</code>{% else %}-{% endif %}</td>
+    <td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td><td>{{ r.supplier_name }}</td>
+    <td>{{ r.supplier_lot_no | txt }}</td><td>{{ r.received_on | dt }}</td></tr>{% endfor %}</tbody>
+{% endif %}
+</table>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro render(r) -%}
+{% if r.rejected_after_shipment %}
+<section class="panel alert alert--bad" role="alert">
+  <strong>출하 후 불합격</strong> — 이미 확정된 출하에 들어간 제품 LOT 이 출하 뒤 재판정에서 불합격이다. 출하는 바꾸지 않는다(D-515 · 반품·정정은 SHP-020).
+  <ul>{% for x in r.rejected_after_shipment %}<li data-flag="rejected-after-shipment"><code>{{ x.product_lot_no }}</code> · 출하 <code>{{ x.shipment_no }}</code> 확정 {{ x.confirmed_at | dt }} · {{ x.seq }}차 불합격 {{ x.inspected_at | dt }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% for st in r.steps %}
+<section class="panel panel--grid">
+  <h2 class="ph__owner">{{ loop.index }}. {{ st.label }} <small class="muted">{{ r[st.key] | length }}건</small></h2>
+  {{ step_table(st.key, r[st.key]) }}
+</section>
+{% endfor %}
+{%- endmacro %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "원자재 입고 · 불출 · 제품 입고 — 취소 건은 지우지 않고 취소 표시로 남긴다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
+    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
+    <label class="field">품목<input name="item" value="{{ f.item }}"></label>
+    <label class="field">공급사<input name="supplier" value="{{ f.supplier }}"></label>
+    <label class="field">구분<select name="kind"><option value="">전체</option>{% for k in ("원자재 입고", "불출", "제품 입고") %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary">조회</button>
+    <button class="btn" name="format" value="csv">엑셀(CSV)</button>
+  </form>
+</section>
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>구분</th><th>일자</th><th>LOT</th><th>품목 코드</th><th>품목명</th><th>공급사</th><th>작업지시</th><th class="num">수량</th><th>취소</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if r.canceled %} class="dim"{% endif %}><td>{{ r.kind }}</td><td>{{ r.on_date | dt }}</td><td><code>{{ r.lot_no }}</code></td>
+        <td>{{ r.item_code }}</td><td>{{ r.item_name }}</td><td>{{ r.supplier_name | txt }}</td><td>{{ r.work_order_no | txt }}</td>
+        <td class="num">{{ u.q(r.qty) }}</td><td>{% if r.canceled %}{{ ui.chip("취소") }}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

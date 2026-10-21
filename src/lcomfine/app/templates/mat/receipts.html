@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "입고 LOT 번호는 자동 채번 · 입고 LOT 은 검사대기로 재고에 잡힌다 (D-510) · 사용 중지 품목은 고를 수 없다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">공급사<input name="supplier" value="{{ f.supplier }}"></label>
+    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+
+{% if label %}
+<section class="panel label-sheet" aria-label="LOT 라벨">
+  <h2>LOT 라벨 <small class="muted">입고 {{ f.label }} · 인쇄는 브라우저 인쇄</small></h2>
+  <div class="kpis">
+  {% for l in label %}
+    <div class="kpi">
+      <span class="kpi__label">{{ l.item_code }} {{ l.item_name }}</span>
+      <strong class="kpi__value"><code>{{ l.lot_no }}</code></strong>
+      <span class="kpi__note">{{ u.q(l.qty) }} {{ l.unit | txt('') }} · {{ l.supplier_name }} · {{ l.received_on | dt }} · 공급사 LOT {{ l.supplier_lot_no | txt }}</span>
+    </div>
+  {% endfor %}
+  </div>
+  <p class="muted">라벨 양식(바코드 규격)은 받은 적이 없다 — LOT 번호 글자만 찍는다.</p>
+</section>
+{% endif %}
+
+{% if can_w %}
+<section class="panel">
+  <h2>원자재 입고 등록 <small class="muted">다음 LOT 번호 {{ next_lot if next_lot else "미확정 (D-509)" }}</small></h2>
+  {% if not items or not locations %}
+  {{ ui.empty("사용 중인 원자재 품목 · 위치가 없습니다 — 기준정보(BAS-010 · BAS-030)에서 먼저 등록합니다") }}
+  {% else %}
+  <form method="post" action="{{ nav.path_of('MAT-010') }}">
+    <div class="search">
+      <label class="field">공급사<input name="supplier_name" required></label>
+      <label class="field">입고일<input type="date" name="received_on"></label>
+      <label class="field">비고<input name="note"></label>
+    </div>
+    <div class="grid-wrap">
+    <table class="grid plain">
+      <thead><tr><th>행</th><th>원자재 품목</th><th>수량</th><th>입고 위치</th><th>공급사 LOT</th></tr></thead>
+      <tbody>
+      {% for n in range(1, 4) %}
+        <tr><td>{{ n }}</td>
+          <td><select name="item_id" aria-label="{{ n }}행 품목"><option value="">-</option>{% for i in items %}<option value="{{ i.id }}">{{ i.item_code }} {{ i.item_name }}</option>{% endfor %}</select></td>
+          <td><input name="qty" inputmode="decimal" aria-label="{{ n }}행 수량"></td>
+          <td><select name="location_id" aria-label="{{ n }}행 위치">{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></td>
+          <td><input name="supplier_lot_no" aria-label="{{ n }}행 공급사 LOT"></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button class="btn btn-primary">입고 등록</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>입고</th><th>입고일</th><th>공급사</th><th>LOT</th><th>품목</th><th class="num">수량</th><th>공급사 LOT</th>
+      <th>재고 상태</th><th>라벨</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if r.canceled_at %} class="dim"{% endif %}>
+        <td>{{ r.id }}</td><td>{{ r.received_on | dt }}</td><td>{{ r.supplier_name }}</td><td><code>{{ r.lot_no }}</code></td>
+        <td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td><td>{{ r.supplier_lot_no | txt }}</td>
+        <td>{% if r.canceled_at %}{{ ui.chip("취소") }}{% else %}{{ u.stock_chips(r.stock_status) }}{% endif %}</td>
+        <td><a href="?label={{ r.id }}">라벨</a></td>
+        {% if can_w %}<td>{% if not r.canceled_at %}
+          <form method="post" action="{{ nav.path_of('MAT-010') }}/{{ r.id }}" class="inline">
+            <input type="hidden" name="lot_id" value="{{ r.lot_id }}">
+            <input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량">
+            <input type="hidden" name="supplier_lot_no" value="">
+            <button class="btn btn-sm">수량 수정</button>
+          </form>
+          <form method="post" action="{{ nav.path_of('MAT-010') }}/{{ r.id }}" class="inline">
+            <input type="hidden" name="cancel" value="1">
+            <button class="btn btn-sm btn-ghost" data-confirm="입고 {{ r.id }} 를 취소할까요? 기록은 남고 재고에서 빠집니다.">취소</button>
+          </form>{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

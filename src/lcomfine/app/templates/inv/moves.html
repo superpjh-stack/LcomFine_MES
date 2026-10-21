@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% macro loc_options(sel=none) -%}
+{% for l in locations %}<option value="{{ l.id }}"{% if sel == l.id %} selected{% endif %}>{{ l.warehouse_code }} / {{ l.location_code }} {{ l.location_name }}</option>{% endfor %}
+{%- endmacro %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "LOT 를 나눠 옮기면 원 LOT 번호에 분할 순번(-01)을 붙인 새 LOT 이 생긴다 (D-509) · 이동 수량은 가용 수량 안에서") }}
+  <form class="search" method="get" role="search">
+    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
+    <label class="field">위치<input name="location" value="{{ f.location }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+{% if can_w %}
+<section class="panel">
+  <h2>재고 이동 등록</h2>
+  {% if not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리(BAS-030)") }}{% else %}
+  <form method="post" action="{{ nav.path_of('INV-020') }}" class="search">
+    <label class="field">구분<select name="lot_kind" required>{% for k in kinds %}<option>{{ k }}</option>{% endfor %}</select></label>
+    <label class="field">LOT 번호<input name="lot_no" required></label>
+    <label class="field">출발 위치<select name="from_location_id" required>{{ loc_options() }}</select></label>
+    <label class="field">도착 위치<select name="to_location_id" required>{{ loc_options() }}</select></label>
+    <label class="field">수량<input name="qty" inputmode="decimal" required></label>
+    <label class="field"><span>분할</span><input type="checkbox" name="split" value="1"></label>
+    <label class="field">비고<input name="note"></label>
+    <button class="btn btn-primary">등록</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>일시</th><th>구분</th><th>LOT 구분</th><th>LOT</th><th>원 LOT</th><th>출발</th><th>도착</th>
+      <th class="num">수량</th><th>비고</th><th>등록자</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.moved_at | dt }}</td><td>{{ r.move_kind }}</td><td>{{ r.lot_kind }}</td><td><code>{{ r.lot_no }}</code></td>
+        <td>{{ r.source_lot_no | txt }}</td><td>{{ r.from_code | txt }}</td><td>{{ r.to_code | txt }}</td>
+        <td class="num">{{ u.q(r.qty) }}</td><td>{{ r.note | txt }}</td><td>{{ r.created_by | txt }}</td>
+        {% if can_w %}<td>{% if r.move_kind == "이동" %}
+          <form method="post" action="{{ nav.path_of('INV-020') }}/{{ r.id }}" class="inline">
+            <select name="to_location_id" aria-label="도착 위치">{{ loc_options(r.to_location_id) }}</select>
+            <input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량">
+            <button class="btn btn-sm">수정</button>
+          </form>{% else %}<span class="muted">-</span>{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

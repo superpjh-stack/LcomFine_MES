@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "지시 수량 대비 검사 로스를 비율로 본다 — 산식은 정해지지 않았다. 원 수량(지시 · 검사 · 불량)을 함께 보인다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
+    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>작업지시</th><th>품목</th><th>상태</th><th class="num">일보 일수</th><th class="num">지시 수량</th><th class="num">검사</th><th class="num">불량</th><th>검사 로스율</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.status }}</td><td class="num">{{ r.days }}</td>
+        <td class="num">{{ u.q(r.order_qty) }}</td><td class="num">{{ u.q(r.inspected_qty) }}</td><td class="num">{{ u.q(r.defect_qty) }}</td>
+        <td>{{ ui.undecided(decision) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

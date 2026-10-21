@@ -1,0 +1,11 @@
+{# 판정 폼 한 줄 — action · 숨은 키(name, value) · 결과 #}
+{% macro form(action, key_name=none, key_value=none, results=("합격", "불합격"), label="판정") -%}
+<form method="post" action="{{ action }}" class="inline">
+  {% if key_name %}<input type="hidden" name="{{ key_name }}" value="{{ key_value }}">{% endif %}
+  <select name="result" aria-label="판정" required>{% for r in results %}<option>{{ r }}</option>{% endfor %}</select>
+  <input name="item_name" placeholder="검사 항목" size="8" aria-label="검사 항목">
+  <input name="item_value" placeholder="값" size="6" aria-label="값">
+  <input name="note" placeholder="비고" size="8" aria-label="비고">
+  <button class="btn btn-sm btn-primary">{{ label }}</button>
+</form>
+{%- endmacro %}

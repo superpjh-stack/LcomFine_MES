@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% import "lot/_trace.html" as t %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "클레임 대응: 출하 한 건(또는 제품 LOT 하나)에서 원자재 LOT 까지 거슬러 올라간다 · 분할 LOT 는 원 LOT 으로 잇는다 · 읽기만 한다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">출하 번호<input name="shipment_no" value="{{ f.shipment_no }}" data-scan autofocus></label>
+    <label class="field">또는 제품 LOT<input name="product_lot_no" value="{{ f.product_lot_no }}"></label>
+    <button class="btn btn-primary">추적</button>
+  </form>
+  {% if error %}<p class="alert alert--bad" role="alert">{{ error }}</p>{% endif %}
+</section>
+{% if r %}
+<section class="panel">
+  <h2>원자재 LOT 목록 <small class="muted">{{ r.start.kind }} {{ r.start.no }}</small></h2>
+  {% if r.origin_material_lot_nos %}
+  <p data-origin-lots>{% for no in r.origin_material_lot_nos %}<code>{{ no }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% if r.issued_material_lot_nos != r.origin_material_lot_nos %}<p class="muted">불출된 분할 LOT: {{ r.issued_material_lot_nos | join(' · ') }}</p>{% endif %}
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{{ t.render(r) }}
+{% elif not error %}{{ ui.empty("출하 번호 또는 제품 LOT 번호를 입력하면 추적한다") }}{% endif %}
+{% endblock %}

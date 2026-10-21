@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% import "qc/_judge.html" as j %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "미판정 · 불합격 제품 LOT 은 출하 확정 불가 · 재판정은 새 행 · 출하 확정 후의 재판정은 나간 출하를 바꾸지 않는다 (D-515)") }}
+  <form class="search" method="get" role="search">
+    <label class="field">제품 LOT<input name="lot" value="{{ f.lot }}"></label>
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+{{ u.readonly_note(can_w) }}
+<section class="panel panel--grid">
+  <h2 class="ph__owner">판정 대기 제품 LOT</h2>
+  {% if not pending %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead><tr><th>제품 LOT</th><th>작업지시</th><th>품목</th><th class="num">수량</th><th>재고 상태</th>{% if can_w %}<th>판정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in pending %}
+      <tr><td><code>{{ r.lot_no }}</code>{% if r.parent_lot_id %} <small class="muted">분할</small>{% endif %}</td><td>{{ r.work_order_no }}</td>
+        <td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td><td>{{ u.stock_chips(r.status, r.allocated_qty) }}</td>
+        {% if can_w %}<td>{% if r.parent_lot_id %}<span class="muted">원 LOT 판정을 따른다</span>{% else %}{{ j.form(nav.path_of('QC-020'), "product_lot_id", r.id) }}{% endif %}</td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+<section class="panel panel--grid">
+  <h2 class="ph__owner">판정한 제품 LOT</h2>
+  {% if not judged %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead><tr><th>제품 LOT</th><th>작업지시</th><th>품목</th><th class="num">수량</th><th>차수</th><th>판정</th><th>판정 일시</th><th>재고 상태</th><th>출하</th>{% if can_w %}<th>재판정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in judged %}
+      <tr><td><code>{{ r.lot_no }}</code></td><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
+        <td class="num">{{ u.q(r.qty) }}</td><td class="num">{{ r.seq }}</td><td>{{ ui.chip(r.result) }}</td><td>{{ r.inspected_at | dt }}</td>
+        <td>{{ u.stock_chips(r.status, r.allocated_qty) }}</td>
+        <td>{% if r.shipped_n %}확정 {{ r.shipped_n }}건{% if r.result == "불합격" %} <span class="chip chip--bad">출하 후 불합격</span>{% endif %}{% else %}-{% endif %}</td>
+        {% if can_w %}<td>{{ j.form(nav.path_of('QC-020') ~ '/' ~ r.id, label="재판정") }}</td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

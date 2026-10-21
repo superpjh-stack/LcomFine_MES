@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "지시를 고르면 생산일보의 완료 수량을 기본값으로 불러온다 · 제품 LOT 은 지시번호와 묶이고 제품검사 판정 전까지 검사대기") }}
+  <form class="search" method="get" role="search">
+    <label class="field">지시번호<input name="wo" value="{{ f.wo }}" list="wo-list"></label>
+    <datalist id="wo-list">{% for w in work_orders %}<option value="{{ w.work_order_no }}">{% endfor %}</datalist>
+    <label class="field">제품 LOT<input name="lot" value="{{ f.lot }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+
+{% if can_w %}
+<section class="panel">
+  <h2>제품 입고 등록</h2>
+  {% if not work_orders %}{{ ui.empty("입고할 생산지시가 없습니다 — 생산지시서(WO-020)") }}
+  {% elif not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리(BAS-030)") }}
+  {% elif not picked %}
+  <p class="muted">위 조회칸에 지시번호를 넣고 조회하면 일보 완료 수량이 기본값으로 채워진다.</p>
+  <form method="post" action="{{ nav.path_of('MAT-030') }}" class="search">
+    <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+    <label class="field">수량 <small class="muted">비우면 일보 완료 수량</small><input name="qty" inputmode="decimal"></label>
+    <label class="field">입고 위치<select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
+    <label class="field">입고일<input type="date" name="received_on"></label>
+    <label class="field">비고<input name="note"></label>
+    <button class="btn btn-primary">입고 등록</button>
+  </form>
+  {% else %}
+  <form method="post" action="{{ nav.path_of('MAT-030') }}" class="search">
+    <input type="hidden" name="work_order_id" value="{{ picked.id }}">
+    <label class="field">작업지시<input value="{{ picked.work_order_no }} · {{ picked.item_code }} {{ picked.item_name }}" readonly></label>
+    <label class="field">수량 <small class="muted">일보 완료 − 기존 입고 = {{ u.q(picked.default_qty) }}</small><input name="qty" inputmode="decimal" value="{{ u.q(picked.default_qty) if picked.default_qty > 0 else '' }}" required></label>
+    <label class="field">입고 위치<select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
+    <label class="field">입고일<input type="date" name="received_on"></label>
+    <label class="field">비고<input name="note"></label>
+    <button class="btn btn-primary">입고 등록</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{{ u.readonly_note(can_w) }}
+
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>입고일</th><th>작업지시</th><th>제품 LOT</th><th>품목</th><th>위치</th><th class="num">수량</th><th>재고 상태</th><th>비고</th>{% if can_w %}<th>수정</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr{% if r.canceled_at %} class="dim"{% endif %}>
+        <td>{{ r.received_on | dt }}</td><td>{{ r.work_order_no }}</td><td><code>{{ r.lot_no }}</code></td>
+        <td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.location_code }}</td><td class="num">{{ u.q(r.qty) }}</td>
+        <td>{% if r.canceled_at %}{{ ui.chip("취소") }}{% else %}{{ u.stock_chips(r.stock_status) }}{% endif %}</td><td>{{ r.note | txt }}</td>
+        {% if can_w %}<td>{% if not r.canceled_at %}
+          <form method="post" action="{{ nav.path_of('MAT-030') }}/{{ r.id }}" class="inline">
+            <input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량"><button class="btn btn-sm">수량 수정</button>
+          </form>
+          <form method="post" action="{{ nav.path_of('MAT-030') }}/{{ r.id }}" class="inline">
+            <input type="hidden" name="cancel" value="1">
+            <button class="btn btn-sm btn-ghost" data-confirm="제품 입고 {{ r.lot_no }} 를 취소할까요? 기록은 남고 재고에서 빠집니다.">취소</button>
+          </form>{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

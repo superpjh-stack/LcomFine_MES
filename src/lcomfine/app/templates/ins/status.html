@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "inv/_ui.html" as u %}
+{% block body %}
+<section class="panel">
+  {{ u.head(screen, "기간별 검사일보를 모아 본다") }}
+  <form class="search" method="get" role="search">
+    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
+    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
+    <label class="field">제품<input name="item" value="{{ f.item }}"></label>
+    <button class="btn btn-primary">조회</button>
+  </form>
+</section>
+{% if rows %}
+<section class="kpis">{{ ui.kpi("검사일보 행", rows | length) }}{{ ui.kpi("검사 합", u.q(totals.inspected_qty)) }}{{ ui.kpi("불량 합", u.q(totals.defect_qty)) }}</section>
+{% endif %}
+<section class="panel panel--grid">
+  {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid">
+    <thead><tr><th>일자</th><th>작업지시</th><th>품목</th><th class="num">검사</th><th class="num">불량</th>{% for d in defect_types %}<th class="num">{{ d.code_name }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.work_date | dt }}</td><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
+        <td class="num">{{ u.q(r.inspected_qty) }}</td><td class="num">{{ u.q(r.defect_qty) }}</td>
+        {% for d in defect_types %}<td class="num">{{ r.defects.get(d.code, '-') }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
