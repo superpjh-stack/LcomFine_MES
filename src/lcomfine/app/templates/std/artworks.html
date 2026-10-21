@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">시안 이미지를 제품에 연결해 작업지시와 함께 볼 수 있게 한다 · PNG · JPEG · GIF · WEBP 만 받는다(그 밖은 이미지 형식 오류).</p>
+  <form class="search" method="get" role="search">
+    {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("시안 수정 — 차수 " ~ edit.version, "/std/artworks/" ~ edit.id, "F-STD-042", enctype="multipart/form-data", cancel=nav.path_of("STD-040")) %}
+  {{ f.input("title", "시안 이름", edit.title, required=true) }}
+  <label class="field"><span>이미지 교체 (비우면 그대로 — 지금 {{ edit.file_name }})</span><input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp"></label>
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("시안 등록", "/std/artworks", "F-STD-041", enctype="multipart/form-data") %}
+  {{ f.item_select(items) }}
+  {{ f.input("title", "시안 이름", required=true) }}
+  <label class="field"><span>시안 이미지 <b aria-hidden="true">*</b></span><input type="file" name="image" required accept="image/png,image/jpeg,image/gif,image/webp"></label>
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>시안</th><th>제품</th><th>시안 이름</th><th class="num">차수</th><th>파일</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{% if r.src %}<img src="{{ r.src }}" alt="{{ r.title }}" width="96" style="max-height:96px;object-fit:contain">{% endif %}</td>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.title }}</td><td class="num">{{ r.version }}</td>
+      <td>{{ r.file_name }} <small class="muted">{{ r.content_type }}</small></td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{{ f.edit_link("F-STD-042", "edit=" ~ r.id) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

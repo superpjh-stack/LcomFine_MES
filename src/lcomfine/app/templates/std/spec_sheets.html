@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">제품별 인쇄 사양 기준을 관리한다 · 생산지시서를 만들 때 이 사양을 불러온다 · 사용 중지 사양은 불러오지 않는다.
+    사양 항목의 양식은 받지 못했다 — 한 줄에 <code>항목=값</code> 하나로 적는다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
+    {{ f.input("q", "제목·품목", form.q) }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("사양 수정 — 개정 " ~ edit.revision, "/std/spec-sheets/" ~ edit.id, "F-STD-012", cancel=nav.path_of("STD-010")) %}
+  {{ f.input("title", "제목", edit.title, required=true) }}
+  {{ f.textarea("content", "사양 항목 (항목=값)", edit_content, rows=6) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("사양 등록", "/std/spec-sheets", "F-STD-011") %}
+  {{ f.item_select(items) }}
+  {{ f.input("revision", "개정 차수 (비우면 다음 차수)", type="number") }}
+  {{ f.input("title", "제목", required=true) }}
+  {{ f.textarea("content", "사양 항목 (항목=값)", rows=6) }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>제품</th><th class="num">개정</th><th>제목</th><th>사양 항목</th><th class="num">지시 사용</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td class="num">{{ r.revision }}</td><td>{{ r.title }}</td>
+      <td class="wrap">{{ f.kv(r.content) }}</td><td class="num">{{ r.order_count | num }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{{ f.edit_link("F-STD-012", "edit=" ~ r.id) }} {{ f.del_btn("/std/spec-sheets/" ~ r.id ~ "/delete", "F-STD-013") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

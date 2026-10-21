@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">예외로 다루는 제품을 지정한다 (적용 규칙은 FINE_MES 확인 필요) · 적용 규칙은 {{ ui.undecided("D-519") }} —
+    지정 · 조회만 하고 다른 화면에 적용하지 않는다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("예외제품 수정", "/std/exception-items/" ~ edit.id, "F-STD-062", cancel=nav.path_of("STD-060")) %}
+  {{ f.input("reason", "예외 사유", edit.reason, required=true) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("예외제품 지정", "/std/exception-items", "F-STD-061") %}
+  {{ f.item_select(items) }}
+  {{ f.input("reason", "예외 사유", required=true) }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>제품</th><th>예외 사유</th><th>적용</th><th>비고</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.reason }}</td><td>{{ ui.undecided("D-519") }}</td>
+      <td>{{ r.note | txt }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{{ f.edit_link("F-STD-062", "edit=" ~ r.id) }} {{ f.del_btn("/std/exception-items/" ~ r.id ~ "/delete", "F-STD-063") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

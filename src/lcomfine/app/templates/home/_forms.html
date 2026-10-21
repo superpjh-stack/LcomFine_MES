@@ -64,3 +64,14 @@
 {% macro kv(d) -%}
 {% if d %}<dl class="kv">{% for k, v in d.items() %}<dt>{{ k }}</dt><dd>{{ v | txt }}</dd>{% endfor %}</dl>{% else %}<span class="muted">미수집</span>{% endif %}
 {%- endmacro %}
+
+{# 품목 선택 — items: [{id, item_code, item_name}] (사용 중인 품목만 — 라우터가 거른다) #}
+{% macro item_select(items, value="", label="제품", name="item_id", required=true, blank="선택") -%}
+{% set opts = [] %}
+{% for i in items %}{% set _ = opts.append((i.id, i.item_code ~ " · " ~ i.item_name)) %}{% endfor %}
+{{ select(name, label, opts, value, required=required, blank=blank) }}
+{%- endmacro %}
+
+{% macro edit_link(fn_id, query) -%}
+{% if fn_allowed.get(fn_id) %}<a class="btn btn-sm" href="?{{ query }}">수정</a>{% endif %}
+{%- endmacro %}

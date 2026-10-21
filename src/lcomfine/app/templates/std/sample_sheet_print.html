@@ -1,0 +1,35 @@
+{# 표준견본서 출력 양식 — 머리·메뉴 없이 한 장. 인쇄는 브라우저 인쇄(스크립트 없음). 양식 항목은 받지 못해 적힌 항목 그대로 #}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>표준견본서 · {{ row.item_code }} · {{ system_name }}</title>
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
+</head>
+<body>
+<main class="main" id="main">
+  <section class="panel">
+    <h1>표준견본서</h1>
+    <dl class="kv">
+      <dt>제품</dt><dd><code>{{ row.item_code }}</code> {{ row.item_name }}</dd>
+      <dt>규격 · 단위</dt><dd>{{ row.spec | txt }} · {{ row.unit | txt }}</dd>
+      <dt>제목</dt><dd>{{ row.title }}</dd>
+      <dt>작성일</dt><dd>{{ row.issued_on | dt }}</dd>
+      <dt>작성자</dt><dd>{{ row.created_by | txt }}</dd>
+      <dt>사용 여부</dt><dd>{{ '사용' if row.use_yn == 'Y' else '사용 중지' }}</dd>
+    </dl>
+  </section>
+  <section class="panel">
+    <h2>견본서 항목</h2>
+    {% if row.content %}
+    <table class="grid plain"><tbody>
+      {% for k, v in row.content.items() %}<tr><th scope="row">{{ k }}</th><td>{{ v | txt }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty">미수집</p>{% endif %}
+    {% if row.note %}<p>비고 · {{ row.note }}</p>{% endif %}
+  </section>
+  <p class="muted">{{ system_name }} · 출력 {{ now }} · 견본서 양식은 미수집 — 적힌 항목을 그대로 보인다</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% macro usage_fields() -%}
+  {{ f.input("used_on", "사용일 (사용 이력을 남길 때)", type="date") }}
+  {{ f.input("work_order_no", "사용한 지시번호") }}
+  {{ f.input("usage_note", "사용 비고") }}
+{%- endmacro %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">인쇄 판의 보유와 사용 이력을 관리한다 · 판 코드는 바꾸지 않는다 · 사용 이력이 있는 판은 지우지 않고 사용 중지로 바꾼다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("q", "코드·이름", form.q) }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("판 수정 — " ~ edit.plate_code, "/std/plates/" ~ edit.id, "F-STD-032", cancel=nav.path_of("STD-030")) %}
+  {{ f.input("plate_code", "판 코드", edit.plate_code, readonly=true) }}
+  {{ f.input("plate_name", "판 이름", edit.plate_name, required=true) }}
+  {{ f.item_select(items, edit.item_id, required=false, blank="없음") }}
+  {{ f.input("made_on", "제작일", edit.made_on, type="date") }}
+  {{ f.input("storage", "보관 위치", edit.storage) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+  {{ usage_fields() }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("판 등록", "/std/plates", "F-STD-031") %}
+  {{ f.input("plate_code", "판 코드", required=true) }}
+  {{ f.input("plate_name", "판 이름", required=true) }}
+  {{ f.item_select(items, required=false, blank="없음") }}
+  {{ f.input("made_on", "제작일", type="date") }}
+  {{ f.input("storage", "보관 위치") }}
+  {{ f.input("note", "비고") }}
+  {{ usage_fields() }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>판 코드</th><th>판 이름</th><th>제품</th><th>제작일</th><th>보관 위치</th><th class="num">사용 이력</th><th>마지막 사용</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.plate_code }}</code></td><td>{{ r.plate_name }}</td>
+      <td>{% if r.item_code %}<code>{{ r.item_code }}</code> {{ r.item_name }}{% else %}-{% endif %}</td>
+      <td>{{ r.made_on | dt }}</td><td>{{ r.storage | txt }}</td>
+      <td class="num"><a href="?plate={{ r.id }}">{{ r.usage_count | num }}</a></td><td>{{ r.last_used_on | dt }}</td>
+      <td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{{ f.edit_link("F-STD-032", "edit=" ~ r.id) }} {{ f.del_btn("/std/plates/" ~ r.id ~ "/delete", "F-STD-033") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel">
+  <h2>사용 이력{% if plate_id %} <a class="btn btn-sm" href="{{ nav.path_of('STD-030') }}">전체</a>{% endif %}</h2>
+  {{ ui.table([("plate_code", "판 코드"), ("used_on", "사용일"), ("work_order_no", "지시번호"), ("note", "비고"), ("created_by", "기록자")], usage) }}
+</section>
+{% endblock %}

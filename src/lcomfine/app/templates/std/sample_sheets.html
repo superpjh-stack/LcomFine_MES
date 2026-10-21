@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">제품별 표준 견본서를 만들고 출력한다 · 견본서 양식은 받지 못했다 — 한 줄에 <code>항목=값</code> 하나로 적는다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("견본서 수정", "/std/sample-sheets/" ~ edit.id, "F-STD-052", cancel=nav.path_of("STD-050")) %}
+  {{ f.input("title", "제목", edit.title, required=true) }}
+  {{ f.input("issued_on", "작성일", edit.issued_on, type="date") }}
+  {{ f.textarea("content", "견본서 항목 (항목=값)", edit_content, rows=6) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("견본서 작성", "/std/sample-sheets", "F-STD-051") %}
+  {{ f.item_select(items) }}
+  {{ f.input("title", "제목", required=true) }}
+  {{ f.input("issued_on", "작성일", type="date") }}
+  {{ f.textarea("content", "견본서 항목 (항목=값)", rows=6) }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>제품</th><th>제목</th><th>작성일</th><th>항목</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.title }}</td><td>{{ r.issued_on | dt }}</td>
+      <td class="wrap">{{ f.kv(r.content) }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td><a class="btn btn-sm" href="/std/sample-sheets/{{ r.id }}/print" target="_blank" rel="noopener">출력</a>
+          {{ f.edit_link("F-STD-052", "edit=" ~ r.id) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}
