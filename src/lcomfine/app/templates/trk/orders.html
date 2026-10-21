@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% import "trk/_stages.html" as st %}
+{% block body %}
+{% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">생산의뢰 번호 하나로 지금 어느 단계인지와 남은 수량을 실시간으로 보여 준다 · 고객 납기 문의에 영업부가 생산부에 묻지 않고
+    바로 답할 수 있게 하는 화면이다 · 읽기만 한다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("request", "의뢰번호", form.request) }}
+    {{ f.input("q", "의뢰번호·거래처·제품 검색", form.q) }}
+    {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
+    {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if detail %}
+<section class="panel" data-request="{{ detail.request_no }}">
+  <h2>{{ detail.request_no }} · {{ detail.customer_name }} · <code>{{ detail.item_code }}</code> {{ detail.item_name }}</h2>
+  <p>지금 단계 <strong>{{ detail.current or "-" }}</strong> · 남은 수량 <strong class="num">{{ detail.remaining | num(3) }}</strong>
+    · 납기 {{ detail.due_date | dt }} (남은 일수 {{ detail.d_day }}) · {{ ui.chip(detail.status) }}</p>
+  {{ st.bar(detail, true) }}
+  <div class="grid-wrap"><table class="grid plain">
+    <thead><tr><th>단계</th><th class="num">수량</th><th>날짜</th><th>담당 부서</th></tr></thead>
+    <tbody>
+    {% for s in detail.stages %}
+    <tr{% if not s.reached %} class="dim"{% endif %}><td>{{ s.label }}</td><td class="num">{{ s.qty | num(3) if s.qty is not none else "-" }}</td>
+      <td>{{ s.on | dt }}</td><td>{{ s.dept }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <h3>지시별</h3>
+  {{ ui.table([("work_order_no", "지시번호"), {"key": "order_qty", "label": "지시", "num": true}, {"key": "daily_good_qty", "label": "일보 완료", "num": true}, {"key": "receipt_qty", "label": "제품 입고", "num": true}, {"key": "shipped_qty", "label": "출하", "num": true}, ("status", "상태")], orders_of) }}
+</section>
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th class="num">의뢰 수량</th><th>납기</th><th>단계</th><th>지금</th><th class="num">남은 수량</th><th>상태</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="?request={{ r.request_no }}"><code>{{ r.request_no }}</code></a></td><td>{{ r.customer_name }}</td>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td class="num">{{ r.qty | num(3) }}</td><td>{{ r.due_date | dt }}</td>
+      <td>{{ st.bar(r) }}</td><td>{{ r.current or "-" }}</td><td class="num">{{ r.remaining | num(3) }}</td><td>{{ ui.chip(r.status) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

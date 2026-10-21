@@ -1,0 +1,8 @@
+{# 단계 막대 — 의뢰 → 지시 → 생산 → 검사 → 제품 입고 → 출하. 도달한 단계는 ok 칩, 아닌 단계는 muted #}
+{% macro bar(r, detail=false) -%}
+<ol class="flow__mini" aria-label="단계 막대 — 지금 {{ r.current or '없음' }}" style="display:flex;flex-wrap:wrap;gap:4px;list-style:none;margin:0;padding:0">
+  {% for st in r.stages %}
+  <li><span class="chip chip--{{ 'ok' if st.reached else 'muted' }}"{% if st.label == r.current %} aria-current="step"{% endif %}>{{ st.label }}{% if detail %} {{ st.qty | num(3) if st.qty is not none else "-" }}{% endif %}</span></li>
+  {% endfor %}
+</ol>
+{%- endmacro %}

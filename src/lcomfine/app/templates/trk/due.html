@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% import "trk/_stages.html" as st %}
+{% block body %}
+{% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
+{% set b_opts = [] %}{% for b in buckets %}{% set _ = b_opts.append((b, b)) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">납기 임박 (D-7, D-3) · 납기 지연 · 거래처·제품별 · 납기는 생산의뢰서 값, 완료는 출하 확정일 기준 ·
+    지연 건은 어느 단계에서 멈췄는지 함께 보여 준다 · 읽기만 한다.</p>
+  <div class="kpis">
+    {% for k in ["D-3", "D-7", "지연", "지연 완료", "완료"] %}
+    <div class="kpi"><span class="kpi__label"><a href="?bucket={{ k }}">{{ k }}</a></span><strong class="kpi__value num">{{ counts[k] | num }}</strong></div>
+    {% endfor %}
+  </div>
+  <form class="search" method="get" role="search">
+    {{ f.select("bucket", "구분", b_opts, bucket, blank="임박·지연") }}
+    {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
+    {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">D-day</th><th>구분</th><th>멈춘 단계</th><th>단계</th>
+      <th class="num">남은 수량</th><th>출하 확정일</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr data-bucket="{{ r.bucket }}">
+      <td><a href="{{ nav.path_of('TRK-010') }}?request={{ r.request_no }}"><code>{{ r.request_no }}</code></a></td>
+      <td>{{ r.customer_name }}</td><td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.due_date | dt }}</td>
+      <td class="num">{{ r.d_day }}</td>
+      <td><span class="chip chip--{{ 'bad' if r.bucket in ('지연', '지연 완료') else ('warn' if r.bucket in ('D-3', 'D-7') else 'ok') }}">{{ r.bucket }}</span></td>
+      <td>{{ r.current or "-" }}</td><td>{{ st.bar(r) }}</td><td class="num">{{ r.remaining | num(3) }}</td><td>{{ r.shipment_on | dt }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel">
+  <h2>거래처별</h2>
+  {{ ui.table([("code", "거래처 코드"), ("name", "거래처"), {"key": "n", "label": "건수", "num": true}, {"key": "late", "label": "지연", "num": true}, {"key": "remaining", "label": "남은 수량", "num": true}], by_customer) }}
+  <h2>제품별</h2>
+  {{ ui.table([("code", "품목 코드"), ("name", "제품"), {"key": "n", "label": "건수", "num": true}, {"key": "late", "label": "지연", "num": true}, {"key": "remaining", "label": "남은 수량", "num": true}], by_item) }}
+</section>
+{% endblock %}

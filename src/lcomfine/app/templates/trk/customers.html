@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% import "trk/_stages.html" as st %}
+{% block body %}
+{% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name ~ ("" if c.use_yn == "Y" else " (사용 중지)"))) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">영업부가 고객 통화 중에 한 화면으로 주문·재고·출하·미수를 확인한다 · 미수는 회계부가 올린 ERP 데이터를 그대로 보여 주고 고치지 않는다 · 읽기만 한다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.select("customer", "거래처", cust_opts, form.customer, required=true) }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if picked %}
+<section class="panel" data-customer="{{ picked.customer_code }}">
+  <h2><code>{{ picked.customer_code }}</code> {{ picked.customer_name }}</h2>
+  <p class="muted">담당자 {{ picked.contact_name | txt }} · 연락처 {{ picked.phone | txt }}</p>
+  <div class="kpis">
+    {{ ui.kpi("진행 중 주문", open_rows | length | num) }}
+    {{ ui.kpi("가용 재고 LOT", stock | length | num) }}
+    {{ ui.kpi("최근 출하", shipments | length | num) }}
+    {{ ui.kpi("수금·미수", none, "ERP 업로드 기준일 " ~ ((erp_asof | dt) if erp_asof else "미수집") ~ " · 수금 집계는 W2 (stats.customer_receivable)") }}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>진행 중 주문</h2>
+  {% if open_rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>제품</th><th class="num">의뢰 수량</th><th>납기</th><th>단계</th><th class="num">남은 수량</th></tr></thead>
+    <tbody>
+    {% for r in open_rows %}
+    <tr><td><a href="{{ nav.path_of('TRK-010') }}?request={{ r.request_no }}"><code>{{ r.request_no }}</code></a></td>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td class="num">{{ r.qty | num(3) }}</td><td>{{ r.due_date | dt }}</td>
+      <td>{{ st.bar(r) }}</td><td class="num">{{ r.remaining | num(3) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel">
+  <h2>가용 재고 <small class="muted">그 거래처가 의뢰한 제품 · 가용 = 현재고 − 할당</small></h2>
+  {{ ui.table([("item_code", "품목"), ("item_name", "제품"), ("lot_no", "LOT"), ("warehouse_code", "창고"), ("location_code", "위치"), {"key": "qty", "label": "현재고", "num": true}, {"key": "allocated_qty", "label": "할당", "num": true}, {"key": "available_qty", "label": "가용", "num": true}], stock) }}
+</section>
+
+<section class="panel">
+  <h2>최근 출하</h2>
+  {{ ui.table([("shipment_no", "출하 번호"), ("request_no", "의뢰번호"), ("status", "상태"), ("due_date", "납기"), ("confirmed_at", "확정"), {"key": "qty", "label": "수량", "num": true}], shipments) }}
+</section>
+
+<section class="panel">
+  <h2>수금·미수</h2>
+  <p>{{ ui.empty("미수집") }} <span class="muted">ERP 업로드 기준일 {{ (erp_asof | dt) if erp_asof else "미수집" }} — 수금 칸은 W2 에 개발3 의 <code>stats.customer_receivable</code> 로 붙는다.
+    <a href="{{ nav.path_of('COL-050') }}">거래처별 미수 조회</a></span></p>
+</section>
+{% endif %}
+{% endblock %}
