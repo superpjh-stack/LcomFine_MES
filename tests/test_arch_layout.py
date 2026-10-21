@@ -96,7 +96,9 @@ def test_flow_strip_links_only_permitted_steps(app):
 
 
 def test_no_device_param_in_templates():
-    hits = [str(p) for d in (TEMPLATES, STATIC) for p in d.rglob("*") if p.is_file() and "device=" in p.read_text()]
+    files = [p for d in (TEMPLATES, STATIC) for ext in ("*.html", "*.css", "*.js") for p in d.rglob(ext)]
+    assert files
+    hits = [str(p) for p in files if "device=" in p.read_text()]
     assert hits == []
 
 
@@ -148,3 +150,80 @@ def test_layout_shell_for_logged_in_user(app):
     assert f'href="{nav.path_of("HOME-020")}"' in html   # 알림 종
     assert "data-theme-toggle" in html
     assert "fonts.googleapis.com" in html
+
+
+# ── 매크로 (Jinja env 로 직접 렌더) ──
+def _macro(expr: str) -> str:
+    from lcomfine.app import templating
+    return templating.env.from_string('{% import "_macros.html" as ui %}' + expr).render()
+
+
+def test_macros_table_empty_shows_misujip():
+    html = _macro('{{ ui.table([("a", "A")], []) }}')
+    assert "미수집" in html and "<table" not in html
+    html = _macro('{{ ui.table([("a", "A")], [], empty_text="조회 결과 없음") }}')
+    assert "조회 결과 없음" in html
+    html = _macro('{{ ui.table([("a", "A"), {"key": "b", "label": "B", "num": true}], [{"a": "x", "b": 1234}]) }}')
+    assert '<td class="num">1,234</td>' in html and "<td>x</td>" in html
+    assert "미수집" in _macro("{{ ui.empty() }}")
+
+
+def test_macros_undecided_and_chip_mapping():
+    assert "미확정 (D-12)" in _macro('{{ ui.undecided("D-12") }}')
+    want = {"가용": "ok", "합격": "ok", "확정": "ok", "반영": "ok",
+            "검사대기": "warn", "보류": "warn", "지시": "warn", "확인대기": "warn",
+            "불합격": "bad", "취소": "bad", "기타 상태": "muted"}
+    for status, tone in want.items():
+        html = _macro("{{ ui.chip(s) }}".replace("s", repr(status)))
+        assert f'class="chip chip--{tone}">{status}<' in html, status
+
+
+def _svg(html: str):
+    import xml.etree.ElementTree as ET
+    m = re.search(r"<svg.*?</svg>", html, re.S)
+    assert m, html
+    return ET.fromstring(m.group(0))
+
+
+SVG_NS = "{http://www.w3.org/2000/svg}"
+
+
+@pytest.mark.parametrize("values", [[0, 0, 0], [None, None], [3, None, 5], [-4, 2, None, 6], [-3, -1]])
+def test_svg_macros_handle_zero_none_negative(values):
+    from lcomfine.app import templating
+    series = [{"label": f"p{i}", "value": v} for i, v in enumerate(values)]
+    tpl = templating.env.from_string('{% import "_macros.html" as ui %}{{ ui.svg_bar(s) }}|||{{ ui.svg_line(s) }}')
+    bar_html, line_html = tpl.render(s=series).split("|||")
+    for html in (bar_html, line_html):
+        root = _svg(html.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ', 1))
+        for el in root.iter():
+            for k in ("x", "y", "width", "height", "x1", "y1", "x2", "y2"):
+                if k in el.attrib:
+                    v = float(el.attrib[k])
+                    assert v == v and (k in ("x", "x1", "x2") or v >= 0), (k, v, values)
+                    if k == "height":
+                        assert v <= 160
+        titles = [t.text for t in root.iter(f"{SVG_NS}title")]
+        assert len(titles) == len(values)
+        for v, t in zip(values, titles):
+            assert t.endswith("미수집") if v is None else "미수집" not in t
+    bars = [r for r in _svg(bar_html.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ', 1)).iter(f"{SVG_NS}rect")]
+    assert len(bars) == len(values)
+    for v, r in zip(values, bars):
+        if v is None or v == 0:
+            assert float(r.attrib["height"]) == 0
+        else:
+            assert float(r.attrib["height"]) > 0
+
+
+def test_health_returns_503_when_db_down(app, monkeypatch):
+    from lcomfine.db import conn
+
+    def down():
+        raise conn.DbUnavailable("test: DB down")
+    monkeypatch.setattr(conn, "ping", down)
+    r = TestClient(app).get("/health")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["ok"] is False and body["db"] != "ok"
+    assert "test: DB down" not in r.text    # 원문은 응답에 싣지 않는다

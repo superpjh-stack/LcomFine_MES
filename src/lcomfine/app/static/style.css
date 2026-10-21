@@ -138,7 +138,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .side ul { list-style: none; margin: 0 0 4px; padding: 0; }
 .side li a { display: block; padding: 4px 8px 4px 16px; border-radius: var(--r); color: var(--ink); font-size: 13px; }
 .side li a:hover { background: var(--hover); text-decoration: none; }
-.side li a[aria-current="page"] { background: var(--cyan-soft); color: var(--cyan); font-weight: 600; box-shadow: inset 3px 0 0 var(--cyan); }
+.side li a[aria-current="page"] { background: var(--cyan-soft); color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--cyan); }
 .side__empty, .side__foot { padding: 8px; font-size: 13px; }
 .side__foot { border-top: 1px solid var(--line); margin-top: 12px; }
 
@@ -195,7 +195,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .chart__bar { fill: var(--cyan); }
 .chart__bar:hover { fill: var(--ink); }
 .chart__line { fill: none; stroke: var(--cyan); stroke-width: 2; }
-.chart__dot { fill: var(--surface); stroke: var(--cyan); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart__bar--neg { fill: var(--bad); }
+.chart__hit { fill: transparent; }
+.chart__hit:hover { fill: var(--cyan-soft); fill-opacity: .4; }
 .chart__labels { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); margin: 4px 0 0; padding: 0; list-style: none;
   font-size: 11px; color: var(--muted); text-align: center; }
 .chart__labels li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
