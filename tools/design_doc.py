@@ -1,85 +1,172 @@
-"""설계도(정본 HTML) 파서 — 검사 도구들이 기대값을 **설계도에서 직접** 끌어오는 한 곳.
+"""정본(기획서 2026-10-21) 추출기 — 화면 구조(IA)를 `contracts/ia.json` 으로 옮기는 한 곳.
 
-정본 `엘컴화인_MES_설계도 복사본.html` 은 읽기만 한다. 앱은 이 파일을 읽지 않는다(검사 도구만 읽는다).
-세는 방법은 goal.md §9 의 정규식과 같다.
+정본 `docs/엘컴화인_MES_기획서_2026-10-21.html` 은 읽기만 한다. 앱은 이 파일을 읽지 않는다.
+정본은 바깥 쪽 하나에 `<iframe srcdoc>` 두 개를 담는다.
+  - `f-ia`    화면 구조: 스크립트의 `1. 역할` ~ `4. 상태` 사이(ROLES · BUNDLES · ORDER · IA · 정렬 ·
+              mapRoles · SELF_GRANTS · ADM R · FLOW)를 잘라 node 로 평가한다.
+  - `f-guide` 부서 간 업무 변화: `const IA_DATA = [...];` 가 유효 권한을 JSON 으로 들고 있다(대조용).
+`effective()` 는 `contracts/ia-overrides.json`(사람이 정한 결정)을 그 위에 얹는다.
+
+    uv run python tools/design_doc.py          # contracts/ia.json 다시 쓰기
+    uv run python tools/design_doc.py --check  # 낡았으면 종료 코드 1
 """
 
 from __future__ import annotations
 
+import copy
+import html
+import json
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DESIGN_HTML = ROOT / "엘컴화인_MES_설계도 복사본.html"
+PLANNING_HTML = ROOT / "docs" / "엘컴화인_MES_기획서_2026-10-21.html"
+IA_JSON = ROOT / "contracts" / "ia.json"
+OVERRIDES_JSON = ROOT / "contracts" / "ia-overrides.json"
 
-MENU_RE = re.compile(r'<div class="ia-menu[^"]*"><h4>(.*?) <span>(\d+)</span></h4><ul>(.*?)</ul>')
-CELL_RE = re.compile(r'<td(?: class="([wn])")?>(입력[^<]*|조회|없음)</td>')
+START_MARK = "1. 역할"
+END_MARK = "4. 상태"
 
-
-def html() -> str:
-    if not DESIGN_HTML.exists():
-        raise SystemExit(f"정본 없음: {DESIGN_HTML}")
-    return DESIGN_HTML.read_text(encoding="utf-8")
-
-
-def _section(h: str, sec_id: str, next_id: str | None) -> str:
-    a = h.index(f'id="{sec_id}"')
-    b = h.index(f'id="{next_id}"', a) if next_id else len(h)
-    return h[a:b]
-
-
-def ia(h: str | None = None) -> dict:
-    """§5 IA 구성도 → {root: (대메뉴 수, 중메뉴 수), groups: [{name, menus: [{name, count, subs}]}]}."""
-    h = h or html()
-    sec = _section(h, "ia", "access")
-    m = re.search(r"대메뉴 (\d+) · 중메뉴 (\d+)", sec)
-    groups = []
-    for part in sec.split('<div class="ia-group">')[1:]:
-        g = re.search(r'<p class="ia-gname">(.*?)</p>', part)
-        menus = [{"name": name, "count": int(n), "subs": re.findall(r"<li>(.*?)</li>", lis)}
-                 for name, n, lis in MENU_RE.findall(part)]
-        groups.append({"name": g.group(1) if g else "", "menus": menus})
-    return {"root": (int(m.group(1)), int(m.group(2))) if m else (0, 0), "groups": groups}
-
-
-def access(h: str | None = None) -> dict:
-    """§6 역할과 채널 → {roles: [4], rows: [{menu, cells: [4], channels: [..]}]}. 칸 글자는 설계도 그대로."""
-    h = h or html()
-    sec = _section(h, "access", "open")
-    head = re.search(r"<thead><tr>(.*?)</tr></thead>", sec, re.S).group(1)
-    cols = re.findall(r"<th>(.*?)</th>", head)
-    rows = []
-    for tr in re.findall(r"<tr>(.*?)</tr>", sec.split("<tbody>")[1].split("</tbody>")[0], re.S):
-        tds = re.findall(r"<td[^>]*>(.*?)</td>", tr)
-        rows.append({"menu": tds[0], "cells": tds[1:5], "channels": [c.strip() for c in tds[5].split(",")]})
-    return {"roles": cols[1:5], "rows": rows}
+# 평가한 IA 를 brief 의 모양으로 내보낸다 (정본 순서 그대로, 없는 목록은 [] — orig 는 있을 때만)
+_EMIT_JS = r"""
+const out = {
+  roles: ROLES.map(r => ({id: r.id, name: r.name})),
+  bundles: BUNDLES.map(b => ({key: b.key, name: b.name, desc: b.desc})),
+  order: ORDER,
+  menus: IA.map(l => ({
+    code: l.code, name: l.name, kind: l.kind, opt: l.opt ?? null, bundle: l.bundle,
+    screens: l.screens.map(s => {
+      const o = {id: s.id, name: s.name, type: s.type, st: s.st};
+      if (s.orig !== undefined) o.orig = s.orig;
+      o.roles = s.roles;
+      o.l3 = s.l3 || []; o.logic = s.logic || []; o.links = s.links || [];
+      return o;
+    }),
+    data: l.data || [], batch: l.batch || []
+  })),
+  flow: FLOW.map(f => { const o = {id: f.id, step: f.step, sub: f.sub}; if (f.ext !== undefined) o.ext = f.ext; return o; }),
+  self_grants: SELF_GRANTS
+};
+process.stdout.write(JSON.stringify(out));
+"""
 
 
-def access_counts(h: str | None = None) -> dict[str, int]:
-    """goal.md §9 와 같은 방법 — 권한 칸 48 = 입력 19 · 조회 24 · 없음 5."""
-    h = h or html()
-    cells = CELL_RE.findall(_section(h, "access", "open"))
-    return {"전체": len(cells), "입력": sum(c[0] == "w" for c in cells), "조회": sum(c[1] == "조회" for c in cells),
-            "없음": sum(c[0] == "n" for c in cells)}
+def _srcdoc(frame_id: str) -> str:
+    if not PLANNING_HTML.exists():
+        raise SystemExit(f"정본 없음: {PLANNING_HTML}")
+    outer = PLANNING_HTML.read_text(encoding="utf-8")
+    m = re.search(r'<iframe id="' + re.escape(frame_id) + r'"[^>]*?\ssrcdoc="([^"]*)"', outer)
+    if not m:
+        raise SystemExit(f"정본에 iframe#{frame_id} srcdoc 이 없습니다")
+    return html.unescape(m.group(1))
 
 
-def processes(h: str | None = None) -> dict[str, dict]:
-    """§2 「프로세스별 입력과 출력」 표 → {P1: {name, actor, inputs, writes: [D..], reads: [D..], outputs}}."""
-    h = h or html()
-    sec = _section(h, "dfd", "lineage")
-    body = sec.split("<tbody>")[1].split("</tbody>")[0]
-    out: dict[str, dict] = {}
-    for tr in re.findall(r"<tr>(.*?)</tr>", body, re.S):
-        tds = re.findall(r"<td>(.*?)</td>", tr)
-        code, name = tds[0].split(" ", 1)
-        out[code] = {"name": name, "actor": tds[1], "inputs": tds[2],
-                     "writes": re.findall(r"D\d", tds[3]), "reads": re.findall(r"D\d", tds[4]), "outputs": tds[5]}
-    return out
+def _banner_start(src: str, mark: str) -> int:
+    """`/* ====\n   <mark>\n   ==== */` 배너 주석의 시작 위치."""
+    i = src.find(mark)
+    if i < 0:
+        raise SystemExit(f"정본 화면 구조 스크립트에 표지 「{mark}」 가 없습니다")
+    j = src.rfind("/*", 0, i)
+    if j < 0:
+        raise SystemExit(f"표지 「{mark}」 앞에 주석 시작이 없습니다")
+    return j
 
 
-def lineage_arrows(h: str | None = None) -> int:
-    """§3 그림의 「계보 선: 부모 → 자식」 화살표 수 (= roll_genealogy 예시 행 수, G-06)."""
-    h = h or html()
-    sec = _section(h, "lineage", "arch")
-    block = sec[sec.index("<!-- 계보 선: 부모 → 자식 -->"): sec.index("<!-- 관계 이름")]
-    return len(re.findall(r"<path ", block))
+def _ia_script() -> str:
+    doc = _srcdoc("f-ia")
+    a = _banner_start(doc, START_MARK)
+    b = _banner_start(doc[a + 1 :], END_MARK) + a + 1
+    return doc[a:b]
+
+
+def _node(js: str) -> str:
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node 가 필요합니다")
+    res = subprocess.run([node, "-e", js], capture_output=True, text=True, encoding="utf-8")
+    if res.returncode != 0:
+        raise SystemExit(f"node 평가 실패:\n{res.stderr}")
+    return res.stdout
+
+
+def load() -> dict:
+    """정본 1쪽의 화면 구조. 화면 roles 는 mapRoles + SELF_GRANTS + ADM R 적용 뒤의 유효 권한."""
+    return json.loads(_node(_ia_script() + _EMIT_JS))
+
+
+def roles_from_guide() -> dict:
+    """정본 2쪽 IA_DATA 의 화면별 유효 권한 {screen_id: {dept: level}}."""
+    doc = _srcdoc("f-guide")
+    m = re.search(r"const IA_DATA = (\[.*?\]);\s*\n", doc, re.S)
+    if not m:
+        raise SystemExit("정본 2쪽에 const IA_DATA = [...]; 가 없습니다")
+    data = json.loads(m.group(1))
+    return {s["id"]: s["roles"] for menu in data for s in menu["screens"]}
+
+
+def overrides() -> dict:
+    return json.loads(OVERRIDES_JSON.read_text(encoding="utf-8"))
+
+
+def effective(d: dict | None = None) -> dict:
+    """정본 위에 ia-overrides.json(화면 제거 · 대메뉴 이름 변경)을 얹은 것."""
+    e = copy.deepcopy(d if d is not None else load())
+    ov = overrides()
+    codes = {m["code"] for m in e["menus"]}
+    ids = {s["id"] for m in e["menus"] for s in m["screens"]}
+    for code in ov.get("rename_menu", {}):
+        if code not in codes:
+            raise SystemExit(f"ia-overrides: 없는 대메뉴 {code}")
+    for sid in ov.get("remove_screens", {}):
+        if sid not in ids:
+            raise SystemExit(f"ia-overrides: 없는 화면 {sid}")
+    removed = set(ov.get("remove_screens", {}))
+    for m in e["menus"]:
+        if m["code"] in ov.get("rename_menu", {}):
+            m["name"] = ov["rename_menu"][m["code"]]["name"]
+        m["screens"] = [s for s in m["screens"] if s["id"] not in removed]
+        for s in m["screens"]:
+            s["links"] = [x for x in s["links"] if x not in removed]
+    e["flow"] = [f for f in e["flow"] if f["id"] not in removed]
+    e["self_grants"] = [g for g in e["self_grants"] if g[0] not in removed]
+    return e
+
+
+def counts(d: dict) -> dict:
+    screens = [s for m in d["menus"] for s in m["screens"]]
+    levels = [v for s in screens for v in s["roles"].values()]
+    return {
+        "bundles": len(d["bundles"]),
+        "menus": len(d["menus"]),
+        "screens": len(screens),
+        "roles": len(d["roles"]),
+        "cells_w": levels.count("W"),
+        "cells_r": levels.count("R"),
+    }
+
+
+def _render(d: dict) -> str:
+    return json.dumps(d, ensure_ascii=False, indent=2) + "\n"
+
+
+def write_json(check: bool = False) -> bool:
+    """check=False: contracts/ia.json 을 load() 로 다시 쓰고 True. check=True: 같은지만 본다."""
+    text = _render(load())
+    if check:
+        return IA_JSON.exists() and IA_JSON.read_text(encoding="utf-8") == text
+    IA_JSON.write_text(text, encoding="utf-8")
+    return True
+
+
+if __name__ == "__main__":
+    if "--check" in sys.argv[1:]:
+        if not write_json(check=True):
+            print(f"낡음: {IA_JSON.relative_to(ROOT)} — uv run python tools/design_doc.py 로 다시 쓰십시오")
+            sys.exit(1)
+        print(f"최신: {IA_JSON.relative_to(ROOT)}")
+    else:
+        write_json()
+        print(f"썼음: {IA_JSON.relative_to(ROOT)} {counts(json.loads(IA_JSON.read_text(encoding='utf-8')))}")

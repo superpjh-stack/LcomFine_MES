@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest>=8.3", "httpx>=0.28"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 markers = [
