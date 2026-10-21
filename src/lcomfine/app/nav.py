@@ -178,8 +178,8 @@ SCREENS: tuple[Screen, ...] = tuple(s for m in MENUS for s in m.screens)
 
 # ── 공통 화면 2 — 권한 표 밖 ──
 COMMON: tuple[Screen, ...] = (
-    Screen("login", "로그인", "", "공통", "", "home", "login", "/login", "개발1", "조회", common=True),
-    Screen("error", "오류", "", "공통", "", "home", "error", "/error", "개발1", "조회", common=True),
+    Screen("login", "로그인", "", "공통", "", "home", "login", "/login", "아키텍트", "조회", common=True),
+    Screen("error", "오류", "", "공통", "", "home", "error", "/error", "아키텍트", "조회", common=True),
 )
 
 ALL: tuple[Screen, ...] = SCREENS + COMMON

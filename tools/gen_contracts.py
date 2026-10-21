@@ -2,7 +2,7 @@
 """계약 문서의 렌더본 구간을 원본에서 다시 찍는다 (decisions.md D-08) — `make contracts`.
 
   contracts/db-schema.md  §4  ← src/lcomfine/db/schema.sql (테이블·저장소·컬럼 설명) + 실제 DB(타입·NULL)
-  contracts/screen-map.md §1  ← src/lcomfine/app/nav.py
+  contracts/screen-map.md §1  ← src/lcomfine/app/nav.py (DB 없이 `--only screens` 로 이것만 찍을 수 있다)
 
 문서의 `<!-- BEGIN:generated … -->` 와 `<!-- END:generated … -->` 사이만 바꾼다. 그 밖의 글은 사람이 쓴다.
 `--check` 를 주면 파일을 고치지 않고, 다시 찍었을 때 달라지는지만 본다(달라지면 종료코드 1) —
@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from lcomfine.app import contracts, nav  # noqa: E402
+from lcomfine.app import nav  # noqa: E402
 from lcomfine.db import conn  # noqa: E402
 
 SCHEMA_SQL = ROOT / "src" / "lcomfine" / "db" / "schema.sql"
@@ -112,14 +112,11 @@ def render_tables() -> str:
 
 
 def render_screens() -> str:
-    fns = contracts.functions()
-    out = ["| # | 화면 ID | 묶음 | 대메뉴 | 중메뉴 | 경로 | 모듈 | 담당 | 채널 | 기능 |",
-           "|---|---|---|---|---|---|---|---|---|---|"]
-    for i, s in enumerate(nav.SCREENS, start=1):
-        ids = [f.id for f in fns if not f.is_batch and f.screen_id == s.screen_id]
-        span = ids[0] if len(ids) == 1 else f"{ids[0]} ~ {ids[-1].rsplit('-', 1)[1]}"
-        out.append(f"| {i} | {s.screen_id} | {s.group} | {s.menu} | {s.name} | `{s.path}` | {s.module} | {s.owner} | "
-                   f"{', '.join(s.channels)} | {span} ({len(ids)}) |")
+    """화면 67 → `ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당` (nav.py 순서 = 정본 순서)."""
+    bundles = {k: name for k, name, _ in nav.BUNDLES}
+    out = ["| ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당 |", "|---|---|---|---|---|---|---|"]
+    for s in nav.SCREENS:
+        out.append(f"| {s.screen_id} | {s.name} | {s.kind} | `{s.path}` | {s.menu_code} {s.menu} | {bundles[s.bundle]} | {s.owner} |")
     return "\n".join(out)
 
 
@@ -131,8 +128,10 @@ def replace_block(text: str, key: str, body: str, path: Path) -> str:
     return text[:a] + "\n" + body + "\n" + text[b:]
 
 
-def main(check: bool = False) -> int:
+def main(check: bool = False, only: str | None = None) -> int:
     jobs = [(DB_SCHEMA_MD, "tables", render_tables), (SCREEN_MAP_MD, "screens", render_screens)]
+    if only:
+        jobs = [j for j in jobs if j[1] == only]
     stale: list[str] = []
     for path, key, fn in jobs:
         if not path.exists():
@@ -152,4 +151,5 @@ def main(check: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main("--check" in sys.argv))
+    _only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None   # --only screens · --only tables
+    sys.exit(main("--check" in sys.argv, _only))

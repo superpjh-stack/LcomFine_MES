@@ -1,13 +1,16 @@
-"""계약 로더 — `contracts/*.md` 의 표를 기계가 읽는 형태로 준다 (decisions.md D-08).
+"""계약 로더 — `contracts/*.md` 의 표를 기계가 읽는 형태로 준다 (D-508).
 
-직전 사업의 `design.py`(design.json 로더) 자리다. 여기에는 정본 JSON 이 없으므로 **계약 문서의 표가 원본**이다.
+**계약 문서의 표가 원본**이다. 앱은 정본이나 `ia.json` 을 읽지 않는다.
 
-    functions()            contracts/function-list.md §2 의 100줄 → Function 목록
-    function("F-BAS-01")   한 줄
-    functions_of("BAS-01") 그 중메뉴 화면의 기능들 (placeholder 화면·우측 계약 패널이 쓴다)
-    db_tables()            contracts/db-schema.md §4 의 테이블·컬럼 (tools/check_schema.py 가 실제 DB 와 대조)
+    functions()                 contracts/function-list.md §2 → Function 목록
+    function("F-WO-011")        한 줄
+    functions_of("WO-010")      그 화면의 기능들 (placeholder 화면 · 우측 계약 패널이 쓴다)
+    functions_of_menu("WO")     그 대메뉴의 기능들
+    write_functions()           쓰기 기능만
+    permission_cells()          contracts/permission-matrix.md → (화면 ID, 부서 코드, W|R) 260
+    db_tables()                 contracts/db-schema.md 의 테이블 · 컬럼 (tools/check_schema.py 가 실제 DB 와 대조)
 
-표가 깨졌거나 수가 안 맞으면 **import 시점에 실패한다** — 조용히 넘어가지 않는다.
+표가 깨졌거나 규칙이 안 맞으면 **처음 부를 때 실패한다** — 조용히 넘어가지 않는다.
 """
 
 from __future__ import annotations
@@ -22,26 +25,45 @@ from . import nav
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACTS_DIR = ROOT / "contracts"
 FUNCTION_LIST = CONTRACTS_DIR / "function-list.md"
-EXT_FUNCTION_LIST = CONTRACTS_DIR / "extension-list.md"     # 설계도 밖 확장 (D-418) — 수를 세는 게이트 밖
+PERMISSION_MATRIX = CONTRACTS_DIR / "permission-matrix.md"
 DB_SCHEMA = CONTRACTS_DIR / "db-schema.md"
 
-N_SCREEN_FUNCTIONS, N_BATCH_FUNCTIONS = 94, 6
-EXT_PROCESS = "확장"                                         # 확장 기능의 프로세스 칸 — P1~P10 밖
-
-WRITE_KINDS: frozenset[str] = frozenset({"등록", "수정", "삭제", "승인", "스캔"})
+WRITE_KINDS: frozenset[str] = frozenset({"등록", "수정", "삭제", "처리", "저장", "진입"})
 READ_KINDS: frozenset[str] = frozenset({"조회", "출력"})
-BATCH_KIND = "배치"
-PROCESSES: frozenset[str] = frozenset({f"P{i}" for i in range(1, 11)} | {"공통", "배치"})
-SCOPE_GENERAL = "일반"
-READ_ROLE_LABEL = "조회 이상"
+READ_ROLE_LABEL = "R 이상"
 
-FUNCTION_HEADER = ["ID", "대메뉴", "중메뉴", "기능명", "유형", "프로세스", "쓰는 저장소", "쓰는 테이블", "채널",
-                   "권한", "범위", "API", "담당", "계약"]
+#: 부서 이름 → 코드 (정본 순서). 앱은 ia.json 을 읽지 않으므로 리터럴이다 — 게이트가 정본과 대조한다.
+ROLE_CODES: dict[str, str] = {
+    "영업부": "SL", "생산부": "PR", "출하실": "SH", "디자인·개발실": "DS",
+    "회계부": "AC", "전략부": "ST", "경영진": "EX", "전산 관리자": "ADM",
+}
+LEVELS: frozenset[str] = frozenset({"W", "R"})
+NO_LEVEL = "·"
+
+FUNCTION_HEADER = ["ID", "대메뉴", "화면 ID", "기능명", "유형", "쓰는 테이블", "권한", "API", "담당", "계약"]
+PERMISSION_HEADER = ["화면 ID", "화면", *ROLE_CODES]
+
+#: 규칙 A (D-508) — 화면 유형(nav.Screen.kind = 정본 type) → 전개 기능 유형, 순번 순서
+EXPANSION: dict[str, tuple[str, ...]] = {
+    "조회": ("조회",), "리포트": ("조회",), "출력": ("조회",),
+    "등록": ("등록", "수정", "조회"),
+    "목록·등록": ("등록", "수정", "삭제", "조회"),
+    "등록·출력": ("등록", "수정", "조회", "출력"),
+    "처리": ("처리", "조회"),
+    "설정": ("저장", "조회"),
+    "외부 연계(SSO)": ("진입", "조회"),
+}
+NO_EDIT_MARK = "수정 없음"          # 정본 logic 이 수정을 막는 등록 화면 — 수정 기능을 전개하지 않는다
+KIND_EXCEPTION_MARK = "유형 예외"   # 정본 type 밖 쓰기 기능 하나를 뒤에 더한다 (RPT-130 질의 실행)
+ROLE_EXCEPTION_MARK = "권한 예외"   # 정본 칸에 W 가 없는 화면의 쓰기 기능 — 화면 R 이상이 실행
+
+ID_RE = re.compile(r"F-([A-Z]+)-(\d{2})(\d)")
+API_RE = re.compile(r"(GET|POST) (/\S*)")
 
 
 # ── 마크다운 표 ─────────────────────────────────────────────────────────
 def md_tables(text: str) -> list[tuple[list[str], list[list[str]]]]:
-    """문서 안의 표를 전부 (머리행, 본문 행들) 로 돌려준다. 칸 안의 백틱은 벗긴다."""
+    """문서 안의 표를 전부 (머리행, 본문 행들) 로 돌려준다. 칸 전체를 싼 백틱은 벗긴다."""
     tables: list[tuple[list[str], list[list[str]]]] = []
     cur: list[list[str]] = []
     for ln in text.splitlines() + [""]:
@@ -69,27 +91,37 @@ def md_section(text: str, head_prefix: str) -> str:
     return m.group(1) if m else ""
 
 
-# ── 기능 100줄 ──────────────────────────────────────────────────────────
+def _split(cell: str, sep: str) -> tuple[str, ...]:
+    return tuple(p.strip() for p in cell.split(sep) if p.strip() and p.strip() != "-")
+
+
+def _role_codes(cell: str) -> tuple[str, ...]:
+    """`영업부·디자인·개발실·전산 관리자` → ('SL', 'DS', 'ADM'). 부서 이름 안에도 `·` 가 있어(디자인·개발실)
+    단순히 나누지 않고 아는 이름을 긴 것부터 앞에서 떼어 낸다."""
+    rest, out = cell.strip(), []
+    names = sorted(ROLE_CODES, key=len, reverse=True)
+    while rest:
+        hit = next((n for n in names if rest == n or rest.startswith(n + "·")), None)
+        if hit is None:
+            raise ValueError(f"모르는 부서 {rest!r}")
+        out.append(ROLE_CODES[hit])
+        rest = rest[len(hit) + 1:]
+    return tuple(out)
+
+
+# ── 기능 목록 ───────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class Function:
-    id: str                    # F-BAS-01 · B-MIG-01
-    menu: str                  # 대메뉴명 (배치는 '(배치) 데이터 이관')
-    screen_name: str           # 중메뉴명 (배치는 '-')
-    name: str                  # 기능명
-    kind: str                  # 등록 · 수정 · 삭제 · 승인 · 스캔 · 조회 · 출력 · 배치
-    process: str               # P1~P10 · 공통 · 배치
-    stores: tuple[str, ...]    # 쓰는 저장소 (읽기 기능은 빈 튜플)
-    tables: tuple[str, ...]    # 쓰는 테이블
-    channels: tuple[str, ...]
-    roles: tuple[str, ...]     # 입력할 수 있는 역할명 (읽기 기능은 빈 튜플 = '조회 이상')
-    scope: str                 # 일반 · 입고검사 · 승인 (읽기·배치는 '-')
-    api: str                   # 'POST /bas/items' · 'cli validate'
-    owner: str
-    text: str                  # 계약 문장
-
-    @property
-    def is_batch(self) -> bool:
-        return self.kind == BATCH_KIND
+    id: str                       # F-WO-011
+    menu_code: str                # WO
+    screen_id: str                # WO-010
+    name: str                     # 기능명
+    kind: str                     # 등록 · 수정 · 삭제 · 처리 · 저장 · 진입 · 조회 · 출력
+    tables: tuple[str, ...]       # 쓰는 테이블 (읽기 기능은 빈 튜플)
+    roles_w: tuple[str, ...]      # W 부서 코드 (읽기 기능 · 권한 예외는 빈 튜플 = 'R 이상')
+    api: str                      # 'POST /wo/requests'
+    owner: str                    # 개발1 · 개발2 · 개발3
+    contract: str                 # 계약 문장
 
     @property
     def is_write(self) -> bool:
@@ -103,153 +135,174 @@ class Function:
     def path(self) -> str:
         return self.api.split(" ", 1)[1]
 
-    @property
-    def menu_code(self) -> str:
-        return "" if self.is_batch else nav.menu_by_name(self.menu).code
 
-    @property
-    def screen_id(self) -> str:
-        return "" if self.is_batch else nav.screen_by_names(self.menu, self.screen_name).screen_id
-
-
-def _split(cell: str, sep: str = ",") -> tuple[str, ...]:
-    return tuple(p.strip() for p in cell.split(sep) if p.strip() and p.strip() != "-")
-
-
-def _parse_functions(text: str, *, ext: bool = False) -> tuple[Function, ...]:
-    source = EXT_FUNCTION_LIST.name if ext else FUNCTION_LIST.name
+def _parse_functions(text: str) -> tuple[Function, ...]:
     found = [rows for head, rows in md_tables(md_section(text, "2.")) if head == FUNCTION_HEADER]
     if len(found) != 1:
-        raise RuntimeError(f"{source} §2 에 머리행이 {FUNCTION_HEADER} 인 표가 정확히 하나 있어야 한다 — 실제 {len(found)}")
+        raise RuntimeError(f"{FUNCTION_LIST.name} §2 에 머리행이 {FUNCTION_HEADER} 인 표가 정확히 하나 있어야 한다 — 실제 {len(found)}")
     out: list[Function] = []
+    errs: list[str] = []
     for r in found[0]:
         if len(r) != len(FUNCTION_HEADER):
-            raise RuntimeError(f"{source}: 칸 수가 {len(FUNCTION_HEADER)} 이 아닌 행 — {r[:2]}")
-        fid, menu, sub, name, kind, proc, stores, tables, channels, roles, scope, api, owner, body = r
-        out.append(Function(
-            id=fid, menu=menu, screen_name=sub, name=name, kind=kind, process=proc, stores=_split(stores),
-            tables=_split(tables), channels=_split(channels),
-            roles=() if roles == READ_ROLE_LABEL else _split(roles, "·"),
-            scope=scope, api=api, owner=owner, text=body,
-        ))
-    _validate(out, ext=ext)
+            raise RuntimeError(f"{FUNCTION_LIST.name}: 칸 수가 {len(FUNCTION_HEADER)} 이 아닌 행 — {r[:2]}")
+        fid, menu_code, sid, name, kind, tables, roles, api, owner, body = r
+        codes: tuple[str, ...] = ()
+        if roles != READ_ROLE_LABEL:
+            try:
+                codes = _role_codes(roles)
+            except ValueError as exc:
+                errs.append(f"{fid}: {exc}")
+        out.append(Function(id=fid, menu_code=menu_code, screen_id=sid, name=name, kind=kind,
+                            tables=_split(tables, ","), roles_w=codes, api=api, owner=owner, contract=body))
+    if errs:
+        raise RuntimeError(f"{FUNCTION_LIST.name} 검증 실패 {len(errs)}건:\n  - " + "\n  - ".join(errs))
+    _validate(out)
     return tuple(out)
 
 
-def _validate(fns: list[Function], *, ext: bool = False) -> None:
-    """설계도 목록(`ext=False`)은 94 + 6 을 꼭 채워야 하고, 확장 목록(`ext=True`, D-418)은 수가 정해져 있지 않되
-    대메뉴가 `nav.EXT_MENUS` 의 것이어야 하고 ID 는 `X-<코드>-nn` 이다. 나머지 규칙은 같다."""
-    source = EXT_FUNCTION_LIST.name if ext else FUNCTION_LIST.name
-    menus = nav.EXT_MENUS if ext else nav.MENUS
-    id_prefix = "X" if ext else "F"
-    processes = {EXT_PROCESS} if ext else PROCESSES
+def _validate(fns: list[Function]) -> None:
     errs: list[str] = []
     ids = [f.id for f in fns]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         errs.append(f"기능 ID 중복 {dup}")
-    screen_fns = [f for f in fns if not f.is_batch]
-    batch_fns = [f for f in fns if f.is_batch]
-    if ext:
-        if batch_fns:
-            errs.append(f"확장 목록에는 배치가 없다 — {[f.id for f in batch_fns]}")
-    elif len(screen_fns) != N_SCREEN_FUNCTIONS or len(batch_fns) != N_BATCH_FUNCTIONS:
-        errs.append(f"화면 기능 {N_SCREEN_FUNCTIONS} + 배치 {N_BATCH_FUNCTIONS} 이어야 한다 — 실제 {len(screen_fns)} + {len(batch_fns)}")
+    apis = [f.api for f in fns]
+    dup = sorted({a for a in apis if apis.count(a) > 1})
+    if dup:
+        errs.append(f"API 중복 {dup}")
     for f in fns:
-        if f.kind not in WRITE_KINDS | READ_KINDS | {BATCH_KIND}:
-            errs.append(f"{f.id}: 유형 {f.kind!r}")
-        if f.process not in processes:
-            errs.append(f"{f.id}: 프로세스 {f.process!r}")
-        if " " not in f.api:
-            errs.append(f"{f.id}: API 는 '<메서드> <경로>' 형식 — {f.api!r}")
-        if f.is_batch:
-            if not re.fullmatch(r"B-MIG-\d{2}", f.id):
-                errs.append(f"{f.id}: 배치 ID 형식 B-MIG-nn")
-            continue
         try:
-            m = nav.menu_by_name(f.menu)
-            s = nav.screen_by_names(f.menu, f.screen_name)
+            s = nav.by_id(f.screen_id)
         except KeyError as exc:
             errs.append(f"{f.id}: {exc}")
             continue
-        if m.ext != ext:
-            errs.append(f"{f.id}: 대메뉴 {f.menu} 는 {'확장' if m.ext else '설계도'} 대메뉴라 이 목록({source})에 올 수 없다")
-        if not re.fullmatch(rf"{id_prefix}-{m.code}-\d{{2}}", f.id):
-            errs.append(f"{f.id}: ID 는 {id_prefix}-{m.code}-nn 이어야 한다")
-        if f.owner != m.owner:
-            errs.append(f"{f.id}: 담당 {f.owner} ≠ nav {m.owner}")
-        if f.channels != s.channels:
-            errs.append(f"{f.id}: 채널 {f.channels} ≠ nav {s.channels}")
-        if not f.path.startswith(f"/{m.module}/"):
-            errs.append(f"{f.id}: 경로 {f.path} 가 /{m.module}/ 로 시작하지 않는다")
-        if f.is_write and (not f.roles or f.scope == "-" or not f.stores):
-            errs.append(f"{f.id}: 쓰기 기능은 권한·범위·쓰는 저장소가 있어야 한다")
-        if not f.is_write and (f.roles or f.scope != "-" or f.stores):
-            errs.append(f"{f.id}: 읽기 기능은 권한 '{READ_ROLE_LABEL}' · 범위 '-' · 쓰는 저장소 '-'")
-    for m in menus:
-        n = sum(1 for f in screen_fns if f.menu == m.name)
-        if n != m.fn_count:
-            errs.append(f"{m.name}: 기능 {n} ≠ {'nav' if ext else '설계도'} {m.fn_count}")
-        for s in m.screens:
-            if not any(f.menu == m.name and f.screen_name == s.name for f in screen_fns):
-                errs.append(f"{s.screen_id} {s.name}: 기능이 한 줄도 없다")
-    apis = [f.api for f in fns]
-    dup_api = sorted({a for a in apis if apis.count(a) > 1})
-    if dup_api:
-        errs.append(f"API 중복 {dup_api}")
-    if ext:                                                            # 설계도 목록과도 ID·API 가 겹치면 안 된다
-        base = functions()
-        clash = sorted({f.id for f in fns} & {f.id for f in base}) + sorted({f.api for f in fns} & {f.api for f in base})
-        if clash:
-            errs.append(f"설계도 목록과 겹침 {clash}")
+        if s.common:
+            errs.append(f"{f.id}: 공통 화면 {s.screen_id} 에는 기능을 두지 않는다")
+        m = ID_RE.fullmatch(f.id)
+        head, num = s.screen_id.split("-")
+        if not m or m.group(1) != head or m.group(2) != num[:2] or m.group(3) == "0":
+            errs.append(f"{f.id}: ID 는 F-{head}-{num[:2]}<순번 1~> 이어야 한다")
+        if f.menu_code != s.menu_code:
+            errs.append(f"{f.id}: 대메뉴 {f.menu_code} ≠ nav {s.menu_code}")
+        if f.owner != s.owner:
+            errs.append(f"{f.id}: 담당 {f.owner} ≠ nav {s.owner}")
+        if f.kind not in WRITE_KINDS | READ_KINDS:
+            errs.append(f"{f.id}: 유형 {f.kind!r}")
+        am = API_RE.fullmatch(f.api)
+        base = s.path
+        if not am:
+            errs.append(f"{f.id}: API 는 'GET|POST <경로>' — {f.api!r}")
+        elif not (am.group(2) == base or am.group(2).startswith(base.rstrip("/") + "/")):
+            errs.append(f"{f.id}: 경로 {am.group(2)} 의 접두가 nav.path_of({s.screen_id}) = {base} 가 아니다")
+        elif (am.group(1) == "GET") != (f.kind in READ_KINDS):
+            errs.append(f"{f.id}: 읽기 기능은 GET, 쓰기 기능은 POST — {f.api}")
+        if f.is_write:
+            if not f.tables:
+                errs.append(f"{f.id}: 쓰기 기능은 쓰는 테이블이 있어야 한다")
+            if not f.roles_w and ROLE_EXCEPTION_MARK not in f.contract:
+                errs.append(f"{f.id}: 쓰기 기능은 W 부서가 있어야 한다 (예외는 계약에 「{ROLE_EXCEPTION_MARK}」)")
+        elif f.tables or f.roles_w:
+            errs.append(f"{f.id}: 읽기 기능은 권한 '{READ_ROLE_LABEL}' · 쓰는 테이블 '-'")
+        if not f.contract.strip():
+            errs.append(f"{f.id}: 계약이 비었다")
+    for s in nav.SCREENS:
+        mine = [f for f in fns if f.screen_id == s.screen_id]
+        if not mine:
+            errs.append(f"{s.screen_id} {s.name}: 기능이 한 줄도 없다")
+            continue
+        text = " ".join(f.contract for f in mine)
+        expected = list(EXPANSION.get(s.kind, ()))
+        if NO_EDIT_MARK in text and "수정" in expected:
+            expected.remove("수정")
+        kinds = [f.kind for f in mine]
+        if KIND_EXCEPTION_MARK in text:
+            extra = kinds[len(expected):]
+            if len(extra) != 1 or extra[0] not in WRITE_KINDS:
+                errs.append(f"{s.screen_id}: 「{KIND_EXCEPTION_MARK}」는 쓰기 기능 하나를 뒤에 더한다 — {kinds}")
+            kinds = kinds[:len(expected)]
+        if kinds != expected:
+            errs.append(f"{s.screen_id} ({s.kind}): 기능 유형 {kinds} ≠ 규칙 A {expected}")
+        if [int(f.id[-1]) for f in mine] != list(range(1, len(mine) + 1)):
+            errs.append(f"{s.screen_id}: 순번이 1 부터 이어지지 않는다 — {[f.id for f in mine]}")
     if errs:
-        raise RuntimeError(f"{source} 검증 실패 {len(errs)}건:\n  - " + "\n  - ".join(errs))
+        raise RuntimeError(f"{FUNCTION_LIST.name} 검증 실패 {len(errs)}건:\n  - " + "\n  - ".join(errs))
 
 
 @lru_cache(maxsize=1)
 def functions() -> tuple[Function, ...]:
-    """설계도의 기능 100줄 (화면 94 + 배치 6). 게이트가 세는 것은 이것뿐이다."""
     if not FUNCTION_LIST.exists():
         raise RuntimeError(f"계약 없음: {FUNCTION_LIST}")
     return _parse_functions(FUNCTION_LIST.read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=1)
-def ext_functions() -> tuple[Function, ...]:
-    """확장(설계도 밖, D-418) 기능 — `contracts/extension-list.md`. 파일이 없으면 빈 튜플(확장이 없는 상태)."""
-    if not EXT_FUNCTION_LIST.exists():
-        if nav.EXT_MENUS:
-            raise RuntimeError(f"확장 대메뉴 {[m.code for m in nav.EXT_MENUS]} 가 있는데 계약이 없다: {EXT_FUNCTION_LIST}")
-        return ()
-    return _parse_functions(EXT_FUNCTION_LIST.read_text(encoding="utf-8"), ext=True)
-
-
-def all_functions() -> tuple[Function, ...]:
-    """설계도 100줄 + 확장. 화면·권한 판정은 이것을 보고, 수를 세는 곳은 `functions()` 를 본다."""
-    return functions() + ext_functions()
+def _by_id() -> dict[str, Function]:
+    return {f.id: f for f in functions()}
 
 
 def function(function_id: str) -> Function:
-    for f in all_functions():
-        if f.id == function_id:
-            return f
-    raise KeyError(f"function-list.md · extension-list.md 에 없는 기능 ID: {function_id}")
+    try:
+        return _by_id()[function_id]
+    except KeyError:
+        raise KeyError(f"function-list.md 에 없는 기능 ID: {function_id}") from None
 
 
 def functions_of(screen_id: str) -> list[Function]:
-    return [f for f in all_functions() if not f.is_batch and f.screen_id == screen_id]
+    return [f for f in functions() if f.screen_id == screen_id]
 
 
 def functions_of_menu(menu_code: str) -> list[Function]:
-    return [f for f in all_functions() if not f.is_batch and f.menu_code == menu_code]
+    return [f for f in functions() if f.menu_code == menu_code]
 
 
-def batch_functions() -> list[Function]:
-    return [f for f in functions() if f.is_batch]
+def write_functions() -> list[Function]:
+    return [f for f in functions() if f.is_write]
 
 
-# ── 테이블 계약 (db-schema.md §4) ───────────────────────────────────────
-TABLE_HEAD_RE = re.compile(r"^### `(\w+)` — (D[1-8]|SYS|EXT) · (.*)$", re.M)   # EXT = 설계도 밖 확장 테이블 (D-418)
+# ── 권한 매트릭스 (permission-matrix.md · 렌더본) ───────────────────────
+def permission_cells() -> list[tuple[str, str, str]]:
+    """(화면 ID, 부서 코드, 'W'|'R') — `·` 칸은 빠진다. 화면 순서 × 부서 순서."""
+    return list(_permission_cells())
+
+
+@lru_cache(maxsize=1)
+def _permission_cells() -> tuple[tuple[str, str, str], ...]:
+    if not PERMISSION_MATRIX.exists():
+        raise RuntimeError(f"계약 없음: {PERMISSION_MATRIX}")
+    found = [rows for head, rows in md_tables(PERMISSION_MATRIX.read_text(encoding="utf-8")) if head == PERMISSION_HEADER]
+    if len(found) != 1:
+        raise RuntimeError(f"{PERMISSION_MATRIX.name}: 머리행이 {PERMISSION_HEADER} 인 표가 정확히 하나 있어야 한다 — 실제 {len(found)}")
+    codes = list(ROLE_CODES.values())
+    out: list[tuple[str, str, str]] = []
+    errs: list[str] = []
+    seen: list[str] = []
+    for r in found[0]:
+        if len(r) != len(PERMISSION_HEADER):
+            errs.append(f"칸 수 {len(r)} — {r[:1]}")
+            continue
+        sid, name, *levels = r
+        seen.append(sid)
+        try:
+            if nav.by_id(sid).name != name:
+                errs.append(f"{sid}: 화면명 {name!r} ≠ nav {nav.by_id(sid).name!r}")
+        except KeyError as exc:
+            errs.append(str(exc))
+        for code, lv in zip(codes, levels):
+            if lv == NO_LEVEL:
+                continue
+            if lv not in LEVELS:
+                errs.append(f"{sid}/{code}: 칸 값 {lv!r}")
+                continue
+            out.append((sid, code, lv))
+    if seen != [s.screen_id for s in nav.SCREENS]:
+        errs.append("화면 ID 목록 · 순서가 nav.SCREENS 와 다르다")
+    if errs:
+        raise RuntimeError(f"{PERMISSION_MATRIX.name} 검증 실패 {len(errs)}건:\n  - " + "\n  - ".join(errs))
+    return tuple(out)
+
+
+# ── 테이블 계약 (db-schema.md) ──────────────────────────────────────────
+TABLE_HEAD_RE = re.compile(r"^### `(\w+)` — ([A-Z]+) · (.*)$", re.M)   # 영역 = 대메뉴 코드 · SYS (Task 6)
 COLUMN_HEADER = ["컬럼", "타입", "NULL", "설명"]
 
 
@@ -264,14 +317,14 @@ class Column:
 @dataclass(frozen=True)
 class Table:
     name: str
-    store: str                 # D1~D8 · SYS
+    store: str                 # 영역 — 대메뉴 코드 · SYS
     desc: str
     columns: tuple[Column, ...]
 
 
 @lru_cache(maxsize=1)
 def db_tables() -> dict[str, Table]:
-    """`contracts/db-schema.md` §4 의 `### \\`테이블\\` — 저장소 · 설명` + 컬럼 표."""
+    """`contracts/db-schema.md` 의 `### \\`테이블\\` — 영역 · 설명` + 컬럼 표."""
     if not DB_SCHEMA.exists():
         raise RuntimeError(f"계약 없음: {DB_SCHEMA}")
     text = DB_SCHEMA.read_text(encoding="utf-8")
