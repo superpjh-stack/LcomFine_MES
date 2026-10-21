@@ -1,13 +1,17 @@
 #!/usr/bin/env python
-"""G-01 메뉴 · G-02 기능 추적 검사 — `make check-trace`.
+"""G-01 정본 ↔ nav · G-02 기능 ↔ 라우트 ↔ 테스트 표식 — `make check-trace`.
 
-기대값은 **설계도(정본 HTML)에서 직접** 끌어온다(`tools/design_doc.py`). 코드가 스스로 적은 숫자를 믿지 않는다.
+기대값은 **정본 추출(`contracts/ia.json` + `contracts/ia-overrides.json` = `design_doc.effective()`)에서** 읽는다.
+코드가 스스로 적은 숫자를 믿지 않는다.
 
-  G-01  설계도 §5 `.ia-menu` 파싱값 ↔ `nav.py` (묶음 4 · 대메뉴 12 · 중메뉴 32 · 이름·순서·기능 수·채널) ↔ `screen-map.md` 렌더본
-  G-02  `function-list.md` 100줄(화면 94 + 배치 6) · 대메뉴별 수 ↔ 설계도 · 쓰는 저장소 ↔ 설계도 §2 표 · 권한 열 ↔ 설계도 §6
-        + 한 기능 = API 하나(라우터에 등록됐는가) = 테스트 하나 이상(`@pytest.mark.fn` 표식) · 고아 0
+  G-01  묶음 8 · 대메뉴 17 · 화면 67 · 흐름 7 — 순서 · 이름 · 화면 유형이 글자 단위로 nav 와 같다.
+        RPT 이름 「대시보드」 · RPT-090~120 없음(D-505). ia.json = 정본 HTML · permission-matrix.md = 정본 · screen-map.md §1 = nav.
+  G-02  `contracts/function-list.md` 줄마다 API 열의 메서드 · 경로가 앱 라우트에 **글자 그대로** 있다(경로 매개변수 `{id}` 도 그대로).
+        고아 3종 — 라우트 없는 계약 · 계약 없는 라우트 · 표식 없는 기능 — 을 각각 목록으로 찍는다. 셋 다 0 이어야 PASS.
+        placeholder GET(main.py 가 붙인 미구현 화면)과 공통 라우트(/login · /logout · /error · /ia · /health · /openapi.json)는 라우트 집계에서 뺀다.
+        표식은 `tests/` 의 `@pytest.mark.fn("F-…")` 를 ast 로 읽는다(본문에 ID 가 우연히 적힌 것은 세지 않는다).
 
-출력 행 형식: `G-nn  항목  PASS|FAIL  실측` (tools/gate.py 가 읽는다).  종료코드: 0 = 둘 다 PASS, 1 = 하나라도 FAIL.
+출력 행 형식: `G-nn  항목  PASS|FAIL  실측` (tools/gate.py 가 읽는다). 종료코드: 0 = 둘 다 PASS, 1 = 하나라도 FAIL.
 """
 
 from __future__ import annotations
@@ -16,44 +20,108 @@ import warnings
 
 warnings.filterwarnings("ignore", message="Using `httpx` with `starlette.testclient`")
 
-import importlib
-import re
+import ast
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT))
 
-import design_doc  # noqa: E402
+from tools import design_doc  # noqa: E402
 
 TESTS_DIR = ROOT / "tests"
-#: 테스트 ↔ 기능 연결은 표식으로만 센다 — `@pytest.mark.fn("F-BAS-01")` 또는 `pytest.mark.fn("F-BAS-01", "F-BAS-02")`.
-#: 테스트 본문에 ID 가 우연히 적힌 것(권한 검사의 인자 등)은 세지 않는다.
-FN_MARK_RE = re.compile(r"mark\.fn\(([^)]*)\)")
-FN_ID_RE = re.compile(r"""["']([FB]-[A-Z]{3}-\d{2})["']""")
+#: goal.md §2.0 의 기대값 (정본에서 다시 센 수 — 이 수와 정본 추출이 다르면 정본 추출이 바뀐 것이다)
+EXPECT = {"묶음": 8, "대메뉴": 17, "화면": 67, "흐름": 7}
+REMOVED = ("RPT-090", "RPT-100", "RPT-110", "RPT-120")   # D-505
+#: 기능 계약 밖의 공통 라우트 (main.py — Task 8)
+COMMON_ROUTES = {"/login", "/login/quick", "/logout", "/error", "/ia", "/health", "/openapi.json"}
+SKIP_METHODS = {"HEAD", "OPTIONS"}
 
 
 class Report:
     def __init__(self) -> None:
         self.rows: list[tuple[str, str, bool, str]] = []
+        self.lists: list[tuple[str, list[str]]] = []
 
     def add(self, gate: str, item: str, ok: bool, actual: str) -> None:
         self.rows.append((gate, item, bool(ok), actual))
+
+    def listing(self, title: str, items: list[str]) -> None:
+        self.lists.append((title, items))
 
     def failed(self, gate: str) -> int:
         return sum(1 for g, _, ok, _ in self.rows if g == gate and not ok)
 
 
-def norm_path(path: str) -> str:
-    """경로 변수 이름을 지운다 — `/job/orders/{job_no}` 와 `/job/orders/{no}` 를 같은 것으로 본다."""
-    return re.sub(r"\{[^}]*\}", "{}", path)
+def _diff(a: list, b: list) -> str:
+    if len(a) != len(b):
+        return f"개수 nav {len(a)} ≠ 정본 {len(b)}"
+    bad = [f"{x} ≠ {y}" for x, y in zip(a, b) if x != y]
+    return f"불일치 {len(bad)}" + (f" — {bad[:2]}" if bad else "")
+
+
+def _run_check(args: list[str]) -> tuple[int, str]:
+    p = subprocess.run(["uv", "run", "python", *args], cwd=ROOT, capture_output=True, text=True, timeout=300)
+    lines = ((p.stdout or "") + (p.stderr or "")).strip().splitlines()
+    return p.returncode, (lines[-1] if lines else "출력 없음")
+
+
+def check_nav(r: Report) -> None:
+    g = "G-01"
+    try:
+        e = design_doc.effective()
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — 정본 추출이 깨졌으면 그 사실이 실측이다
+        r.add(g, "정본 추출 로드 (ia.json + overrides)", False, f"{type(exc).__name__}: {exc}")
+        return
+    try:
+        from lcomfine.app import nav
+    except Exception as exc:  # noqa: BLE001
+        r.add(g, "nav.py import", False, f"{type(exc).__name__}: {exc}")
+        return
+    scr = [s for m in e["menus"] for s in m["screens"]]
+    got = {"묶음": len(e["bundles"]), "대메뉴": len(e["menus"]), "화면": len(scr), "흐름": len(e["flow"])}
+    r.add(g, "정본 수 = goal.md §2.0 (묶음 8 · 대메뉴 17 · 화면 67 · 흐름 7)", got == EXPECT,
+          " · ".join(f"{k} {v}" for k, v in got.items()))
+
+    a, b = [x[1] for x in nav.BUNDLES], [x["name"] for x in e["bundles"]]
+    r.add(g, "묶음 — 이름 · 순서", a == b, f"nav {len(a)} · {_diff(a, b)}")
+    a = [(m.code, m.name, m.bundle) for m in nav.MENUS]
+    b = [(m["code"], m["name"], m["bundle"]) for m in e["menus"]]
+    r.add(g, "대메뉴 — 코드 · 이름 · 묶음 · 순서", a == b, f"nav {len(a)} · {_diff(a, b)}")
+    a = [(s.menu_code, s.screen_id, s.name, s.kind) for s in nav.SCREENS]
+    b = [(m["code"], s["id"], s["name"], s["type"]) for m in e["menus"] for s in m["screens"]]
+    r.add(g, "화면 — 대메뉴 · ID · 이름 · 유형 · 순서", a == b, f"nav {len(a)} · {_diff(a, b)}")
+    a, b = list(nav.FLOW), [f["id"] for f in e["flow"]]
+    r.add(g, "흐름 — 화면 ID · 순서", a == b, f"nav {len(a)} {' → '.join(a)} · {_diff(a, b)}")
+
+    try:
+        rpt = nav.menu("RPT").name
+    except KeyError:
+        rpt = "(없음)"
+    left = [sid for sid in REMOVED if sid in {s.screen_id for s in nav.SCREENS}]
+    r.add(g, "D-505 — RPT 이름 「대시보드」 · RPT-090~120 없음", rpt == "대시보드" and not left,
+          f"RPT 이름 「{rpt}」 · 남은 화면 {left or 0}")
+
+    paths = [s.path for s in nav.ALL]
+    r.add(g, "경로 중복 0", len(set(paths)) == len(paths), f"경로 {len(set(paths))}/{len(paths)}")
+
+    try:
+        same = design_doc.write_json(check=True)
+        r.add(g, "contracts/ia.json = 정본 HTML 재추출", same, "일치" if same else "다르다 — `uv run python tools/design_doc.py`")
+    except (Exception, SystemExit) as exc:  # noqa: BLE001
+        r.add(g, "contracts/ia.json = 정본 HTML 재추출", False, f"{type(exc).__name__}: {str(exc)[:120]}")
+    code, last = _run_check(["tools/gen_permissions.py", "--check"])
+    r.add(g, "permission-matrix.md = 정본 (gen_permissions --check)", code == 0, f"rc={code} {last}")
+    code, last = _run_check(["tools/gen_contracts.py", "--check", "--only", "screens"])
+    r.add(g, "screen-map.md §1 렌더본 = nav (gen_contracts --check)", code == 0, f"rc={code} {last}")
 
 
 def all_routes(routes, prefix: str = ""):
     """등록된 라우트를 (경로, 메서드들) 로 편다.
 
-    FastAPI 는 `include_router` 한 라우터를 `app.routes` 에 풀지 않고 한 덩어리(`original_router`)로 둔다.
+    FastAPI 는 `include_router` 한 라우터를 `app.routes` 에 한 덩어리(`original_router`)로 둘 수 있다.
     덩어리를 건너뛰면 기능 ↔ 라우트가 0 으로 세어지고 고아 검사도 빈 집합으로 통과한다.
     """
     for rt in routes:
@@ -65,165 +133,87 @@ def all_routes(routes, prefix: str = ""):
             yield prefix + getattr(rt, "path", ""), rt.methods
 
 
-def write_roles(access: dict, menu_name: str, scope: str) -> list[str]:
-    """설계도 §6 에서 그 대메뉴의 그 범위 기능을 입력할 수 있는 역할 (D-14)."""
-    row = next(r for r in access["rows"] if r["menu"] == menu_name)
-    out = []
-    for role, cell in zip(access["roles"], row["cells"]):
-        if not cell.startswith("입력"):
+def fn_marks(files: list[Path]) -> tuple[set[str], list[str]]:
+    """`@pytest.mark.fn("F-…", …)` 의 문자열 인자를 ast 로 모은다 → (ID 집합, 읽지 못한 파일)."""
+    seen: set[str] = set()
+    errors: list[str] = []
+    for p in files:
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        except SyntaxError as exc:
+            errors.append(f"{p.name}: {exc}")
             continue
-        cell_scope = cell[cell.index("(") + 1: cell.rindex(")")].strip() if "(" in cell else "일반"
-        if cell_scope == scope:
-            out.append(role)
-    return out
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            if isinstance(f, ast.Attribute) and f.attr == "fn" and isinstance(f.value, ast.Attribute) and f.value.attr == "mark":
+                for arg in node.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        seen.add(arg.value)
+    return seen, errors
 
 
-def check_menu(r: Report, ia: dict, access: dict) -> None:
-    g = "G-01"
-    try:
-        from lcomfine.app import nav
-    except Exception as exc:  # noqa: BLE001 — 코드가 없거나 깨졌으면 그 사실을 적는다
-        r.add(g, "nav.py import", False, f"{type(exc).__name__}: {exc}")
-        return
-    d_groups = [x["name"] for x in ia["groups"]]
-    d_menus = [(x["name"], m["name"]) for x in ia["groups"] for m in x["menus"]]
-    d_subs = [(m["name"], s) for x in ia["groups"] for m in x["menus"] for s in m["subs"]]
-    d_counts = [(m["name"], m["count"]) for x in ia["groups"] for m in x["menus"]]
-    r.add(g, "설계도 IA 파싱 — 묶음 4 · 대메뉴 12 · 중메뉴 32 · 기능 94",
-          (len(d_groups), len(d_menus), len(d_subs), sum(c for _, c in d_counts)) == (4, 12, 32, 94) and ia["root"] == (12, 32),
-          f"묶음 {len(d_groups)} · 대메뉴 {len(d_menus)} · 중메뉴 {len(d_subs)} · 기능 {sum(c for _, c in d_counts)} · 뿌리 표기 {ia['root']}")
-    r.add(g, "nav 묶음 = 설계도 (이름·순서)", list(nav.GROUPS) == d_groups, f"nav {len(nav.GROUPS)} — {' / '.join(nav.GROUPS)}")
-    n_menus = [(m.group, m.name) for m in nav.MENUS]
-    diff = [b for a, b in zip(n_menus, d_menus) if a != b] if len(n_menus) == len(d_menus) else ["개수 다름"]
-    r.add(g, "nav 대메뉴 = 설계도 (이름·순서·묶음)", n_menus == d_menus, f"nav {len(n_menus)} · 불일치 {len(diff)} {diff[:3] if diff else ''}".strip())
-    n_subs = [(s.menu, s.name) for s in nav.SCREENS]
-    diff = sorted(set(n_subs) ^ set(d_subs))
-    r.add(g, "nav 중메뉴 = 설계도 (이름·순서)", n_subs == d_subs, f"nav {len(n_subs)} · 불일치 {len(diff)} {diff[:3] if diff else ''}".strip())
-    n_counts = [(m.name, m.fn_count) for m in nav.MENUS]
-    r.add(g, "nav 대메뉴별 기능 수 = 설계도", n_counts == d_counts, " · ".join(str(m.fn_count) for m in nav.MENUS))
-    d_ch = {row["menu"]: row["channels"] for row in access["rows"]}
-    bad = [m.name for m in nav.MENUS if list(m.channels) != d_ch.get(m.name)]
-    r.add(g, "nav 대메뉴 채널 = 설계도 §6 「주로 쓰는 채널」", not bad, f"불일치 {len(bad)} {bad[:3] if bad else ''}".strip())
-    bad = [s.screen_id for m in nav.MENUS for s in m.screens if not set(s.channels) <= set(m.channels)]
-    r.add(g, "중메뉴 채널 ⊆ 대메뉴 채널", not bad, f"벗어남 {len(bad)} {bad[:3] if bad else ''}".strip())
-    paths = [s.path for s in nav.ALL]
-    r.add(g, "화면 ID 32 · 경로 중복 0", len({s.screen_id for s in nav.SCREENS}) == 32 and len(set(paths)) == len(paths),
-          f"화면 ID {len({s.screen_id for s in nav.SCREENS})} · 경로 {len(set(paths))}/{len(paths)}")
-    try:
-        import gen_contracts
-        text = gen_contracts.SCREEN_MAP_MD.read_text(encoding="utf-8")
-        same = gen_contracts.replace_block(text, "screens", gen_contracts.render_screens(), gen_contracts.SCREEN_MAP_MD) == text
-        r.add(g, "screen-map.md §1 렌더본 = nav.py", same, "일치" if same else "다르다 — `make contracts`")
-    except (Exception, SystemExit) as exc:  # noqa: BLE001
-        r.add(g, "screen-map.md §1 렌더본 = nav.py", False, f"{type(exc).__name__}: {exc}")
-
-
-def check_functions(r: Report, ia: dict, access: dict, procs: dict) -> None:
+def check_functions(r: Report) -> None:
     g = "G-02"
     try:
-        from lcomfine.app import contracts, nav
+        from lcomfine.app import contracts
         fns = contracts.functions()
-    except Exception as exc:  # noqa: BLE001
+    except (Exception, SystemExit) as exc:  # noqa: BLE001
         r.add(g, "function-list.md 로드", False, f"{type(exc).__name__}: {str(exc)[:160]}")
         return
-    screen_fns = [f for f in fns if not f.is_batch]
-    batch_fns = [f for f in fns if f.is_batch]
-    r.add(g, "계약 100줄 = 화면 기능 94 + 이관 배치 6", (len(screen_fns), len(batch_fns)) == (94, 6),
-          f"{len(fns)}줄 = 화면 {len(screen_fns)} + 배치 {len(batch_fns)} · ID 중복 {len(fns) - len({f.id for f in fns})}")
-    d_counts = [(m["name"], m["count"]) for x in ia["groups"] for m in x["menus"]]
-    got = [(name, sum(1 for f in screen_fns if f.menu == name)) for name, _ in d_counts]
-    r.add(g, "대메뉴별 기능 수 = 설계도 (20·12·7 / 8·8·5·7 / 6·7 / 3·4·7)", got == d_counts, " · ".join(str(n) for _, n in got))
-    empty = [s.screen_id for s in nav.SCREENS if not contracts.functions_of(s.screen_id)]
-    r.add(g, "중메뉴 32 마다 기능 1줄 이상", not empty, f"기능 없는 중메뉴 {len(empty)} {empty[:3] if empty else ''}".strip())
+    ids = [f.id for f in fns]
+    r.add(g, "function-list.md 로드 · ID 중복 0", len(ids) == len(set(ids)),
+          f"기능 {len(fns)} (GET {sum(f.method == 'GET' for f in fns)} · POST {sum(f.method == 'POST' for f in fns)}) · 중복 {len(ids) - len(set(ids))}")
 
-    # 쓰는 저장소 ⊆ 설계도 §2 표의 그 프로세스 「쓰는 저장소」. 예외는 P8 의 출하 화살표 하나 (D-12)
-    bad, exceptions = [], []
-    for f in screen_fns:
-        if f.process == "공통":
-            if set(f.stores) - {"SYS"}:
-                bad.append(f.id)
-            continue
-        allowed = set(procs[f.process]["writes"])
-        for st in f.stores:
-            base = st.split("(")[0].strip()
-            if base in allowed:
-                continue
-            if f.process == "P8" and base == "D6" and "출하 화살표" in st:
-                exceptions.append(f.id)
-                continue
-            bad.append(f"{f.id}:{st}")
-    readers = [f.id for f in screen_fns if f.process in ("P9", "P10") and (f.stores or f.tables)]
-    r.add(g, "쓰는 저장소 ⊆ 설계도 §2 표 (P9·P10 은 쓰기 0)", not bad and not readers,
-          f"벗어남 {len(bad)} {bad[:3] if bad else ''} · P9·P10 쓰기 {len(readers)} · 예외 {len(exceptions)}건 {exceptions} (D-12)".replace("  ", " "))
-    try:
-        known = contracts.db_tables()
-        missing = sorted({t for f in fns for t in f.tables if t not in known})
-        wrong = [f"{f.id}:{t}" for f in screen_fns for t in f.tables if t in known
-                 and known[t].store not in {s.split('(')[0].strip() for s in f.stores}]
-        r.add(g, "쓰는 테이블이 db-schema.md 에 있고 저장소가 맞다", not missing and not wrong,
-              f"없는 테이블 {len(missing)} {missing[:3] if missing else ''} · 저장소 불일치 {len(wrong)} {wrong[:3] if wrong else ''}".replace("  ", " ").strip())
-    except Exception as exc:  # noqa: BLE001
-        r.add(g, "쓰는 테이블이 db-schema.md 에 있고 저장소가 맞다", False, f"{type(exc).__name__}: {exc}")
-
-    # 권한 열 = 설계도 §6 에서 계산한 입력 역할
-    bad = [f.id for f in screen_fns if f.is_write and list(f.roles) != write_roles(access, f.menu, f.scope)]
-    scoped = sorted(f"{f.id}({f.scope})" for f in screen_fns if f.is_write and f.scope != "일반")
-    r.add(g, "권한 열 = 설계도 §6 의 입력 역할 (괄호 조건 2개 포함)", not bad and len(scoped) == 2,
-          f"불일치 {len(bad)} {bad[:3] if bad else ''} · 범위 기능 {' '.join(scoped)}".replace("  ", " "))
-
-    # 한 기능 = API 하나 (라우터에 등록됐고 placeholder 가 아니다)
     try:
         from lcomfine.app.main import app
-        placeholder = set(app.state.placeholder_paths)
-        routes = {(m, norm_path(path)) for path, methods in all_routes(app.routes) for m in methods
-                  if not (m == "GET" and path in placeholder)}
-        linked = [f for f in screen_fns if (f.method, norm_path(f.path)) in routes]
-        miss = [f.id for f in screen_fns if f not in linked]
-        r.add(g, "기능 94 ↔ 라우트 (API 열의 메서드·경로가 등록됨)", len(linked) == 94,
-              f"이어진 기능 {len(linked)}/94" + (f" · 미연결 예 {miss[:3]}" if miss else ""))
-        # 고아 라우트: 담당 모듈 경로 아래인데 어느 기능의 API 도 아니고 중메뉴 화면 GET 도 아닌 것
-        fn_apis = {(f.method, norm_path(f.path)) for f in screen_fns}
-        screen_gets = {("GET", s.path) for s in nav.SCREENS}
-        prefixes = tuple(f"/{m.module}/" for m in nav.MENUS)
-        orphans = sorted(f"{m} {p}" for m, p in routes if p.startswith(prefixes) and m not in ("HEAD", "OPTIONS")
-                         and (m, p) not in fn_apis and (m, p) not in screen_gets)
-        r.add(g, "고아 라우트 0 (계약에 없는 엔드포인트)", not orphans, f"고아 {len(orphans)} {orphans[:3] if orphans else ''}".strip())
     except Exception as exc:  # noqa: BLE001
-        r.add(g, "기능 94 ↔ 라우트", False, f"{type(exc).__name__}: {str(exc)[:160]}")
+        r.add(g, "앱 import", False, f"{type(exc).__name__}: {str(exc)[:160]}")
+        return
+    placeholder = set(app.state.placeholder_paths)
+    routes = {(m, path) for path, methods in all_routes(app.routes) for m in methods
+              if m not in SKIP_METHODS and path not in COMMON_ROUTES and not (m == "GET" and path in placeholder)}
+    fn_apis = {(f.method, f.path) for f in fns}
 
-    # 한 기능 = 테스트 하나 이상 (`@pytest.mark.fn("F-BAS-01")` 표식이 붙은 테스트)
-    seen: set[str] = set()
+    no_route = [f"{f.id} {f.api}" for f in fns if (f.method, f.path) not in routes]
+    r.add(g, "고아 ① 라우트 없는 계약 0 (API 열이 글자 그대로 등록됨)", not no_route,
+          f"라우트 없는 계약 {len(no_route)} · 이어진 기능 {len(fns) - len(no_route)}/{len(fns)}")
+    r.listing("라우트 없는 계약", no_route)
+
+    no_contract = sorted(f"{m} {p}" for m, p in routes if (m, p) not in fn_apis)
+    writes = [x for x in no_contract if not x.startswith("GET ")]
+    r.add(g, "고아 ② 계약 없는 라우트 0", not no_contract,
+          f"계약 없는 라우트 {len(no_contract)} (쓰기 {len(writes)}) · 집계한 라우트 {len(routes)} · placeholder 제외 {len(placeholder)}")
+    r.listing("계약 없는 라우트", no_contract)
+
     files = sorted(TESTS_DIR.glob("test_*.py")) if TESTS_DIR.exists() else []
-    for p in files:
-        for args in FN_MARK_RE.findall(p.read_text(encoding="utf-8")):
-            seen.update(FN_ID_RE.findall(args))
-    ids = {f.id for f in fns}
-    tested = ids & seen
-    r.add(g, "기능 100 ↔ 테스트 (@pytest.mark.fn 표식)", tested == ids,
-          f"표식이 붙은 기능 {len(tested)}/100 · 테스트 파일 {len(files)}" + (f" · 계약에 없는 ID {sorted(seen - ids)[:3]}" if seen - ids else ""))
-
-    # 이관 배치 6 ↔ 명령
-    try:
-        mig = importlib.import_module("lcomfine.migration")
-        commands = set(getattr(mig, "COMMANDS", {}) or {})
-        have = [f.id for f in batch_fns if f.path in commands]
-        r.add(g, "이관 배치 6 ↔ 명령 (lcomfine.migration.COMMANDS)", len(have) == 6, f"이어진 배치 {len(have)}/6")
-    except ModuleNotFoundError:
-        r.add(g, "이관 배치 6 ↔ 명령 (lcomfine.migration.COMMANDS)", False, "이어진 배치 0/6 · src/lcomfine/migration 없음 (개발3)")
+    seen, errors = fn_marks(files)
+    known = set(ids)
+    unmarked = [f"{f.id} {f.name}" for f in fns if f.id not in seen]
+    unknown = sorted(seen - known)
+    r.add(g, "고아 ③ 표식 없는 기능 0 (@pytest.mark.fn)", not unmarked and not errors,
+          f"표식 없는 기능 {len(unmarked)} · 표식 있는 기능 {len(known & seen)}/{len(known)} · 테스트 파일 {len(files)}"
+          + (f" · 읽지 못한 파일 {errors[:2]}" if errors else ""))
+    r.listing("표식 없는 기능", unmarked)
+    r.add(g, "표식의 ID 가 전부 계약에 있다", not unknown, f"계약에 없는 표식 {len(unknown)} {unknown[:5] if unknown else ''}".strip())
 
 
 def main() -> int:
-    h = design_doc.html()
-    ia, access, procs = design_doc.ia(h), design_doc.access(h), design_doc.processes(h)
     r = Report()
-    check_menu(r, ia, access)
-    check_functions(r, ia, access, procs)
+    check_nav(r)
+    check_functions(r)
 
     w = max(len(i) for _, i, _, _ in r.rows)
-    print("G-01 메뉴 · G-02 기능 추적 (tools/check_trace.py) — 기대값은 설계도에서 직접 읽는다")
+    print("G-01 정본 ↔ nav · G-02 기능 ↔ 라우트 ↔ 테스트 표식 (tools/check_trace.py) — 기대값은 정본 추출에서 읽는다")
     print("-" * 100)
     for g, i, ok, a in r.rows:
         print(f"{g}  {i:<{w}}  {'PASS' if ok else 'FAIL'}  {a}")
+    print("-" * 100)
+    for title, items in r.lists:
+        print(f"[{title}] {len(items)}")
+        for x in items:
+            print(f"    - {x}")
     print("-" * 100)
     for g in ("G-01", "G-02"):
         n = sum(1 for x in r.rows if x[0] == g)

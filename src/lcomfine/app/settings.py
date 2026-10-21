@@ -1,7 +1,7 @@
 """환경 설정 — `LCOMFINE_*` 환경변수 단일 소스.
 
 설계도에 수치가 없는 값(자동 로그아웃 시간 등)은 **코드에 기본값을 지어내지 않는다.** 값이 없으면 `None` 이고
-그 기능을 적용하지 않는다. 비밀(세션 비밀·시드 비밀번호)은 저장소 밖 `.env`(gitignore)에만 둔다 (G-19).
+그 기능을 적용하지 않는다. 비밀(세션 비밀·시드 비밀번호·SSO 비밀·OpenAI 키)은 저장소 밖 `.env`(gitignore)에만 둔다 (G-19).
 """
 
 from __future__ import annotations
@@ -66,6 +66,10 @@ class Settings:
     quick_login: bool                  # 로그인 화면의 퀵 로그인(비밀번호 입력 없이 시드 비밀번호로) — 개발·테스트 환경에서만 (D-416)
     board_refresh_seconds: int         # 현황판 자동 새로고침 주기. 기본 30 (가설 D-19)
     grid_page_size: int                # 목록 한 쪽 행 수
+    openai_api_key: str                # RPT-130 데이터 질의(D-504). 비면 화면에 명시적 오류 + sys_ai_call_log 실패 기록 (G-17)
+    openai_model: str                  # 기본 gpt-4.1
+    doc_sso_url: str                   # 문서관리 SSO 주소. 비면 `미확정 (D-517)` (G-18)
+    sso_secret: str                    # SSO 토큰 서명 비밀 — `.env` 에만 (init_env 가 난수로 채운다)
 
     @property
     def session_idle_label(self) -> str:
@@ -87,6 +91,10 @@ def get_settings() -> Settings:
         quick_login=(_env("QUICK_LOGIN", "") or "").strip().lower() in ("1", "true", "yes", "on"),
         board_refresh_seconds=_env_int("BOARD_REFRESH_SECONDS") or 30,
         grid_page_size=_env_int("GRID_PAGE_SIZE") or 10,
+        openai_api_key=_env("OPENAI_API_KEY", "") or "",
+        openai_model=_env("OPENAI_MODEL", "gpt-4.1") or "gpt-4.1",
+        doc_sso_url=_env("DOC_SSO_URL", "") or "",
+        sso_secret=_env("SSO_SECRET", "") or "",
     )
 
 

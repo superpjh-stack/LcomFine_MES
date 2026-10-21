@@ -1,5 +1,5 @@
 # 엘컴화인 MES — 게이트 실행. 판정은 이 명령의 출력으로만 한다. (명령은 전부 `uv run …` — 시스템 python 을 쓰지 않는다)
-.PHONY: setup db-schema db-seed db-reset db-passwords contracts run test check-routes check-trace check-schema check-data check-security gate gate-full backup restore-check sample sample-clean
+.PHONY: setup db-schema db-seed db-reset db-passwords contracts run test check-routes check-trace check-schema check-data check-security gate gate-full backup restore-check jobs-due-check
 
 DB := lcomfine_db
 PORT ?= 8020
@@ -15,19 +15,13 @@ db-schema:       # 스키마를 지우고 다시 만든다 (데이터가 전부 
 	psql -q -d $(DB) -v ON_ERROR_STOP=1 -f src/lcomfine/db/schema.sql
 	@psql -d $(DB) -Atc "select '테이블 '||count(*) filter (where table_type='BASE TABLE')||' · 뷰 '||count(*) filter (where table_type='VIEW') from information_schema.tables where table_schema='public'"
 
-db-seed:         # 공통 → 개발1 → 개발2 → 개발3 (seed_devN.py 가 있는 것만). 두 번 돌려도 행 수가 같아야 한다
+db-seed:         # 공통 → 개발1 → 개발2 → 개발3 (seed_devN.py 가 있는 것만). 두 번 돌려도 행 수가 같아야 한다(G-21). 다시 돌리면 sys_permission 은 권한 매트릭스 260칸으로 되돌아간다
 	uv run python -m lcomfine.db.seed
 
 db-reset: db-schema db-seed
 
 db-passwords:    # 모든 계정 비밀번호를 .env 의 LCOMFINE_SEED_PASSWORD 하나로 맞춘다 (개발·테스트 DB 용 — 이미 같은 계정은 두므로 세션이 끊기지 않는다)
 	uv run python tools/reset_passwords.py
-
-sample:          # (예시) 샘플 데이터 — 업무 테이블 23개에 100행 안팎씩 + 계정 100 + 수주 100(확장 D-418) (코드 SMP- · 계정 smp_). 이미 있으면 건너뛴다(멱등 · 수주만 없으면 수주만 더한다). 시드 뒤에 돌린다
-	uv run python tools/sample_data.py
-
-sample-clean:    # 샘플만 지운다 (공통·개발 시드 행과 테스트가 만든 행은 그대로)
-	uv run python tools/sample_data.py --clean
 
 contracts:       # 렌더본 다시 찍기: db-schema.md §4 ← schema.sql + DB · screen-map.md §1 ← nav.py
 	uv run python tools/gen_contracts.py
@@ -38,31 +32,34 @@ run:             # 8000 은 다른 사업이 쓴다
 test:
 	uv run pytest -q
 
-check-routes:    # G-03 — 32 화면 + 공통 3 HTTP 200 · placeholder 수 · 권한 없음 403
+check-routes:    # G-03 — 화면 67 × 부서 8(칸 있음 200 · 칸 없음 403) · 공통(/login · /error · /health · /ia) 200 · placeholder 수
 	uv run python tools/check_routes.py
 
-check-trace:     # G-01 · G-02 — 설계도 ↔ nav.py ↔ function-list.md ↔ 라우트 ↔ 테스트
+check-trace:     # G-01 · G-02 — 정본(ia.json + overrides) ↔ nav.py · function-list.md ↔ 라우트 ↔ @pytest.mark.fn (고아 3종 목록)
 	uv run python tools/check_trace.py
 
-check-schema:    # G-04 — 계약 ↔ 실제 DB
+check-schema:    # G-04 — 스키마 계약(테이블 이름 집합 · 컬럼 · 뷰) ↔ 실제 DB
 	uv run python tools/check_schema.py
 
-check-data:      # G-05~G-12 — QA2 가 만든다
-	@test -f tools/check_data.py || { echo "미구현 — tools/check_data.py 없음 (QA2)"; exit 1; }
+check-data:      # G-05~G-15 — QA2 가 만든다
+	@test -f tools/check_data.py || { echo "미작성 — QA2 가 만든다 (tools/check_data.py 없음)"; exit 1; }
 	uv run python tools/check_data.py
 
-check-security:  # G-13~G-20 — QA3 가 만든다
-	@test -f tools/check_security.py || { echo "미구현 — tools/check_security.py 없음 (QA3)"; exit 1; }
+check-security:  # G-16~G-22 — QA3 가 만든다
+	@test -f tools/check_security.py || { echo "미작성 — QA3 가 만든다 (tools/check_security.py 없음)"; exit 1; }
 	uv run python tools/check_security.py
 
-gate:            # G-01~G-22 판정표 (읽기 전용). 시드 멱등(G-09)까지 재려면 `make gate-full` — **종료 판정은 gate-full 로 한다**(gate 의 G-09 는 늘 미검증)
+gate:            # G-01~G-24 판정표 (읽기 전용 — 시드 · 스키마를 돌리지 않는다). 종료코드 = 통과 못한 게이트 수. 시드 멱등(G-21) · 백업/복구(G-23)는 `make gate-full` — **종료 판정은 gate-full 로 한다**
 	@uv run python tools/gate.py
 
-gate-full:       # 시드를 한 번 더 돌려 행 수 diff 를 잰다 — 다른 사람이 시드·스키마를 돌리는 중에는 쓰지 않는다
+gate-full:       # gate + 시드 1회 더(행 수 diff 0 — G-21) + backup · restore-check(G-23). 다른 사람이 시드·스키마를 돌리는 중에는 쓰지 않는다
 	@uv run python tools/gate.py --run-seeds
 
-backup:          # G-20 — pg_dump → backups/<DB>-<일시>.dump + 덤프 시점의 테이블별 행 수(.json). backups/ 는 gitignore. 운영 DB 는 읽기만 한다
+backup:          # G-23 — pg_dump → backups/<DB>-<일시>.dump + 덤프 시점의 테이블별 행 수(.json). backups/ 는 gitignore. 운영 DB 는 읽기만 한다
 	uv run python tools/backup.py backup
 
-restore-check:   # G-20 — 가장 최근 덤프를 **별도의 임시 DB** 에 복구해 테이블별 행 수를 대조하고 임시 DB 를 지운다 ($(DB) 를 덮어쓰지 않는다)
+restore-check:   # G-23 — 가장 최근 덤프를 **별도의 임시 DB** 에 복구해 테이블별 행 수를 대조하고 임시 DB 를 지운다 ($(DB) 를 덮어쓰지 않는다)
 	uv run python tools/backup.py restore-check
+
+jobs-due-check:  # 납기 · 알림 배치 점검(W1 개발1 이 lcomfine.jobs 를 만든다 — 없으면 명시적 오류로 끝난다)
+	uv run python -m lcomfine.jobs due-check

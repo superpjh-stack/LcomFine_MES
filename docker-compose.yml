@@ -7,7 +7,7 @@
 #
 # · DB 는 호스트로 포트를 내지 않는다(앱만 붙는다). 호스트 포트는 앱 하나 — `LCOMFINE_HOST_PORT`(기본 8020 · 8000 은 다른 사업이 쓴다).
 # · `seed` 는 한 번 돌고 끝나는 작업이다(`tools/docker_init.py`): DB 에 테이블이 없으면 `schema.sql` 을 적용하고, 이어서 시드 —
-#   역할 4 · 권한 48칸 · 계정 4 · 채번 형식 6 + `(예시)` 기준정보. 다시 돌려도 행 수가 같다(G-09). 그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다.
+#   부서 8 · 권한 260칸 · 계정 8 · 채번 형식 7 + `(예시)` 기준정보. 다시 돌려도 행 수가 같다(G-21). 그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다.
 #   스키마를 호스트 bind-mount 로 넣지 않는다 — compose 파일만 받아 가는 배포 도구(Hostinger Docker Manager)에는 호스트에 저장소가 없다(D-31).
 #   그런 도구에는 `deploy/hostinger/docker-compose.yml`(미리 만든 이미지 ghcr.io 를 쓴다 — `.github/workflows/image.yml`)을 올린다.
 #   이미 있는 권한 칸·채번 형식은 건드리지 않는다. `(예시)` 행이 필요 없으면 command 에 `--common-only` 를 붙인다(그러면 채번 형식은 직접 넣는다 — D-05).
@@ -24,6 +24,10 @@ x-app-env: &app-env
   LCOMFINE_SEED_PASSWORD: ${LCOMFINE_SEED_PASSWORD:?.env 에 LCOMFINE_SEED_PASSWORD 를 넣는다 (기본 비밀번호는 없다 — G-19)}
   LCOMFINE_SESSION_IDLE_MINUTES: ${LCOMFINE_SESSION_IDLE_MINUTES:-}
   LCOMFINE_BOARD_REFRESH_SECONDS: ${LCOMFINE_BOARD_REFRESH_SECONDS:-}
+  LCOMFINE_OPENAI_API_KEY: ${LCOMFINE_OPENAI_API_KEY:-}      # 비면 데이터 질의가 명시적 오류 (G-17)
+  LCOMFINE_OPENAI_MODEL: ${LCOMFINE_OPENAI_MODEL:-gpt-4.1}
+  LCOMFINE_DOC_SSO_URL: ${LCOMFINE_DOC_SSO_URL:-}            # 비면 `미확정 (D-517)`
+  LCOMFINE_SSO_SECRET: ${LCOMFINE_SSO_SECRET:-}
   TZ: ${TZ:-Asia/Seoul}
 
 services:
