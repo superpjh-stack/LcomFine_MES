@@ -16,7 +16,7 @@ import importlib
 import sys
 from pathlib import Path
 
-from ..app import auth, contracts, numbering
+from ..app import auth, contracts, numbering, rbac
 from ..app.settings import get_settings
 from ..app.util.screen import example
 from . import conn
@@ -65,6 +65,7 @@ def seed_permissions() -> None:
                         where not exists (select 1 from unnest(%s::text[], %s::text[]) as c(role_code, screen_id)
                                            where c.role_code = p.role_code and c.screen_id = p.screen_id)""",
                     ([r for _, r, _ in cells], [s for s, _, _ in cells]))
+    rbac.invalidate()   # 같은 프로세스의 다음 판정부터 새 칸을 본다
 
 
 def seed_number_rules() -> None:

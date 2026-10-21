@@ -23,6 +23,12 @@ def _app() -> FastAPI:
         auth.login_session(request, user)
         return {"ok": True}
 
+    @app.post("/_revoke")
+    def _revoke(request: Request):   # auth.logout_session 과 같은 무효화 — 접근 로그는 남기지 않는다
+        user = rbac.require_login(request)
+        auth.revoke_session(user.login_id, str(request.session[rbac.SESSION_ID_KEY]))
+        return {"ok": True}
+
     @app.get("/bas-010")
     def _bas(user=rbac.require_screen("BAS-010")):
         return {"login_id": user.login_id}
@@ -96,6 +102,8 @@ def test_require_fn_w_only():
     assert r.status_code == 403
     assert r.json()["detail"]["message"] == "이 기능을 실행할 권한이 없습니다"
     assert _client("pr").post("/bas-items").status_code == 200
+    assert _cell("BAS-010", "DS") is None
+    assert _client("ds").post("/bas-items").status_code == 403   # 칸 없음
 
 
 @pytest.mark.fn("F-HOME-022")
@@ -150,3 +158,44 @@ def test_numbering_seven_kinds():
                 a, b = numbering.next(kind, cur), numbering.next(kind, cur=cur)
                 assert re.fullmatch(rf"{kind}-\d{{4}}-\d{{4}}", a) and int(b[-4:]) == int(a[-4:]) + 1
             raise _Rollback
+
+
+# ── 세션 규칙 (D-26) — 요청마다 DB 로 판정한다. 바꾼 값은 finally 에서 되돌린다 ──
+def test_suspended_user_gets_401_on_next_request():
+    c = _client("sh")
+    assert c.get("/bas-010").status_code == 200
+    try:
+        conn.x("update sys_user set status = '중지' where login_id = 'sh'")
+        assert c.get("/bas-010").status_code == 401
+    finally:
+        conn.x("update sys_user set status = %s where login_id = 'sh'", (rbac.STATUS_ACTIVE,))
+    assert c.get("/bas-010").status_code == 401   # 정상으로 되돌려도 옛 세션은 살아나지 않는다
+    assert _client("sh").get("/bas-010").status_code == 200
+
+
+def test_role_change_applies_next_request():
+    assert _cell("BAS-010", "SH") == "R" and _cell("BAS-010", "DS") is None
+    c = _client("sh")
+    assert c.get("/bas-010").status_code == 200
+    try:
+        conn.x("update sys_user set role_code = 'DS' where login_id = 'sh'")
+        assert c.get("/bas-010").status_code == 403   # 끊기지 않고 새 부서의 칸이 적용된다
+    finally:
+        conn.x("update sys_user set role_code = 'SH' where login_id = 'sh'")
+    assert c.get("/bas-010").status_code == 200
+
+
+def test_logout_or_epoch_bump_invalidates_session():
+    c = _client("sl")
+    assert c.get("/bas-010").status_code == 200
+    conn.x("update sys_user set session_epoch = session_epoch + 1 where login_id = 'sl'")   # 상태·비밀번호 변경 트리거와 같은 효과
+    assert c.get("/bas-010").status_code == 401
+    # 로그아웃 — 그 세션 ID 를 서버에서 무효로 만든다. 로그아웃 전의 쿠키를 다시 보내도 401
+    c2 = _client("sl")
+    before = dict(c2.cookies)
+    assert c2.get("/bas-010").status_code == 200
+    assert c2.post("/_revoke").status_code == 200
+    c2.cookies.clear()
+    c2.cookies.update(before)
+    assert c2.get("/bas-010").status_code == 401
+    conn.x("update sys_user set revoked_sessions = '{}'::jsonb where login_id = 'sl'")
