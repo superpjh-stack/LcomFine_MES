@@ -1,13 +1,11 @@
-"""메뉴 단일 소스 — 묶음 4 · 대메뉴 12 · 중메뉴 32 + 공통 3 (메인 · 로그인 · 오류).
+"""메뉴 단일 소스 — 묶음 8 · 대메뉴 17 · 화면 67 + 공통 2 (로그인 · 오류).
 
-**이름과 순서는 설계도 §5 IA 구성도 그대로다.** `tools/check_trace.py` 가 설계도의 `.ia-menu` 를 파싱해
-이 파일과 글자 단위로 대조한다(G-01). 이름을 여기서 바꾸면 게이트가 떨어진다.
+정본은 `docs/엘컴화인_MES_기획서_2026-10-21.html` 이다. 이름과 순서는 정본 그대로이며,
+`tools/check_trace.py` 게이트가 `contracts/ia.json` + overrides (`tools/design_doc.effective()`) 와 글자 단위로 대조한다.
+이름을 여기서 바꾸면 게이트가 떨어진다. 앱은 정본이나 ia.json 을 런타임에 읽지 않는다 — 이 파일이 정적 코드다.
 
-이 파일이 정하는 것(설계도에 없음 — 가설 D-08·D-19·D-22):
-  · 대메뉴 코드(= 라우터 모듈 = 권한 표의 `menu_code`)  · 중메뉴 화면 ID · 경로  · 담당 개발  · 중메뉴별 채널
-
-**경로는 이 파일이 유일한 출처다.** 개발자는 `nav.path_of('BAS-01')` 로 쓴다. 문자열로 다시 적지 않는다.
-`contracts/screen-map.md` §1 은 이 파일의 렌더본이다(`make contracts`).
+이 파일이 정하는 것(정본에 없음 — D-507): 경로(slug) · 담당 개발. 화면 ID · 이름 · 유형은 정본 그대로 옮겼다.
+경로는 이 파일이 유일한 출처다. 개발자는 `nav.path_of('BAS-010')` 로 쓴다. 문자열로 다시 적지 않는다.
 """
 
 from __future__ import annotations
@@ -16,178 +14,183 @@ from dataclasses import dataclass
 
 SYSTEM_NAME = "엘컴화인 MES"
 
-# ── 채널 4 (설계도 §4 · §6 「주로 쓰는 채널」 표기 그대로) ──
-WEB, POP, MOBILE, BOARD = "관리자 Web", "현장 POP", "모바일", "현황판"
-CHANNELS: tuple[str, ...] = (WEB, POP, MOBILE, BOARD)
-#: `?device=` 값 → 채널명 (D-19)
-DEVICE_CHANNEL: dict[str, str] = {"web": WEB, "pop": POP, "mobile": MOBILE, "board": BOARD}
-
-# ── 묶음 4 (설계도 `.ia-gname` 순서) ──
-GROUPS: tuple[str, ...] = ("기준 · 지시", "현장 실행", "품질 · 출하", "조회 · 관리")
-
 
 @dataclass(frozen=True)
 class Screen:
-    screen_id: str            # 중메뉴 화면 ID (예 BAS-01) 또는 공통 화면 키(home · login · error)
-    name: str                 # 중메뉴명 — 설계도 `<li>` 글자 그대로
-    menu_code: str            # 대메뉴 코드 = 라우터 모듈 대문자 = sys_permission.menu_code
-    menu: str                 # 대메뉴명 — 설계도 `<h4>` 글자 그대로
-    group: str                # 묶음
+    screen_id: str            # 화면 ID (예 BAS-010) 또는 공통 화면 키(login · error)
+    name: str                 # 화면명 — 정본 글자 그대로
+    menu_code: str            # 대메뉴 코드 (공통 화면은 "")
+    menu: str                 # 대메뉴명
+    bundle: str               # 묶음 키 (s0~s7)
     module: str               # 라우터 모듈 (src/lcomfine/app/routers/<module>.py)
     slug: str
     path: str
-    owner: str                # 담당 (D-22)
-    channels: tuple[str, ...]
+    owner: str                # 담당
+    kind: str                 # 정본 유형 (조회 · 등록 · 목록·등록 · 리포트 · 처리 · 설정 · 등록·출력 · 출력 · SSO)
     common: bool = False
 
 
 @dataclass(frozen=True)
 class Menu:
-    code: str                 # BAS · PRT · JOB · POP · MAT · CLR · RLL · QUA · SHP · TRC · STA · SYS
+    code: str                 # HOME · BAS · STD · WO · MAT · PRD · INS · QC · INV · SHP · COL · TRK · LOT · PRP · RPT · DOC · SYS
     name: str
-    group: str
-    fn_count: int             # 설계도 `<h4><span>` 의 기능 수 (2안 기준)
+    bundle: str               # 묶음 키
     module: str
     owner: str
-    channels: tuple[str, ...]  # 설계도 §6 「주로 쓰는 채널」
     screens: tuple[Screen, ...]
-    ext: bool = False          # 설계도 밖 확장 대메뉴 (D-418) — 설계도 수(12 · 32 · 94 · 48)에 들어가지 않는다
-    permission_from: str = ""  # 확장 대메뉴가 권한을 물려받는 설계도 대메뉴 코드 (권한 표에 칸을 늘리지 않는다)
 
 
-# (묶음, 코드, 대메뉴명, 기능 수, 담당, 대메뉴 채널, [(중메뉴명, 슬러그, 중메뉴 채널)])
-_SPEC: list[tuple[str, str, str, int, str, tuple[str, ...], list[tuple[str, str, tuple[str, ...]]]]] = [
-    ("기준 · 지시", "BAS", "기준정보 관리", 20, "개발1", (WEB,), [
-        ("품목 관리", "items", (WEB,)),
-        ("고객 관리", "customers", (WEB,)),
-        ("공정 관리", "processes", (WEB,)),
-        ("설비 관리", "equipment", (WEB,)),
-        ("불량코드 관리", "defect-codes", (WEB,)),
+# (키, 이름, 설명) — 정본 순서
+BUNDLES: tuple[tuple[str, str, str], ...] = (
+    ('s0', '⓪ 내 업무', '로그인하면 처음 보는 곳: 내 부서가 처리할 일과 알림'),
+    ('s1', '① 기준', '품목·거래처·창고, 제품별 인쇄 사양'),
+    ('s2', '② 수주·지시', '생산의뢰(수주) → 생산지시 → 순서·진행'),
+    ('s3', '③ 자재·생산', '원자재 입고 → 불출 → 생산 → 공정 검사 → 제품 입고'),
+    ('s4', '④ 품질·재고', '입고·제품 검사 판정, LOT 재고'),
+    ('s5', '⑤ 출하·수금', '출하 지시·확정 → ERP 수금 확인'),
+    ('s6', '⑥ 추적·분석', '통합 조회, LOT 추적, 생산 보고서, AI 리포트'),
+    ('s7', '⑦ 지원', '문서관리(SSO), 시스템'),
+)
+
+FLOW_IDS: tuple[str, ...] = ('WO-010', 'WO-020', 'MAT-020', 'PRD-010', 'MAT-030', 'SHP-020', 'COL-010')
+
+# (묶음 키, 코드, 대메뉴명, 담당, [(화면 ID, 화면명, 유형, slug)]) — 정본 순서
+_SPEC: list[tuple[str, str, str, str, list[tuple[str, str, str, str]]]] = [
+    ('s0', 'HOME', '내 업무', '개발1', [
+        ('HOME-010', '내 할 일', '조회', ''),
+        ('HOME-020', '알림함', '조회', 'notifications'),
+        ('HOME-030', '알림 설정', '설정', 'notification-settings'),
     ]),
-    ("기준 · 지시", "PRT", "인쇄 기준 관리", 12, "개발1", (WEB,), [
-        ("판사양 관리", "plates", (WEB,)),
-        ("아니록스 관리", "anilox", (WEB,)),
-        ("잉크조성 관리", "inks", (WEB,)),
+    ('s1', 'BAS', '기준정보', '개발1', [
+        ('BAS-010', '품목 관리', '목록·등록', 'items'),
+        ('BAS-020', '거래처 관리', '목록·등록', 'customers'),
+        ('BAS-030', '창고·위치 관리', '목록·등록', 'warehouses'),
     ]),
-    ("기준 · 지시", "JOB", "작업지시 관리", 7, "개발1", (WEB,), [
-        ("작업지시", "orders", (WEB,)),
-        ("Job-Lot-Roll 매핑", "mapping", (WEB,)),
+    ('s1', 'STD', '인쇄 기준', '개발1', [
+        ('STD-010', '제조사양기준서', '목록·등록', 'spec-sheets'),
+        ('STD-020', '표준관리', '목록·등록', 'standards'),
+        ('STD-030', '판관리', '목록·등록', 'plates'),
+        ('STD-040', '시안등록', '등록', 'artworks'),
+        ('STD-050', '표준견본서', '등록·출력', 'sample-sheets'),
+        ('STD-060', '예외제품관리', '목록·등록', 'exception-items'),
     ]),
-    ("현장 실행", "POP", "생산 실적 (POP)", 8, "개발2", (POP,), [
-        ("작업 실적", "work", (POP,)),
-        ("정지 · 폐기", "stops", (POP,)),
-        ("롤 라벨", "roll-labels", (POP,)),
+    ('s2', 'WO', '작업지시', '개발1', [
+        ('WO-010', '생산의뢰서', '등록', 'requests'),
+        ('WO-020', '생산지시서', '등록·출력', 'orders'),
+        ('WO-030', '생산순서관리', '처리', 'sequence'),
+        ('WO-040', '공정상태', '조회', 'status'),
     ]),
-    ("현장 실행", "MAT", "자재 · 입고", 8, "개발2", (POP, WEB), [
-        ("입고", "receipts", (POP, WEB)),
-        ("입고검사", "inspections", (POP, WEB)),
-        ("원재료 LOT", "lots", (WEB, POP)),
-        ("자재 투입", "inputs", (POP,)),
+    ('s3', 'MAT', '자재·입고', '개발2', [
+        ('MAT-010', '원자재 입고', '등록', 'receipts'),
+        ('MAT-020', '불출', '등록', 'issues'),
+        ('MAT-030', '제품 입고', '등록', 'product-receipts'),
+        ('MAT-040', '입고·불출 내역', '조회', 'history'),
     ]),
-    ("현장 실행", "CLR", "조색 기록", 5, "개발2", (POP,), [
-        ("조색 기록", "records", (POP,)),
+    ('s3', 'PRD', '생산일보', '개발2', [
+        ('PRD-010', '생산일보', '등록', 'daily'),
+        ('PRD-020', '생산일보출력', '출력', 'daily/print'),
+        ('PRD-030', '생산일보현황', '조회', 'status'),
+        ('PRD-040', '생산지시서 대비 생산 로스율', '리포트', 'loss-rate'),
     ]),
-    ("현장 실행", "RLL", "후가공 · 슬리팅 롤 이력", 7, "개발2", (POP,), [
-        ("후가공", "finishing", (POP,)),
-        ("슬리팅", "slitting", (POP,)),
-        ("롤 이력", "history", (POP,)),
+    ('s3', 'INS', '검사일보', '개발2', [
+        ('INS-010', '검사일보', '등록', 'daily'),
+        ('INS-020', '검사일보출력', '출력', 'daily/print'),
+        ('INS-030', '검사일보현황', '조회', 'status'),
+        ('INS-040', '생산지시서 대비 검사 로스율', '리포트', 'loss-rate'),
     ]),
-    ("품질 · 출하", "QUA", "품질 검사 기록", 6, "개발3", (WEB, POP), [
-        ("검사 결과", "inspections", (WEB, POP)),
-        ("불량 집계", "defect-stats", (WEB,)),
+    ('s4', 'QC', '품질 검사', '개발2', [
+        ('QC-010', '입고검사', '등록', 'incoming'),
+        ('QC-020', '제품검사 판정', '등록', 'product'),
+        ('QC-030', '검사 이력', '조회', 'history'),
     ]),
-    ("품질 · 출하", "SHP", "출하", 7, "개발3", (POP, WEB), [
-        ("출하", "shipments", (POP, WEB)),
-        ("출하 승인", "approvals", (WEB,)),
-        ("COA", "coa", (WEB,)),
+    ('s4', 'INV', '재고', '개발2', [
+        ('INV-010', 'LOT별 재고 조회', '조회', 'stock'),
+        ('INV-020', '재고 이동', '등록', 'moves'),
+        ('INV-030', '재고 조정·실사', '등록', 'adjustments'),
     ]),
-    ("조회 · 관리", "TRC", "LOT 추적", 3, "개발3", (WEB, MOBILE), [
-        ("추적 (정방향, 역방향, LOT 검색)", "trace", (WEB, MOBILE)),
+    ('s5', 'SHP', '출하', '개발3', [
+        ('SHP-010', '출하 지시', '등록', 'orders'),
+        ('SHP-020', '출하 확정', '처리', 'confirm'),
+        ('SHP-030', '출하 이력', '조회', 'history'),
     ]),
-    ("조회 · 관리", "STA", "실적 현황", 4, "개발3", (WEB, BOARD, MOBILE), [
-        ("집계 (생산, 품질, 납기)", "summary", (WEB, MOBILE)),
-        ("현황판", "board", (BOARD,)),
+    ('s5', 'COL', '수금리포트', '개발3', [
+        ('COL-010', 'ERP 수금현황 업로드', '등록', 'uploads'),
+        ('COL-020', '업로드 이력', '조회', 'upload-history'),
+        ('COL-030', '거래처 코드 매핑', '목록·등록', 'customer-map'),
+        ('COL-040', '수금 현황 조회', '조회', 'collections'),
+        ('COL-050', '거래처별 미수 조회', '조회', 'receivables'),
+        ('COL-060', '미수 연령 조회', '조회', 'aging'),
+        ('COL-070', '출하 대비 수금 조회', '조회', 'shipment-vs-collection'),
     ]),
-    ("조회 · 관리", "SYS", "시스템 관리", 7, "개발1", (WEB,), [
-        ("사용자", "users", (WEB,)),
-        ("권한", "permissions", (WEB,)),
-        ("로그", "logs", (WEB,)),
+    ('s6', 'TRK', '통합 조회', '개발1', [
+        ('TRK-010', '주문 진행 조회', '조회', 'orders'),
+        ('TRK-020', '납기 현황', '조회', 'due'),
+        ('TRK-030', '거래처 종합 조회', '조회', 'customers'),
+    ]),
+    ('s6', 'LOT', 'LOT 추적', '개발2', [
+        ('LOT-010', '정방향 추적', '조회', 'forward'),
+        ('LOT-020', '역방향 추적', '조회', 'backward'),
+    ]),
+    ('s6', 'PRP', '생산 보고서', '개발3', [
+        ('PRP-010', '월별 가동률', '리포트', 'utilization'),
+        ('PRP-020', '기계별통계', '리포트', 'machines'),
+        ('PRP-030', '생산완료집계', '리포트', 'completion'),
+    ]),
+    ('s6', 'RPT', '대시보드', '개발3', [
+        ('RPT-010', '수주 리포트', '리포트', 'orders'),
+        ('RPT-020', '생산 리포트', '리포트', 'production'),
+        ('RPT-030', '품질 리포트', '리포트', 'quality'),
+        ('RPT-040', '재고·창고 리포트', '리포트', 'inventory'),
+        ('RPT-050', '출하 리포트', '리포트', 'shipment'),
+        ('RPT-060', '수금 리포트', '리포트', 'collection'),
+        ('RPT-070', '주문 흐름 리포트', '리포트', 'order-flow'),
+        ('RPT-080', '경영 요약', '리포트', 'summary'),
+        ('RPT-130', '데이터 질의', '조회', 'query'),
+    ]),
+    ('s7', 'DOC', '문서관리', '개발1', [
+        ('DOC-010', '문서관리 바로가기', '외부 연계(SSO)', 'go'),
+        ('DOC-020', '문서관리 계정 매핑', '목록·등록', 'account-map'),
+    ]),
+    ('s7', 'SYS', '시스템', '개발1', [
+        ('SYS-010', '사용자 관리', '목록·등록', 'users'),
+        ('SYS-020', '역할·권한', '설정', 'roles'),
+        ('SYS-030', '공통코드', '설정', 'codes'),
+        ('SYS-040', '로그', '조회', 'logs'),
     ]),
 ]
 
 
-def _build() -> list[Menu]:
+def _build() -> tuple[Menu, ...]:
     menus: list[Menu] = []
-    for group, code, name, fn_count, owner, channels, subs in _SPEC:
+    for bundle, code, name, owner, subs in _SPEC:
         module = code.lower()
         screens = tuple(
-            Screen(screen_id=f"{code}-{i:02d}", name=sub, menu_code=code, menu=name, group=group, module=module,
-                   slug=slug, path=f"/{module}/{slug}", owner=owner, channels=sub_channels)
-            for i, (sub, slug, sub_channels) in enumerate(subs, start=1)
+            Screen(screen_id=sid, name=sname, menu_code=code, menu=name, bundle=bundle, module=module, slug=slug,
+                   path=f"/{module}/{slug}" if slug else "/", owner=owner, kind=kind)
+            for sid, sname, kind, slug in subs
         )
-        menus.append(Menu(code=code, name=name, group=group, fn_count=fn_count, module=module, owner=owner,
-                          channels=channels, screens=screens))
-    return menus
+        menus.append(Menu(code=code, name=name, bundle=bundle, module=module, owner=owner, screens=screens))
+    return tuple(menus)
 
 
-MENUS: list[Menu] = _build()
-SCREENS: list[Screen] = [s for m in MENUS for s in m.screens]
+MENUS: tuple[Menu, ...] = _build()
+SCREENS: tuple[Screen, ...] = tuple(s for m in MENUS for s in m.screens)
 
-# ── 확장 대메뉴 (설계도 밖 · D-418) ──
-# 설계도의 대메뉴 12 · 중메뉴 32 · 기능 94 · 권한 48칸은 그대로 두고, 그 밖의 메뉴는 여기에 둔다.
-# 게이트(G-01 · G-02 · G-17)는 `MENUS` · `SCREENS` 만 세고, 확장은 `EXT_MENUS` · `EXT_SCREENS` 다.
-# 계약은 `contracts/extension-list.md`(ID `X-<코드>-nn`), 권한은 `permission_from` 의 설계도 대메뉴 칸을 그대로 따른다.
-# (코드, 대메뉴명, 기능 수, 담당, 채널, 권한을 물려받는 설계도 대메뉴, [(중메뉴명, 슬러그, 채널)])
-EXT_GROUP = "확장 (설계도 밖)"
-_EXT_SPEC: list[tuple[str, str, int, str, tuple[str, ...], str, list[tuple[str, str, tuple[str, ...]]]]] = [
-    ("SAL", "영업관리", 6, "개발1", (WEB,), "JOB", [     # 수주는 작업지시의 앞 — 권한도 작업지시 관리 칸을 따른다
-        ("수주 관리", "orders", (WEB,)),
-        ("수주 현황", "status", (WEB,)),
-        ("거래처 이력", "customers", (WEB,)),
-    ]),
-]
+# ── 공통 화면 2 — 권한 표 밖 ──
+COMMON: tuple[Screen, ...] = (
+    Screen("login", "로그인", "", "공통", "", "home", "login", "/login", "개발1", "조회", common=True),
+    Screen("error", "오류", "", "공통", "", "home", "error", "/error", "개발1", "조회", common=True),
+)
 
+ALL: tuple[Screen, ...] = SCREENS + COMMON
 
-def _build_ext() -> list[Menu]:
-    menus: list[Menu] = []
-    for code, name, fn_count, owner, channels, perm_from, subs in _EXT_SPEC:
-        module = code.lower()
-        screens = tuple(
-            Screen(screen_id=f"{code}-{i:02d}", name=sub, menu_code=code, menu=name, group=EXT_GROUP, module=module,
-                   slug=slug, path=f"/{module}/{slug}", owner=owner, channels=sub_channels)
-            for i, (sub, slug, sub_channels) in enumerate(subs, start=1)
-        )
-        menus.append(Menu(code=code, name=name, group=EXT_GROUP, fn_count=fn_count, module=module, owner=owner,
-                          channels=channels, screens=screens, ext=True, permission_from=perm_from))
-    return menus
-
-
-EXT_MENUS: list[Menu] = _build_ext()
-EXT_SCREENS: list[Screen] = [s for m in EXT_MENUS for s in m.screens]
-
-# ── 공통 화면 3 (goal.md G-03 "공통(로그인·메인·오류)") — 권한 표 밖. 로그인한 누구나 메인을 연다 ──
-COMMON: list[Screen] = [
-    Screen("home", "메인", "", "공통", "공통", "home", "", "/", "개발1", CHANNELS, common=True),
-    Screen("login", "로그인", "", "공통", "공통", "home", "login", "/login", "아키텍트", CHANNELS, common=True),
-    Screen("error", "오류", "", "공통", "공통", "home", "error", "/error", "아키텍트", CHANNELS, common=True),
-]
-
-ALL: list[Screen] = COMMON + SCREENS + EXT_SCREENS
-
-#: main.py 가 include 하는 라우터 모듈 순서 (확장 모듈은 맨 뒤)
-MODULES: list[str] = ["home"] + [m.module for m in MENUS] + [m.module for m in EXT_MENUS]
-MODULE_OWNER: dict[str, str] = {"home": "개발1", **{m.module: m.owner for m in MENUS + EXT_MENUS}}
+#: main.py 가 include 하는 라우터 모듈 순서 (대메뉴 순서)
+MODULES: tuple[str, ...] = tuple(m.module for m in MENUS)
+MODULE_OWNER: dict[str, str] = {m.module: m.owner for m in MENUS}
 
 _BY_ID: dict[str, Screen] = {s.screen_id: s for s in ALL}
 _BY_PATH: dict[str, Screen] = {s.path: s for s in ALL}
-_MENU_BY_CODE: dict[str, Menu] = {m.code: m for m in MENUS + EXT_MENUS}
-_MENU_BY_NAME: dict[str, Menu] = {m.name: m for m in MENUS + EXT_MENUS}
-
-
-def permission_menu(menu_code: str) -> str:
-    """권한 표에서 볼 대메뉴 코드 — 확장 대메뉴는 `permission_from` 의 설계도 대메뉴 칸을 그대로 따른다(D-418)."""
-    m = _MENU_BY_CODE.get(menu_code)
-    return m.permission_from if m is not None and m.ext and m.permission_from else menu_code
+_MENU_BY_CODE: dict[str, Menu] = {m.code: m for m in MENUS}
 
 
 def by_id(screen_id: str) -> Screen:
@@ -211,90 +214,42 @@ def menu(code: str) -> Menu:
     return _MENU_BY_CODE[code]
 
 
-def menu_by_name(name: str) -> Menu:
-    if name not in _MENU_BY_NAME:
-        raise KeyError(f"nav 에 없는 대메뉴명: {name}")
-    return _MENU_BY_NAME[name]
-
-
 def screens_of(module: str) -> list[Screen]:
-    return [s for s in SCREENS + EXT_SCREENS if s.module == module]
-
-
-def screen_by_names(menu_name: str, screen_name: str) -> Screen:
-    """(대메뉴명, 중메뉴명) → 화면. `function-list.md` 의 두 열을 화면에 잇는 데 쓴다."""
-    for s in menu_by_name(menu_name).screens:
-        if s.name == screen_name:
-            return s
-    raise KeyError(f"nav 에 없는 중메뉴: {menu_name} > {screen_name}")
+    return [s for s in SCREENS if s.module == module]
 
 
 def menu_tree() -> list[dict]:
-    """설계도 묶음 4 > 대메뉴 > 중메뉴 (G-01 · 계약 렌더본 · `rbac.visible_menu`). 화면(좌측 메뉴 · 메인)은 `sidebar_items` 순서를 쓴다(D-417)."""
-    return [{"group": g, "menus": [m for m in MENUS if m.group == g]} for g in GROUPS]
-
-
-# ── 좌측 메뉴 표시 순서 (D-417) — 묶음 없이 일하는 순서로 한 줄씩: 대시보드 → 수주 → 지시 → 입고 → 공정 → 품질 → 출하 → 추적 → 기준정보 → 시스템 ──
-# 설계도 §5 의 묶음·순서(`GROUPS` · `MENUS`)는 그대로 두고(G-01 · 계약 렌더본이 쓴다) 좌측 메뉴와 메인 화면 카드를 이 순서로 그린다.
-# 값은 대메뉴 코드(설계도 + 확장) 또는 공통 화면 키. 대메뉴를 누르면 그 중메뉴가 펼쳐진다(static/app.js).
-SIDEBAR: tuple[str, ...] = (
-    "home",          # 메인 (대시보드)
-    "STA",           # 실적 현황 — 집계 · 현황판
-    "SAL",           # 영업관리 — 수주 (확장 · D-418)
-    "JOB",           # 작업지시 관리
-    "MAT",           # 자재 · 입고
-    "CLR",           # 조색 기록
-    "POP",           # 생산 실적 (POP)
-    "RLL",           # 후가공 · 슬리팅 롤 이력
-    "QUA",           # 품질 검사 기록
-    "SHP",           # 출하
-    "TRC",           # LOT 추적
-    "BAS",           # 기준정보 관리
-    "PRT",           # 인쇄 기준 관리
-    "SYS",           # 시스템 관리
-)
+    """정본 순서의 묶음 > 대메뉴 > 화면. [{bundle: (키, 이름, 설명), menus: [Menu, ...]}, ...]"""
+    return [{"bundle": b, "menus": [m for m in MENUS if m.bundle == b[0]]} for b in BUNDLES]
 
 
 def sidebar_items() -> list[dict]:
-    """좌측 메뉴 렌더링용 — `SIDEBAR` 순서의 항목 목록. {kind: 'screen', screen} 또는 {kind: 'menu', menu}.
-    권한에 따른 숨김은 `rbac.visible_sidebar` 가 한다."""
-    out: list[dict] = []
-    for key in SIDEBAR:
-        if key in _MENU_BY_CODE:
-            out.append({"kind": "menu", "menu": _MENU_BY_CODE[key]})
-        else:
-            out.append({"kind": "screen", "screen": _BY_ID[key]})
-    return out
+    """좌측 메뉴 렌더링용 — `menu_tree()` 와 같은 순서·모양."""
+    return menu_tree()
 
 
-def _selfcheck() -> None:
-    if len(GROUPS) != 4 or len(MENUS) != 12 or len(SCREENS) != 32:
-        raise AssertionError(f"묶음 4 · 대메뉴 12 · 중메뉴 32 이어야 한다 — 실제 {len(GROUPS)} · {len(MENUS)} · {len(SCREENS)}")
-    if sum(m.fn_count for m in MENUS) != 94:
-        raise AssertionError(f"화면 기능 합은 94 이어야 한다 — 실제 {sum(m.fn_count for m in MENUS)}")
+#: 정본 업무 흐름 7 단계 (화면 ID)
+FLOW: tuple[str, ...] = FLOW_IDS
+
+
+def validate() -> None:
+    ids = [s.screen_id for s in ALL]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    if dup:
+        raise ValueError(f"화면 ID 중복: {dup}")
     paths = [s.path for s in ALL]
     dup = sorted({p for p in paths if paths.count(p) > 1})
     if dup:
-        raise AssertionError(f"경로 중복: {dup}")
-    if {m.group for m in MENUS} != set(GROUPS):
-        raise AssertionError("대메뉴가 없는 묶음이 있다")
+        raise ValueError(f"경로 중복: {dup}")
+    for s in SCREENS:
+        if any(c.isspace() or c.isupper() for c in s.slug):
+            raise ValueError(f"{s.screen_id} 의 slug 에 공백·대문자가 있다: {s.slug!r}")
     for m in MENUS:
-        for s in m.screens:
-            if not set(s.channels) <= set(CHANNELS):
-                raise AssertionError(f"{s.screen_id} 의 채널이 4채널 밖이다: {s.channels}")
-    side_codes = [k for k in SIDEBAR if k in _MENU_BY_CODE]
-    if sorted(side_codes) != sorted(m.code for m in MENUS + EXT_MENUS):
-        raise AssertionError(f"좌측 메뉴 순서(SIDEBAR)는 대메뉴 12 + 확장 {len(EXT_MENUS)} 을 한 번씩 담아야 한다 — 실제 {side_codes}")
-    if SIDEBAR[0] != "home":
-        raise AssertionError("좌측 메뉴의 첫 항목은 메인(대시보드)이다 (D-417)")
-    for k in SIDEBAR:
-        if k not in _MENU_BY_CODE and (k not in _BY_ID or not _BY_ID[k].common):
-            raise AssertionError(f"SIDEBAR 의 {k!r} 는 대메뉴 코드도 공통 화면 키도 아니다")
-    for m in EXT_MENUS:
-        if m.permission_from not in {d.code for d in MENUS}:
-            raise AssertionError(f"확장 대메뉴 {m.code} 의 권한 출처 {m.permission_from!r} 는 설계도 대메뉴가 아니다 (D-418)")
-        if m.code in {d.code for d in MENUS} or m.name in {d.name for d in MENUS}:
-            raise AssertionError(f"확장 대메뉴 {m.code} {m.name} 이 설계도 대메뉴와 겹친다")
+        if not m.screens:
+            raise ValueError(f"대메뉴 {m.code} 에 화면이 없다")
+    for f in FLOW:
+        if f not in {s.screen_id for s in SCREENS}:
+            raise ValueError(f"FLOW 의 {f} 는 SCREENS 에 없다")
 
 
-_selfcheck()
+validate()
