@@ -1,15 +1,63 @@
-/* 공통 UI 동작 — 좌측 메뉴 접기 · 목록 정렬·쪽 넘김 · 알림 팝업 · 스캔칸 포커스.
-   외부 라이브러리 0. 실패를 조용히 삼키지 않는다(콘솔에 그대로 남긴다). */
+/* 공통 UI 동작 — 템플릿에는 스크립트가 없다. 이 파일 하나가 한다(외부 라이브러리 0).
+   테마(라이트/다크 · localStorage) · 좌측 메뉴 접기(좁은 화면) · 확인 대화(`data-confirm`) · 첫 입력 포커스 ·
+   목록 정렬 · 쪽 넘김 · 스캔칸 포커스 · 알림 팝업(`#popup-layer[data-flash]`).
+   실패를 조용히 삼키지 않는다(콘솔에 남긴다). <head> 에서 읽힌다 — 테마는 곧바로, 나머지는 문서가 다 읽힌 뒤. */
 (function () {
   "use strict";
+  var THEME_KEY = "lcomfine-theme";
+  var root = document.documentElement;
+  function storedTheme() {
+    try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+  var saved = storedTheme();
+  if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
 
-  /* 좌측 메뉴 접기/펼치기 — 대메뉴를 누르면 그 중메뉴가 펼쳐지고, 펼쳐져 있던 다른 대메뉴는 접힌다 (지금 화면의 대메뉴 `on` 은 그대로) */
-  document.querySelectorAll(".menu-head").forEach(function (head) {
-    head.addEventListener("click", function () {
-      var group = head.parentElement, opening = !group.classList.contains("open");
-      group.parentElement.querySelectorAll(".menu-group.open").forEach(function (g) { if (g !== group) g.classList.remove("open"); });
-      group.classList.toggle("open", opening);
+  function ready(fn) {
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn); else fn();
+  }
+
+  ready(function () {
+  /* 테마 토글 — 지금 보이는 테마의 반대로 고정한다 */
+  document.querySelectorAll("[data-theme-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var cur = root.getAttribute("data-theme") ||
+        (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var next = cur === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { console.warn("테마 저장 실패", e); }
     });
+  });
+
+  /* 좌측 메뉴 접기 — 900px 아래에서만 단추가 보인다 */
+  var menuBtn = document.querySelector("[data-menu-toggle]");
+  if (menuBtn) {
+    menuBtn.addEventListener("click", function () {
+      var open = !document.body.classList.contains("menu-open");
+      document.body.classList.toggle("menu-open", open);
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", function (e) {   /* 메뉴 밖을 누르면 닫는다 */
+      if (!document.body.classList.contains("menu-open")) return;
+      if (e.target.closest("#side-menu") || e.target.closest("[data-menu-toggle]")) return;
+      document.body.classList.remove("menu-open");
+      menuBtn.setAttribute("aria-expanded", "false");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && document.body.classList.contains("menu-open")) {
+        document.body.classList.remove("menu-open");
+        menuBtn.setAttribute("aria-expanded", "false");
+        menuBtn.focus();
+      }
+    });
+  }
+
+  /* 확인 대화 — `<button data-confirm="정말 삭제할까요?">` · `<form data-confirm=…>` */
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest ? e.target.closest("button[data-confirm], a[data-confirm], input[data-confirm]") : null;
+    if (el && !window.confirm(el.getAttribute("data-confirm"))) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+    f.addEventListener("submit", function (e) { if (!window.confirm(f.getAttribute("data-confirm"))) e.preventDefault(); });
   });
 
   /* 목록 머리행 클릭 정렬 */
@@ -128,43 +176,22 @@
   }
   window.lcomfinePopup = popup;
 
-  var flashEl = document.getElementById("flash-data");
-  if (flashEl) {
+  /* 쓰기 결과 · 입력 검증 실패 알림 — 서버가 `#popup-layer` 의 data-flash 에 JSON 으로 싣는다 */
+  if (layer && layer.dataset.flash) {
     try {
-      var f = JSON.parse(flashEl.textContent || "{}");
+      var f = JSON.parse(layer.dataset.flash);
       var body = f.message || "";
       if (f.fields && f.fields.length) {
         body += "\n" + f.fields.map(function (x) { return "· " + (x.name || "입력") + ": " + (x.reason || ""); }).join("\n");
       }
       if (body) popup(f.title || "알림", body, f.kind);
-    } catch (e) { console.warn("flash 파싱 실패", e); }
+    } catch (e) { console.warn("알림 파싱 실패", e); }
   }
 
-  /* 현황판 자동 새로고침 (G-13 · D-27) — 조작 없이 다시 그린다. 오류 화면(_error.html)에서도 같은 코드가 돈다.
-     meta refresh 만 쓰면 서버가 잠깐 내려간 사이에 브라우저의 오류 화면으로 넘어가 거기서 멈춘다. 그래서 주기마다 먼저
-     서버가 응답하는지(/health — 상태코드는 따지지 않는다) 보고, 응답이 오면 이 주소를 다시 그리고, 안 오면 화면에 남아
-     「연결 끊김」 을 띄운 채 다시 시도한다. 낡은 화면을 새것처럼 보이게 두지 않는다. */
-  var refreshSeconds = parseInt(document.body.dataset.refreshSeconds || "0", 10) || 0;
-  var RETRY_MS = 5000;
-  function showStale() {
-    var bar = document.getElementById("stale-banner");
-    if (!bar) {
-      bar = document.createElement("div");
-      bar.id = "stale-banner"; bar.className = "stale-banner"; bar.setAttribute("role", "alert");
-      document.body.appendChild(bar);
-    }
-    var at = document.getElementById("refreshed-at");
-    bar.textContent = "서버 연결 끊김 — 다시 시도하는 중" + (at ? " (화면은 " + at.textContent + " 기준)" : "");
+  /* 첫 입력 포커스 — 스캔칸이 없고 다른 것이 포커스를 갖지 않았을 때 본문의 첫 입력칸 */
+  if (!scan && (!document.activeElement || document.activeElement === document.body) && !popupOpen()) {
+    var first = document.querySelector("main input:not([type=hidden]):not([disabled]), main select:not([disabled]), main textarea:not([disabled])");
+    if (first) first.focus({ preventScroll: true });
   }
-  function refreshTick() {
-    if (!window.fetch) { location.reload(); return; }
-    fetch("/health", { cache: "no-store", credentials: "same-origin" })
-      .then(function () { location.reload(); })
-      .catch(function (err) {
-        console.warn("현황판 새로고침 실패 — 서버 응답 없음", err);
-        showStale();
-        setTimeout(refreshTick, RETRY_MS);
-      });
-  }
-  if (refreshSeconds > 0) setTimeout(refreshTick, refreshSeconds * 1000);
+  });
 })();

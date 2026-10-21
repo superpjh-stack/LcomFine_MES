@@ -1,4 +1,4 @@
-"""FastAPI 앱 — 세션 · 오류 핸들러 · 라우터 include · 로그인 · /health.
+"""FastAPI 앱 — 세션 · 오류 핸들러 · 라우터 include · 공통 화면(/login · /logout · /error · /ia) · /health.
 
 **개발자는 이 파일을 만지지 않는다.** 라우터는 모듈명으로 자동 include 한다 — `routers/<모듈>.py` 의 `router`.
 라우터가 아직 등록하지 않은 중메뉴 화면 경로는 `_placeholder.html` 로 **HTTP 200** + "미구현 — 담당 개발N" +
@@ -160,6 +160,12 @@ def create_app() -> FastAPI:
         auth.logout_session(request)
         return RedirectResponse("/login", status_code=303)
 
+    def _back_url(request: Request) -> str:
+        """「돌아가기」 — 같은 사이트에서 왔으면 그 주소, 아니면 메인."""
+        ref = request.headers.get("referer") or ""
+        base = str(request.base_url)
+        return _safe_next("/" + ref[len(base):]) if ref.startswith(base) else "/"
+
     @app.get("/error", response_class=HTMLResponse)
     def error_screen(request: Request, status: int | None = None) -> HTMLResponse:
         """공통 오류 화면. 인자 없이 열면 오류 계약 안내(200), `?status=` 를 주면 그 상태코드로 응답한다."""
@@ -167,14 +173,25 @@ def create_app() -> FastAPI:
         shown = st or 422
         return render(request, "_error.html",
                       {"status": shown, "code": http.code_for_status(shown), "message": http.status_message(shown),
-                       "fields": [], "detail_note": "", "guide": st is None,
-                       "board_refresh_seconds": s.board_refresh_seconds},
+                       "fields": [], "detail_note": "", "guide": st is None, "back": _back_url(request),
+                       "guide_rows": [{"status": v[0], "code": k, "message": v[1]} for k, v in http.ERRORS.items()]},
                       screen_id="error", status_code=st or 200)
+
+    @app.get("/ia", response_class=HTMLResponse)
+    def ia_screen(request: Request, user: rbac.User = Depends(rbac.require_login)) -> HTMLResponse:
+        """참고 화면 — 사이트맵(nav) · 권한 매트릭스(DB `sys_permission`) · 기능 수(contracts). 수는 전부 세어서 낸다."""
+        fns = contracts.functions()
+        per_screen = {sc.screen_id: len(contracts.functions_of(sc.screen_id)) for sc in nav.SCREENS}
+        return render(request, "ia.html",
+                      {"page_title": "화면 구조 · 권한", "tree": nav.menu_tree(), "roles": rbac.roles(),
+                       "matrix": rbac.matrix(), "cell_counts": rbac.counts(), "fn_total": len(fns),
+                       "fn_per_screen": per_screen,
+                       "fn_write": sum(1 for f in fns if f.is_write)})
 
     @app.get("/openapi.json", include_in_schema=False)
     def openapi_spec(user: rbac.User = Depends(rbac.require_login)) -> JSONResponse:
         """API 명세 — 미로그인 401, 시스템 관리 대메뉴를 조회할 수 없는 역할 403. (/docs · /redoc 화면은 두지 않는다 — 외부 CDN 을 부른다)"""
-        if not rbac.can_read_menu(user.role_code, nav.by_id("SYS-01").menu_code):
+        if not rbac.can(user, "SYS-010", "R"):
             raise http.forbidden()
         return JSONResponse(app.openapi())
 
@@ -183,21 +200,17 @@ def create_app() -> FastAPI:
     def health() -> JSONResponse:
         try:
             conn.ping()
-            db_ok, db_reason = True, ""
+            db_ok, db_state = True, "ok"
         except conn.DbUnavailable as exc:   # 원문(소켓 경로·호스트)은 인증 없는 응답에 싣지 않는다 — 서버 로그에만 (비밀번호는 conn 이 가린다)
             log.error("/health — DB 연결 실패: %s", exc)
-            db_ok, db_reason = False, "DB 연결 실패 — 원인은 서버 로그에 있다"
-        fns = contracts.functions()
+            db_ok, db_state = False, "DB 연결 실패 — 원인은 서버 로그에 있다"
         body = {
-            "status": "ok" if db_ok and not include_errors else "degraded",
-            "system": nav.SYSTEM_NAME,
-            "db": {"ok": db_ok, "reason": db_reason},
-            "groups": len(nav.GROUPS),
+            "ok": db_ok and not include_errors,
             "menus": len(nav.MENUS),
             "screens": len(nav.SCREENS),
-            "functions": sum(1 for f in fns if not f.is_batch),
-            "batch_functions": sum(1 for f in fns if f.is_batch),
-            "placeholders": len(app.state.placeholder_paths),
+            # 라우터가 GET 을 등록하지 않아 placeholder 로 나가는 화면 수 (nav.SCREENS 기준)
+            "placeholders": sum(1 for sc in nav.SCREENS if ("GET", sc.path) not in registered),
+            "db": db_state,
             "router_include_errors": include_error_names,
         }
         return JSONResponse(body, status_code=200 if db_ok else 503)
@@ -208,7 +221,7 @@ def create_app() -> FastAPI:
         html = templating.env.get_template("_error.html").render(
             request=request, system_name=nav.SYSTEM_NAME, asset_v=templating.asset_version(), status=status,
             code=code, message=message, fields=fields or [], detail_note=note, guide=False,
-            board_refresh_seconds=s.board_refresh_seconds)
+            dev=s.env == "dev", back=_back_url(request))
         return HTMLResponse(html, status_code=status, headers=http.SECURITY_HEADERS)
 
     def _screen_to_return(request: Request) -> str:

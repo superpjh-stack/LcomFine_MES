@@ -1,0 +1,60 @@
+{# /ia 참고 화면 — 사이트맵(nav) · 권한 매트릭스(DB sys_permission) · 기능 수(contracts).
+   정본 글은 옮기지 않는다. 수는 전부 nav · DB · 계약에서 센다(`data-count`). #}
+{% extends "base.html" %}
+{% block body %}
+<section class="panel">
+  <h1>화면 구조 · 권한</h1>
+  <div class="kpis">
+    <div class="kpi"><span class="kpi__label">묶음</span><strong class="kpi__value num" data-count="bundles">{{ tree | length }}</strong></div>
+    <div class="kpi"><span class="kpi__label">대메뉴</span><strong class="kpi__value num" data-count="menus">{{ nav.MENUS | length }}</strong></div>
+    <div class="kpi"><span class="kpi__label">화면</span><strong class="kpi__value num" data-count="screens">{{ nav.SCREENS | length }}</strong></div>
+    <div class="kpi"><span class="kpi__label">기능</span><strong class="kpi__value num" data-count="functions">{{ fn_total }}</strong><span class="kpi__note">쓰기 {{ fn_write }}</span></div>
+    <div class="kpi"><span class="kpi__label">권한 칸</span><strong class="kpi__value num" data-count="cells">{{ cell_counts['전체'] }}</strong>
+      <span class="kpi__note">W <b data-count="w">{{ cell_counts['W'] }}</b> · R <b data-count="r">{{ cell_counts['R'] }}</b></span></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>사이트맵</h2>
+  <div class="sitemap">
+    {% for node in tree %}
+    <section class="sitemap__bundle">
+      <h3 title="{{ node.bundle[2] }}">{{ node.bundle[1] }}</h3>
+      {% for m in node.menus %}
+      <div class="sitemap__menu">
+        <h4>{{ m.name }} <code>{{ m.code }}</code> <small class="muted">{{ m.owner }}</small></h4>
+        <ul>
+          {% for s in m.screens %}
+          <li><a href="{{ s.path }}"><code>{{ s.screen_id }}</code> {{ s.name }}</a> <small class="muted">{{ s.kind }} · 기능 {{ fn_per_screen[s.screen_id] }}</small></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>권한 매트릭스 <small class="muted">sys_permission · 화면 {{ matrix | length }} × 부서 {{ roles | length }}</small></h2>
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid grid--matrix">
+    <thead><tr><th scope="col">화면 ID</th><th scope="col">화면</th>{% for r in roles %}<th scope="col" class="c" title="{{ r.code }}">{{ r.name }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in matrix %}
+      <tr data-perm="{{ row.screen.screen_id }}">
+        <td><code>{{ row.screen.screen_id }}</code></td>
+        <td>{{ row.screen.name }}</td>
+        {% for c in row.cells %}<td class="c">{% if c == 'W' %}<span class="chip chip--ok">W</span>{% elif c == 'R' %}<span class="chip chip--muted">R</span>{% else %}<span class="dim" aria-label="없음">·</span>{% endif %}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th scope="row" colspan="2">W</th>{% for r in roles %}<td class="c num">{{ matrix | map(attribute='cells') | map(attribute=loop.index0) | select('equalto', 'W') | list | length }}</td>{% endfor %}</tr>
+      <tr><th scope="row" colspan="2">R</th>{% for r in roles %}<td class="c num">{{ matrix | map(attribute='cells') | map(attribute=loop.index0) | select('equalto', 'R') | list | length }}</td>{% endfor %}</tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+{% endblock %}
+{% block aside %}{% endblock %}

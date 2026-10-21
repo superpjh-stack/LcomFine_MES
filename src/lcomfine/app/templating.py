@@ -1,15 +1,20 @@
-"""렌더링 — `contracts/interfaces.md` §2.
+"""렌더링 — `contracts/interfaces.md` §5.
 
-    render(request, template, ctx, *, screen_id=...) -> HTMLResponse
+    render(request, template, ctx, *, screen_id=..., status_code=200) -> HTMLResponse
+    placeholder(request, screen_id) -> HTMLResponse
 
-`screen_id` 를 주면
-  · 헤더(시스템명 · 화면 위치 · 현재 일시 · 사용자 · 로그아웃)
-  · 좌측 메뉴(묶음 4 > 대메뉴 > 중메뉴 — 권한 `없음` 은 숨김)
-  · 우측 계약 패널(그 화면의 기능 줄 — `contracts/function-list.md`)
-  · 채널별 레이아웃(`?device=pop|mobile|board` — D-19)
-을 자동으로 채우고 접근 로그(`sys_access_log` 구분 `조회`)를 남긴다 (G-18).
+자동 컨텍스트 (base.html 이 쓴다)
+  user        rbac.User | None — 로그인 전 화면(login · error)은 None 이어도 그려진다
+  screen      nav.Screen | None (screen_id 를 준 화면)
+  bundles     rbac.visible_menu(user) — 묶음 ⓪~⑦ > 대메뉴 > 볼 수 있는 화면 (좌측 메뉴)
+  flow        흐름 띠 7단계 — [{screen_id, name, path, allowed, current}] (rbac.can_flow)
+  functions   contracts.functions_of(screen_id) — 계약 패널
+  fn_allowed  {기능 ID: 이 사용자가 할 수 있는가} (rbac.can_do)
+  unread      그 사람 부서의 미처리 알림 수 (notify.unread)
+  system_name · settings · flash · asset_v · now · nav · screen_id
+화면 렌더마다 접근 로그 1행(`sys_access_log` 구분 `조회`)을 남긴다 (공통 화면 login · error 제외).
 
-개발자는 `{% block search %}` `{% block grid %}` `{% block actions %}` 만 채우거나, `{% block body %}` 를 통째로 바꾼다.
+개발자는 `{% block search %}` `{% block grid %}` `{% block actions %}` 를 채우거나 `{% block body %}` 를 통째로 바꾼다.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from . import auth, contracts, nav, rbac
+from . import contracts, nav, notify, rbac
 from .settings import get_settings
 from .util import audit, http, screen
 
@@ -44,7 +49,7 @@ NO_VIEW_LOG = {"login", "error"}
 
 
 def _fmt_now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def asset_version() -> str:
@@ -55,41 +60,42 @@ def asset_version() -> str:
         return "0"
 
 
+def flow_steps(user: rbac.User | None, screen_id: str | None = None) -> list[dict]:
+    """흐름 띠 7단계 — 권한 판정은 `rbac.can_flow` 그대로, 이름·경로는 nav 에서."""
+    out = []
+    for sid, allowed in rbac.can_flow(user):
+        sc = nav.by_id(sid)
+        out.append({"screen_id": sid, "name": sc.name, "path": sc.path, "allowed": allowed,
+                    "current": sid == screen_id})
+    return out
+
+
 def screen_context(request: Request, screen_id: str | None) -> dict[str, Any]:
     """base.html 이 필요로 하는 공통 컨텍스트."""
     s = get_settings()
     user = rbac.current_user(request)
-    device = auth.device_of(request)
-    ctx: dict[str, Any] = {
+    sc = nav.by_id(screen_id) if screen_id else None
+    fns = contracts.functions_of(screen_id) if sc and not sc.common else []
+    return {
         "request": request,
         "asset_v": asset_version(),
         "flash": http.pop_flash(request),
         "system_name": nav.SYSTEM_NAME,
         "now": _fmt_now(),
         "user": user,
-        "menus": rbac.visible_menu(user),            # 설계도 묶음 순서 — 로그인 여부 판정(base.html)·계약 렌더본. 화면은 `sidebar` 순서로 그린다
-        "sidebar": rbac.visible_sidebar(user),       # 일하는 순서 — 좌측 메뉴 (D-417)
-        "device": device,                       # web | pop | mobile | board
-        "channel": nav.DEVICE_CHANNEL[device],  # 관리자 Web | 현장 POP | 모바일 | 현황판
+        "bundles": rbac.visible_menu(user),
+        "flow": flow_steps(user, screen_id) if user else [],
+        "unread": len(notify.unread(user)) if user else 0,
         "settings": s,
+        "dev": s.env == "dev",
         "nav": nav,
         "screen_id": screen_id,
-        "screen": None,
-        "screen_name": "",
-        "menu_name": "",
-        "active_menu": "",
-        "functions": [],
+        "screen": sc,
+        "page_title": sc.name if sc else "",
+        "functions": fns,
+        "fn_allowed": {f.id: rbac.can_do(user, f.id) for f in fns},
         "grid_page_size": s.grid_page_size,
     }
-    if screen_id:
-        sc = nav.by_id(screen_id)
-        ctx["screen"] = sc
-        ctx["screen_name"] = sc.name
-        ctx["menu_name"] = sc.menu
-        ctx["active_menu"] = sc.menu_code
-        if not sc.common:
-            ctx["functions"] = [{"fn": f, "allowed": bool(user and user.can(f.id))} for f in contracts.functions_of(screen_id)]
-    return ctx
 
 
 def render(request: Request, template: str, ctx: dict | None = None, *, screen_id: str | None = None,
@@ -107,8 +113,8 @@ def render(request: Request, template: str, ctx: dict | None = None, *, screen_i
 
 
 def placeholder(request: Request, screen_id: str) -> HTMLResponse:
-    """미구현 화면 — HTTP **200** 으로 "미구현 — 담당 개발N" 과 계약 문장을 보여 준다.
+    """미구현 화면 — HTTP **200** 으로 「아직 만들지 않음 — 담당 개발N」과 그 화면의 계약 줄을 보여 준다.
 
-    화면이 비어 있다는 사실을 숨기지 않는다. `tools/check_routes.py` 가 이 표식을 세어 G-03 을 판정한다.
+    화면이 비어 있다는 사실을 숨기지 않는다. `tools/check_routes.py` 가 이 표식(`class="tag"` + `미구현`)을 센다.
     """
     return render(request, "_placeholder.html", {"item": nav.by_id(screen_id)}, screen_id=screen_id)

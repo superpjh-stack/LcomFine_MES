@@ -1,0 +1,99 @@
+{# 공용 매크로 — `{% import "_macros.html" as ui %}` 로 쓴다.
+   kpi · table · chip · empty · undecided · svg_bar · svg_line.
+   차트는 인라인 SVG 뿐(외부 라이브러리 없음) — 표와 함께 쓴다. 값마다 <title> 이 있어 화면 읽기 프로그램이 읽는다. #}
+
+{% macro empty(text="미수집") -%}
+<p class="empty" role="status">{{ text }}</p>
+{%- endmacro %}
+
+{% macro undecided(dn) -%}
+<span class="undecided">미확정 ({{ dn }})</span>
+{%- endmacro %}
+
+{% macro kpi(label, value, note="") -%}
+<div class="kpi">
+  <span class="kpi__label">{{ label }}</span>
+  <strong class="kpi__value num">{{ value if value is not none else "미수집" }}</strong>
+  {% if note %}<span class="kpi__note">{{ note }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# 상태 글 → 칩 색. 목록에 없는 상태는 muted (색을 지어내지 않는다) #}
+{% macro chip(status) -%}
+{% set _OK = ["가용", "합격", "확정", "반영"] %}
+{% set _WARN = ["검사대기", "보류", "지시", "확인대기"] %}
+{% set _BAD = ["불합격", "취소"] %}
+{% set tone = "ok" if status in _OK else ("warn" if status in _WARN else ("bad" if status in _BAD else "muted")) %}
+<span class="chip chip--{{ tone }}">{{ status if status else "-" }}</span>
+{%- endmacro %}
+
+{# cols: [{"key": "item_code", "label": "품목 코드", "num": false}] 또는 [("key", "label")]
+   rows: dict 목록. 0 행이면 empty(empty_text). 숫자 열은 우측 정렬 · tabular-nums #}
+{% macro table(cols, rows, empty_text="미수집") -%}
+{% if not rows %}
+{{ empty(empty_text) }}
+{% else %}
+<div class="grid-wrap">
+<table class="grid">
+  <thead><tr>
+  {% for c in cols %}
+    {% set label = c.label if c is mapping else c[1] %}
+    {% set is_num = (c.num if c is mapping and c.num is defined else false) %}
+    <th scope="col"{% if is_num %} class="num"{% endif %}>{{ label }}</th>
+  {% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+    {% for c in cols %}
+      {% set key = c.key if c is mapping else c[0] %}
+      {% set is_num = (c.num if c is mapping and c.num is defined else false) %}
+      {% set v = r[key] if key in r else none %}
+      <td{% if is_num %} class="num"{% endif %}>{{ (v | num) if is_num else (v | txt) }}</td>
+    {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# series: [{"label": "1월", "value": 12}, ...] — 막대. 값이 없으면 empty() #}
+{% macro svg_bar(series, height=160) -%}
+{% if not series %}{{ empty() }}{% else %}
+{% set vals = series | map(attribute="value") | list %}
+{% set top = [vals | max, 1] | max %}
+{% set n = series | length %}
+{% set w = 100.0 / n %}
+<svg class="chart chart--bar" viewBox="0 0 100 {{ height }}" preserveAspectRatio="none" role="img"
+     aria-label="막대 그래프 {{ n }}개 값" style="height: {{ height }}px">
+  <line x1="0" y1="{{ height - 0.5 }}" x2="100" y2="{{ height - 0.5 }}" class="chart__axis"/>
+  {% for p in series %}
+    {% set h = (p.value / top) * (height - 16) %}
+    <rect class="chart__bar" x="{{ (loop.index0 * w + w * 0.15) | round(3) }}" y="{{ (height - h) | round(3) }}"
+          width="{{ (w * 0.7) | round(3) }}" height="{{ h | round(3) }}"><title>{{ p.label }}: {{ p.value | num }}</title></rect>
+  {% endfor %}
+</svg>
+<ol class="chart__labels" style="--n: {{ n }}">{% for p in series %}<li>{{ p.label }}</li>{% endfor %}</ol>
+{% endif %}
+{%- endmacro %}
+
+{# series: [{"label": "1월", "value": 12}, ...] — 꺾은선 #}
+{% macro svg_line(series, height=160) -%}
+{% if not series %}{{ empty() }}{% else %}
+{% set vals = series | map(attribute="value") | list %}
+{% set top = [vals | max, 1] | max %}
+{% set n = series | length %}
+{% set step = 100.0 / ([n - 1, 1] | max) %}
+<svg class="chart chart--line" viewBox="0 0 100 {{ height }}" preserveAspectRatio="none" role="img"
+     aria-label="꺾은선 그래프 {{ n }}개 값" style="height: {{ height }}px">
+  <line x1="0" y1="{{ height - 0.5 }}" x2="100" y2="{{ height - 0.5 }}" class="chart__axis"/>
+  <polyline class="chart__line" vector-effect="non-scaling-stroke" points="{% for p in series %}{{ (loop.index0 * step) | round(3) }},{{ (height - 8 - (p.value / top) * (height - 16)) | round(3) }} {% endfor %}"/>
+  {% for p in series %}
+  <circle class="chart__dot" cx="{{ (loop.index0 * step) | round(3) }}" cy="{{ (height - 8 - (p.value / top) * (height - 16)) | round(3) }}" r="1.2"><title>{{ p.label }}: {{ p.value | num }}</title></circle>
+  {% endfor %}
+</svg>
+<ol class="chart__labels" style="--n: {{ n }}">{% for p in series %}<li>{{ p.label }}</li>{% endfor %}</ol>
+{% endif %}
+{%- endmacro %}
