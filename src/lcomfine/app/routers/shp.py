@@ -416,12 +416,12 @@ def create_order(request: Request, request_no: str | None = Form(None), customer
     return resp
 
 
-@router.post(P_ORDERS + "/{oid}")
-def update_order(request: Request, oid: str, due_date: str | None = Form(None), note: str | None = Form(None),
+@router.post(P_ORDERS + "/{id}")
+def update_order(request: Request, id: str, due_date: str | None = Form(None), note: str | None = Form(None),
                  stock_id: list[str] = Form([]), qty: list[str] = Form([]),
                  user: rbac.User = rbac.require_fn("F-SHP-012")):
     """F-SHP-012 출하 지시 수정 — 할당 줄을 통째로 바꾼다(이전 할당은 풀고 새 할당을 잡는다). 확정 · 취소된 출하는 422."""
-    order_id = _path_id(oid)
+    order_id = _path_id(id)
     lines = _lines(stock_id, qty)
     due = _date(due_date, "납기", required=False)
     memo = _text(note)
@@ -501,11 +501,11 @@ def confirm_screen(request: Request, no: str | None = None,
                              screen_id="SHP-020")
 
 
-@router.post(P_CONFIRM + "/{oid}/confirm")
-def confirm_order(request: Request, oid: str, user: rbac.User = rbac.require_fn("F-SHP-021")):
+@router.post(P_CONFIRM + "/{id}/confirm")
+def confirm_order(request: Request, id: str, user: rbac.User = rbac.require_fn("F-SHP-021")):
     """F-SHP-021 출하 확정 — 미판정 · 불합격 LOT 가 하나라도 있으면 422. 확정하면 LOT 라인마다 재고 qty · allocated_qty 를
     출하 수량만큼 함께 줄이고(가용은 그대로) `stock_move`(출하) 한 행씩. 알림 shipment_confirmed → 영업부 · 회계부."""
-    order_id = _path_id(oid)
+    order_id = _path_id(id)
     with conn.tx() as cur:
         o = _lock_order(cur, order_id)
         if o["status"] != "지시":
@@ -558,8 +558,8 @@ def confirm_order(request: Request, oid: str, user: rbac.User = rbac.require_fn(
     return resp
 
 
-@router.post(P_CONFIRM + "/{oid}/adjust")
-def adjust_order(request: Request, oid: str, kind: str | None = Form(None), qty: str | None = Form(None),
+@router.post(P_CONFIRM + "/{id}/adjust")
+def adjust_order(request: Request, id: str, kind: str | None = Form(None), qty: str | None = Form(None),
                  reason: str | None = Form(None), lot_no: str | None = Form(None),
                  user: rbac.User = rbac.require_fn("F-SHP-023")):
     """F-SHP-023 반품·정정 등록 — 확정된 출하만. 구분(반품 · 정정) · 수량 · 사유 필수. 재고는 바꾸지 않는다(재고 반영 미확정 D-515).
@@ -567,7 +567,7 @@ def adjust_order(request: Request, oid: str, kind: str | None = Form(None), qty:
     수량 규약(가설 D-515 · db-schema): 저장 값의 음수 = 반품(줄어든 수량), 양수 = 정정으로 늘어난 수량.
     반품은 양수로 입력해도 음수로 저장하고, 반품 누계는 그 출하(LOT 를 고르면 그 LOT)의 출하 수량을 넘을 수 없다.
     """
-    order_id = _path_id(oid)
+    order_id = _path_id(id)
     k = (kind or "").strip()
     if k not in ADJUST_KINDS:
         raise http.validation_error("구분을 골라 주세요 (반품 · 정정)", fields=[{"name": "구분", "reason": k or "필수 항목입니다"}])
