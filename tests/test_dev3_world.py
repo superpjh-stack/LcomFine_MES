@@ -130,6 +130,8 @@ class World:
                 cur.execute("delete from shipment_line where shipment_order_id = any(%s)", (orders,))
                 cur.execute("delete from shipment_order where id = any(%s)", (orders,))
             if self.lots:
+                cur.execute("delete from notification where dedupe_key like any(%s)",
+                            ([f"judged:{r['lot_no']}:%" for r in conn.q("select lot_no from product_lot where id = any(%s)", (self.lots,))],))
                 cur.execute("delete from stock_move where lot_kind = '제품' and lot_id = any(%s)", (self.lots,))
                 cur.execute("delete from product_inspection where product_lot_id = any(%s)", (self.lots,))
                 cur.execute("delete from lot_stock where lot_kind = '제품' and lot_id = any(%s)", (self.lots,))

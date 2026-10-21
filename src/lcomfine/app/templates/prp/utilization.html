@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">월 단위 설비 가동률 — 원천은 생산일보의 가동 · 정지 시간(분). {% if data %}{{ data.formula }}{% else %}가동률 산식은 가설 (D-801){% endif %}.
+    대시보드는 <a href="{{ nav.path_of('RPT-020') }}">생산 리포트</a>.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("year", "연도", form.year, type="number") }}
+    <label class="field"><span>월</span>
+      <select name="month">{% for m in range(1, 13) %}<option value="{{ m }}"{% if (m | string) == form.month %} selected{% endif %}>{{ m }}월</option>{% endfor %}</select></label>
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if data %}
+<section class="panel">
+  <div class="kpis">
+    {{ ui.kpi("기간", data.period[0] | dt ~ " ~ " ~ (data.period[1] | dt) ~ " 전") }}
+    {{ ui.kpi("가동 시간(분)", data.total.run_minutes | num if data.total.run_minutes is not none else none) }}
+    {{ ui.kpi("정지 시간(분)", data.total.stop_minutes | num if data.total.stop_minutes is not none else none) }}
+    {{ ui.kpi("전체 가동률(%)", data.total.rate | num(1) if data.total.rate is not none else none, "가설 D-801") }}
+  </div>
+</section>
+<section class="panel">
+  <h2>설비별 가동률(%)</h2>
+  {% if data.rows | selectattr("rate") | list %}{{ ui.svg_bar(series) }}{% else %}{{ ui.empty() }}{% endif %}
+</section>
+<section class="panel panel--grid">
+  {% if data.rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>설비 코드</th><th>설비</th><th class="num">일보 일수</th><th class="num">일보 행</th><th class="num">가동(분)</th><th class="num">정지(분)</th><th class="num">가동률(%)</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+    <tr data-equipment="{{ r.equipment_code }}">
+      <td><code>{{ r.equipment_code }}</code></td><td>{{ r.equipment_name | txt("공통코드 밖") }}</td>
+      <td class="num">{{ r.days | num(blank="미수집") }}</td><td class="num">{{ r.entries | num(blank="미수집") }}</td>
+      <td class="num">{{ r.run_minutes | num(blank="미수집") }}</td><td class="num">{{ r.stop_minutes | num(blank="미수집") }}</td>
+      <td class="num">{{ r.rate | num(1, "미수집") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

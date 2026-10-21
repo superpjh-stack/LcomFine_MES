@@ -294,12 +294,14 @@ def _bad_request_screen(request: Request, template: str, ctx: dict, screen_id: s
 @router.get(P_ORDERS, response_class=HTMLResponse)
 def orders_screen(request: Request, customer: str | None = None, status: str | None = None,
                   due_from: str | None = None, due_to: str | None = None, request_no: str | None = None,
-                  edit: str | None = None, user: rbac.User = rbac.require_fn("F-SHP-013")) -> HTMLResponse:
-    """F-SHP-013 출하 지시 조회 — 거래처 · 납기 · 상태로 검색. `?request_no=` 는 의뢰의 거래처 · 제품 · 수량 · 납기를 채운다."""
+                  edit: str | None = None, lot: str | None = None,
+                  user: rbac.User = rbac.require_fn("F-SHP-013")) -> HTMLResponse:
+    """F-SHP-013 출하 지시 조회 — 거래처 · 납기 · 상태로 검색. `?request_no=` 는 의뢰의 거래처 · 제품 · 수량 · 납기를 채운다.
+    `?lot=<제품 LOT>`(판정 완료 알림 `judged` 의 link) 는 그 LOT 의 가용 재고를 1번 줄에 골라 둔다."""
     form = {"customer": customer or "", "status": status or "", "due_from": due_from or "", "due_to": due_to or "",
-            "request_no": (request_no or "").strip()}
+            "request_no": (request_no or "").strip(), "lot": (lot or "").strip()}
     ctx: dict = {"form": form, "customers": _customers(), "rows": [], "lines": {}, "prefill": None, "edit": None,
-                 "stock": [], "slots": LINE_SLOTS, "notice": None,
+                 "stock": [], "slots": LINE_SLOTS, "notice": None, "preselect": None,
                  "requests": conn.q("""select q.request_no, c.customer_name, i.item_name, q.due_date
                                           from production_request q join customer c on c.id = q.customer_id
                                           join item i on i.id = q.item_id
@@ -332,6 +334,13 @@ def orders_screen(request: Request, customer: str | None = None, status: str | N
             req["already_qty"] = done
             req["remaining_qty"] = max(req["qty"] - done, Decimal(0))
             ctx["prefill"] = req
+        if form["lot"]:
+            hit = conn.q1("""select s.id from lot_stock s join product_lot p on s.lot_kind = '제품' and p.id = s.lot_id
+                              where p.lot_no = %s order by (s.status = '가용') desc, s.qty - s.allocated_qty desc limit 1""",
+                          (form["lot"],))
+            if hit is None:
+                raise http.validation_error("없는 제품 LOT 번호입니다", fields=[{"name": "LOT", "reason": form["lot"][:60]}])
+            ctx["preselect"] = hit["id"]
     except HTTPException as exc:   # 조회 조건 오류(422)만 화면으로 되그린다 — 그 밖은 그대로 올린다
         if exc.status_code != 422:
             raise
@@ -399,6 +408,8 @@ def create_order(request: Request, request_no: str | None = Form(None), customer
         notify.emit(cur, "shipment_ordered", link=_ordered_link(shipment_no),
                     dedupe_key=f"shipment_ordered:{shipment_no}",
                     text=f"출하 지시 {shipment_no} — 납기 {due.isoformat()} · LOT {len(lines)}줄")
+        for sid, _ in lines:   # 판정 완료 알림(judged — 개발2 link `/shp/orders?lot=<LOT>`)을 이 LOT 를 할당한 부서에서 닫는다
+            notify.handle_by_link(cur, f"{P_ORDERS}?lot={stock[sid]['lot_no']}", user)
     resp = http.saved(request, f"출하 지시 {shipment_no} 를 등록했습니다", data={"id": oid, "shipment_no": shipment_no})
     audit.log_change(request, user, "F-SHP-011", f"shipment_order:{shipment_no}",
                      f"출하 지시 등록 · LOT {len(lines)}줄 · 합 {sum(q for _, q in lines):,}")

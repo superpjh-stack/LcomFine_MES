@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">기계별 생산 통계 — 원천은 생산일보. 로스율은 산식이 정해지지 않아 {{ ui.undecided(loss_decision) }} 이고, 생산 · 양품 · 로스 원 수량을 함께 보인다.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if rows %}
+<section class="panel">
+  <h2>설비별 양품 수량</h2>
+  {% if rows | selectattr("good_qty") | list %}{{ ui.svg_bar(series) }}{% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endif %}
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>설비 코드</th><th>설비</th><th class="num">지시 수</th><th class="num">일보 행</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th><th>로스율</th><th class="num">가동(분)</th><th class="num">정지(분)</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr data-equipment="{{ r.equipment_code }}">
+      <td><code>{{ r.equipment_code }}</code></td><td>{{ r.equipment_name | txt("공통코드 밖") }}</td>
+      <td class="num">{{ r.work_orders | num(blank="미수집") }}</td><td class="num">{{ r.entries | num(blank="미수집") }}</td>
+      <td class="num">{{ r.produced_qty | num(3, "미수집") }}</td><td class="num">{{ r.good_qty | num(3, "미수집") }}</td>
+      <td class="num">{{ r.loss_qty | num(3, "미수집") }}</td><td>{{ ui.undecided(loss_decision) }}</td>
+      <td class="num">{{ r.run_minutes | num(blank="미수집") }}</td><td class="num">{{ r.stop_minutes | num(blank="미수집") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

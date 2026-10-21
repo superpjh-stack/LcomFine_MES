@@ -7,6 +7,7 @@ from decimal import Decimal
 import psycopg
 import pytest
 
+from lcomfine.app import notify
 from lcomfine.db import conn
 from test_dev3_world import World, login
 
@@ -38,6 +39,8 @@ def _notes(key):
 @pytest.mark.fn("F-SHP-011")
 def test_create_order_allocates_within_available_and_notifies(c, w):
     lot = w.lot("10")
+    with conn.tx() as cur:   # 개발2 QC-020 이 남기는 판정 완료 알림 모양 그대로 (link `/shp/orders?lot=<LOT>`)
+        notify.emit(cur, "judged", link=f"/shp/orders?lot={lot['lot_no']}", dedupe_key=f"judged:{lot['lot_no']}:1", text="(예시)")
     r = _order(c["sl"], w, [(lot["stock_id"], "4")], note="(예시)")
     assert r.status_code == 200, r.text
     no = r.json()["shipment_no"]
@@ -48,6 +51,8 @@ def test_create_order_allocates_within_available_and_notifies(c, w):
     lines = conn.q("select product_lot_id, location_id, qty from shipment_line where shipment_order_id = %s", (o["id"],))
     assert lines == [{"product_lot_id": lot["id"], "location_id": w.location_id, "qty": Decimal("4")}]
     assert _notes(f"shipment_ordered:{no}") == [{"to_role": "SH", "handled_at": None}]
+    assert _notes(f"judged:{lot['lot_no']}:1")[1]["handled_at"] is not None     # 영업부의 판정 완료 알림은 할당하면 닫힌다
+    assert _notes(f"judged:{lot['lot_no']}:1")[0]["handled_at"] is None         # 출하실 것은 그대로 (부서 단위)
     assert conn.q1("select count(*) n from sys_change_log where function_id = 'F-SHP-011' and target = %s",
                    (f"shipment_order:{no}",))["n"] == 1
 
@@ -199,6 +204,9 @@ def test_orders_screen_lists_and_prefills(c, w):
     r = c["sl"].get("/shp/orders", params={"request_no": w.request_no})
     assert r.status_code == 200 and w.request_no in r.text and "남은" in r.text and lot["lot_no"] in r.text
     assert c["sl"].get("/shp/orders", params={"request_no": "없는-번호"}).status_code == 422
+    r = c["sl"].get("/shp/orders", params={"lot": lot["lot_no"]})
+    assert r.status_code == 200 and f'<option value="{lot["stock_id"]}" selected>' in r.text
+    assert c["sl"].get("/shp/orders", params={"lot": "없는-LOT"}).status_code == 422
     assert c["sl"].get("/shp/orders", params={"due_from": "2026-13-40"}).status_code == 422
     assert c["sl"].get("/shp/orders", params={"edit": "999999999999"}).status_code == 404
     assert c["sl"].get("/shp/orders", params={"edit": str(w.order(no)["id"])}).status_code == 200

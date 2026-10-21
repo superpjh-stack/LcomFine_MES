@@ -73,7 +73,7 @@
     {{ f.input("due_date", "납기", prefill.due_date if prefill else "", type="date", required=true) }}
     {{ f.input("note", "비고") }}
     {% for i in range(slots) %}
-    <label class="field"><span>{{ i + 1 }}번 LOT{% if i == 0 %} <b aria-hidden="true">*</b>{% endif %}</span><select name="stock_id">{{ stock_options() }}</select></label>
+    <label class="field"><span>{{ i + 1 }}번 LOT{% if i == 0 %} <b aria-hidden="true">*</b>{% endif %}</span><select name="stock_id">{{ stock_options(preselect if i == 0 else "") }}</select></label>
     {{ f.input("qty", (i + 1) ~ "번 수량", (prefill.remaining_qty if (prefill and i == 0 and prefill.remaining_qty > 0) else ""), type="number", step="0.001") }}
     {% endfor %}
     <div class="actions"><button type="submit" class="btn btn-primary">출하 지시 등록</button></div>

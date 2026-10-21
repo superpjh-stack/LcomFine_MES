@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">생산 완료 = <a href="{{ nav.path_of('MAT-030') }}">제품 입고</a>(취소 표시 행 제외) · 기간은 입고일 · 거래처는 생산의뢰의 거래처.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+        {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == form.customer %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
+      </select></label>
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if data %}
+<section class="panel">
+  <div class="kpis">
+    {{ ui.kpi("완료 지시 수", data.total.work_orders | num if data.total.receipts else none) }}
+    {{ ui.kpi("제품 입고 건수", data.total.receipts | num if data.total.receipts else none) }}
+    {{ ui.kpi("완료 수량", data.total.qty | num(3) if data.total.qty is not none else none) }}
+  </div>
+</section>
+<section class="panel">
+  <h2>월별 완료 수량</h2>
+  {{ ui.svg_bar(series) }}
+</section>
+<section class="panel panel--grid">
+  {% if data.rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>거래처</th><th>제품 코드</th><th>제품</th><th class="num">지시 수</th><th class="num">입고 건수</th><th class="num">완료 수량</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+    <tr data-customer="{{ r.customer_id }}">
+      <td>{{ r.customer_name }}</td><td><code>{{ r.item_code }}</code></td><td>{{ r.item_name }}</td>
+      <td class="num">{{ r.work_orders | num }}</td><td class="num">{{ r.receipts | num }}</td><td class="num">{{ r.qty | num(3) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

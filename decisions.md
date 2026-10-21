@@ -231,3 +231,9 @@
 - MAT-010 라벨 = 같은 화면의 `?label=<입고 id>`(읽기) — LOT 번호 글자만 찍는다. 라벨 · 바코드 규격은 미수집.
 - MAT-040 엑셀 = 같은 조회의 `?format=csv`(UTF-8 BOM CSV — 엑셀이 연다). xlsx 생성 라이브러리는 들이지 않았다.
 - 알림 링크(개발2 가 emit 하는 것): `material_received` → `/qc/incoming?receipt=<입고 id>`(그 입고의 LOT 이 모두 판정되면 닫힘) · `product_received` → `/qc/product?lot=<제품 LOT>`(판정하면 닫힘) · `judged` → `/shp/orders?lot=<제품 LOT>`(dedupe `judged:<LOT>:<seq>`). 불출 등록은 `/mat/issues?wo=<지시번호>` 와 `/mat/issues` 링크를 닫는다 — 개발1 의 `order_issued` 링크가 이 꼴이면 불출에서 닫힌다.
+
+## D-801 PRP-010 월별 가동률 산식 · 상태: 가설 (개발3)
+- 정본은 「월 단위 설비 가동률」만 주고 산식이 없다. 원천 열은 `production_daily.run_minutes`(가동 시간 · 「가동률 원천」) · `stop_minutes`(정지 시간)뿐이다.
+- 기본값: **가동률(%) = Σ가동 분 ÷ (Σ가동 분 + Σ정지 분) × 100** (설비 × 월, 소수 1자리). 분모를 달력 시간 · 계획 시간으로 잡는 산식은 그 값의 원천이 없어 쓰지 않는다.
+  가동 · 정지가 모두 비어 있으면(또는 합이 0) `미수집` — 0 % 로 지어내지 않는다. 화면에 산식 문장과 원 분 값을 함께 보인다.
+- 바뀌면 고칠 곳: `app/stats.py` 의 `_rate` · `UTILIZATION_FORMULA` 한 곳(W3 대시보드 RPT-020 의 가동률도 같은 산식을 따른다).
