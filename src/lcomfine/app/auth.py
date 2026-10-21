@@ -29,7 +29,6 @@ from .util import audit, http
 PBKDF2_ITERATIONS = 260_000
 PBKDF2_ALGO = "pbkdf2_sha256"
 STATUS_ACTIVE = "정상"
-DEVICE_SESSION_KEY = "device"
 #: 세션 쿠키의 수명(초) = `SessionMiddleware(max_age=…)`. 응답마다 다시 서명되므로 쓰는 동안은 이어진다.
 #: 로그아웃한 세션 ID 는 이 시간이 지나면 쿠키 서명도 만료라 더 들고 있을 필요가 없다 (Starlette 기본 14일 — 자동 로그아웃은 D-20)
 SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
@@ -77,7 +76,7 @@ def authenticate(login_id: str, password: str, *, client_ip: str | None = None, 
     login_id = (login_id or "").strip()
     tail = f" · {via}" if via else ""
     u = conn.q1(
-        """select u.login_id, u.user_name, u.password_hash, u.role_code, u.status, u.fail_count, r.role_name
+        """select u.user_id, u.login_id, u.user_name, u.password_hash, u.role_code, u.status, u.fail_count, r.role_name
              from sys_user u join sys_role r on r.role_code = u.role_code
             where u.login_id = %s""",
         (login_id,),
@@ -95,8 +94,8 @@ def authenticate(login_id: str, password: str, *, client_ip: str | None = None, 
         return LoginResult(False, reason=BAD_CREDENTIALS)
     conn.x("update sys_user set fail_count = 0, last_login_at = now() where login_id = %s", (u["login_id"],))
     _log(u["login_id"], u["role_code"], True, client_ip, f"로그인 성공{tail}")
-    return LoginResult(True, user=User(login_id=u["login_id"], user_name=u["user_name"], role_code=u["role_code"],
-                                       role_name=u["role_name"]))
+    return LoginResult(True, user=User(id=u["user_id"], login_id=u["login_id"], name=u["user_name"],
+                                       role_code=u["role_code"], role_name=u["role_name"], status=u["status"]))
 
 
 # ── 퀵 로그인 (D-416) ───────────────────────────────────────────────────
@@ -111,10 +110,10 @@ def quick_login_enabled() -> bool:
 
 
 def quick_login_accounts() -> list[dict]:
-    """로그인 화면의 퀵 로그인 패널 — 역할(표시 순서)별로 계정을 묶는다. 값은 전부 DB 그대로(계정·역할·상태·권한 칸).
+    """로그인 화면의 퀵 로그인 패널 — 부서(표시 순서)별로 계정을 묶는다. 값은 전부 DB 그대로(계정·부서·상태·권한 칸).
 
-    역할마다: `role` · `summary`(대메뉴 12 중 입력·조회·없음 칸 수) · `primary`(시드 계정 — `created_by = 'seed'`,
-    없으면 가장 먼저 만든 정상 계정) · `others`(나머지 — 잠금·중지도 상태와 함께 보인다, 단추는 막힌다)."""
+    부서마다: `role` · `summary`(화면 67 중 W · R 칸 수) · `menus`(볼 수 있는 화면이 있는 대메뉴 이름) ·
+    `primary`(시드 계정 — `created_by = 'seed'`, 없으면 가장 먼저 만든 정상 계정) · `others`(나머지 — 잠금·중지도 상태와 함께 보인다, 단추는 막힌다)."""
     rows = conn.q(
         """select u.login_id, u.user_name, u.role_code, u.status, u.created_by, u.last_login_at
              from sys_user u join sys_role r on r.role_code = u.role_code
@@ -125,39 +124,24 @@ def quick_login_accounts() -> list[dict]:
         mine = [dict(r) for r in rows if r["role_code"] == role.code]
         if not mine:
             continue
-        levels = [rbac.cell(role.code, m.code).level for m in nav.MENUS]
-        summary = {lv: levels.count(lv) for lv in (rbac.LEVEL_WRITE, rbac.LEVEL_READ, rbac.LEVEL_NONE)}
-        menus_read = [m.name for m in nav.MENUS if rbac.cell(role.code, m.code).can_read]
-        primary = next((a for a in mine if a["created_by"] == "seed"), None)             or next((a for a in mine if a["status"] == STATUS_ACTIVE), mine[0])
+        levels = [rbac.level(role.code, sc.screen_id) for sc in nav.SCREENS]
+        summary = {lv: levels.count(lv) for lv in rbac.LEVELS}
+        menus_read = [m.name for m in nav.MENUS if any(rbac.level(role.code, sc.screen_id) for sc in m.screens)]
+        primary = (next((a for a in mine if a["created_by"] == "seed"), None)
+                   or next((a for a in mine if a["status"] == STATUS_ACTIVE), mine[0]))
         others = [a for a in mine if a is not primary]
         out.append({"role": role, "summary": summary, "menus": menus_read, "primary": primary, "others": others,
                     "active": sum(1 for a in mine if a["status"] == STATUS_ACTIVE), "total": len(mine)})
     return out
 
 
-# ── 채널 (D-19) ─────────────────────────────────────────────────────────
-def device_of(request) -> str:
-    """이 요청의 채널 코드 — `?device=` > 로그인 때 고정한 세션 값 > `web`."""
-    q = request.query_params.get("device")
-    if q in nav.DEVICE_CHANNEL:
-        return q
-    s = request.session.get(DEVICE_SESSION_KEY) if hasattr(request, "session") else None
-    return s if s in nav.DEVICE_CHANNEL else "web"
-
-
 def home_path_for(request, user: User) -> str:
-    """로그인 직후 갈 곳. 현장 POP·현황판·모바일로 연 세션은 그 채널의 첫 화면(조회 가능한 것), 아니면 메인."""
-    device = request.session.get(DEVICE_SESSION_KEY)
-    if device in nav.DEVICE_CHANNEL and device != "web":
-        channel = nav.DEVICE_CHANNEL[device]
-        for sc in nav.SCREENS:
-            if sc.channels[0] == channel and user.can_open(sc.screen_id):
-                return sc.path
-    return "/"
+    """로그인 직후 갈 곳 — 메인(HOME-010 내 할 일)."""
+    return nav.path_of("HOME-010")
 
 
 # ── 세션 ────────────────────────────────────────────────────────────────
-def login_session(request, user: User, device: str | None = None) -> None:
+def login_session(request, user: User) -> None:
     """로그인한 세션을 연다. 쿠키에는 사용자와 **세션 ID · 그때의 세션 판 번호**를 넣는다 — 유효 판정은 `rbac.current_user` 가 DB 로 한다."""
     row = conn.q1("select session_epoch from sys_user where login_id = %s", (user.login_id,))
     if row is None:   # 인증과 세션 열기 사이에 계정이 지워졌다
@@ -168,7 +152,6 @@ def login_session(request, user: User, device: str | None = None) -> None:
     rbac.forget_user(request)
     request.session["login_at"] = datetime.now().isoformat(timespec="seconds")
     request.session["last_seen"] = request.session["login_at"]
-    request.session[DEVICE_SESSION_KEY] = device if device in nav.DEVICE_CHANNEL else "web"
 
 
 def revoke_session(login_id: str, session_id: str) -> None:
