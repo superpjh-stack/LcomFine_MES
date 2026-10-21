@@ -56,7 +56,7 @@ GATES: list[tuple[str, str]] = [
     ("G-09", "차단 규칙"),
     ("G-10", "가용 재계산"),
     ("G-11", "알림 9종"),
-    ("G-12", "수금 회차 교체"),
+    ("G-12", "회차 교체"),
     ("G-13", "오류 행 · 미매핑"),
     ("G-14", "출하 대비 수금"),
     ("G-15", "대시보드 8 수치"),
@@ -138,6 +138,23 @@ def per_gate(output: str) -> dict[str, tuple[str, str]]:
             detail = f"검사 {len(items)} · 통과 못한 {len(bad)} — " + " / ".join(bad)
         out[gid] = (st, detail)
     return out
+
+
+def tool_verdicts(code: int, output: str) -> dict[str, tuple[str, str]]:
+    """도구 출력의 게이트별 판정 + 종료코드 반영.
+
+    검사기는 FAIL 이 있으면 0 이 아닌 코드로 끝나는 것이 정상이다 — 그때 PASS 행은 그대로 둔다.
+    그러나 **종료코드가 0 이 아닌데 FAIL 행이 하나도 없거나, traceback 을 찍었거나, 읽을 행이 없으면** 도구가 깨진 것이다:
+    그 도구의 PASS 판정은 FAIL 로 내리고 실측에 「도구 종료코드 N」 을 붙인다(찍다 만 PASS 가 통과로 보이지 않게).
+    """
+    got = per_gate(output)
+    if code == 0:
+        return got
+    crashed = "Traceback (most recent call last)" in output or not got or all(st != FAIL for st, _ in got.values())
+    if not crashed:
+        return got
+    return {gid: ((FAIL if st == PASS else st), f"{m} · 도구 종료코드 {code}" + (" (traceback)" if "Traceback" in output else ""))
+            for gid, (st, m) in got.items()}
 
 
 def blocked_gates() -> dict[str, str]:
@@ -286,14 +303,14 @@ def main() -> int:
             put(gid, owner, MISSING, f"tools/{owner}.py 없음 — {QA_TOOL.get(owner, '?')} 가 만든다")
             continue
         code, out = outputs[owner]
-        got = per_gate(out).get(gid)
+        got = tool_verdicts(code, out).get(gid)
         if got is None:
             put(gid, owner, UNVERIFIED, f"{owner} 출력에 {gid} 판정 행 없음 (rc={code}) — {last_line(out)}")
         else:
             put(gid, owner, *got)
     for name in EXTRA_TOOLS:
         if name in outputs:
-            for gid, got in per_gate(outputs[name][1]).items():
+            for gid, got in tool_verdicts(*outputs[name]).items():
                 if gid in found:
                     put(gid, name, *got)
 
@@ -306,9 +323,9 @@ def main() -> int:
     if RUN_SEEDS:
         put("G-21", "시드 멱등", *seed_idempotence())
     else:
-        found["G-21"].append(("시드 멱등", "", "이 실행에서는 시드를 돌리지 않았다 — `make gate-full`"))
+        found["G-21"].append(("시드 멱등", "", "시드 멱등 미측정 — 이 실행에서는 시드를 돌리지 않았다 (`make gate-full`)"))
     if "check_security" not in outputs:
-        found["G-21"].append(("check_security", "", "tools/check_security.py 없음 (QA3) — 그 몫은 아직 재지 않음"))
+        found["G-21"].append(("check_security", "", "부분 — check_security 미작성 (tools/check_security.py 없음 · QA3) — 생기면 그 G-21 PASS 행이 있어야 PASS"))
 
     # ── G-23 백업 · 복구 ──
     if not tool("backup"):
