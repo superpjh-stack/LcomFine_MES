@@ -106,14 +106,43 @@ def test_shipment_adjust_has_append_only_triggers():
     for table in ("stock_adjust", "shipment_adjust"):
         bits = [r["tgtype"] for r in trg if r["t"] == table]
         assert any(b & 2 and b & 8 and b & 16 for b in bits), f"{table}: before update or delete 트리거 없음"
+        assert any(b & 2 and b & 32 for b in bits), f"{table}: before truncate 트리거 없음"   # 32 = TRUNCATE
 
 
 def test_lot_stock_allocation_check():
-    with pytest.raises(psycopg.errors.CheckViolation):
+    with pytest.raises(psycopg.errors.CheckViolation) as exc:
         with conn.tx() as cur:
             loc = _location(cur)
             cur.execute("""insert into lot_stock (lot_kind, lot_id, location_id, qty, allocated_qty, status)
                            values ('제품', 1, %s, 5, 6, '가용')""", (loc,))
+    assert exc.value.diag.constraint_name == "lot_stock_alloc_chk"
+
+
+def test_product_receipt_work_order_matches_lot():
+    """제품 입고의 지시 = 그 제품 LOT 의 지시 — 복합 FK (product_lot_id, work_order_id) 가 어긋남을 막는다."""
+    with pytest.raises(psycopg.errors.ForeignKeyViolation) as exc:
+        with conn.tx() as cur:
+            loc = _location(cur)
+            cur.execute("""insert into item (item_code, item_name, item_type) values ('TST-I', '(예시) 시험 제품', '제품')
+                           returning id""")
+            item = cur.fetchone()["id"]
+            cur.execute("""insert into customer (customer_code, customer_name) values ('TST-C', '(예시) 시험 거래처')
+                           returning id""")
+            cust = cur.fetchone()["id"]
+            cur.execute("""insert into production_request (request_no, customer_id, item_id, qty, due_date)
+                           values ('TST-REQ', %s, %s, 10, current_date) returning id""", (cust, item))
+            req = cur.fetchone()["id"]
+            wo = []
+            for no in ("TST-WO-A", "TST-WO-B"):
+                cur.execute("""insert into work_order (work_order_no, request_id, item_id, qty)
+                               values (%s, %s, %s, 10) returning id""", (no, req, item))
+                wo.append(cur.fetchone()["id"])
+            cur.execute("""insert into product_lot (lot_no, item_id, work_order_id, qty)
+                           values ('TST-PLOT', %s, %s, 10) returning id""", (item, wo[0]))
+            lot = cur.fetchone()["id"]
+            cur.execute("""insert into product_receipt (work_order_id, product_lot_id, location_id, qty)
+                           values (%s, %s, %s, 10)""", (wo[1], lot, loc))
+    assert exc.value.diag.constraint_name == "product_receipt_lot_wo_fk"
 
 
 def test_function_list_tables_exist_in_schema():

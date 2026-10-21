@@ -103,6 +103,8 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | F-SHP-011 F-SHP-012 | `lot_stock` | `allocated_qty` 만 — 할당을 잡고 다시 잡는다 | 스펙 §4.3 · D-510 |
 | F-SHP-021 | `lot_stock` `stock_move` | 확정 수량만큼 `qty` · `allocated_qty` 를 함께 줄이고 `stock_move` 한 행(출하) | D-510 · function-list F-SHP-021 |
 | 모든 쓰기 | `notification` | `notify.emit` 한 곳 · 쓰기 트랜잭션 안 | 스펙 §4.3 · D-511 |
+| 모든 쓰기 | `sys_change_log` | 쓰기 성공 직후 `audit.log_change` 한 행 (「쓰는 테이블」 열에 적지 않는 공통 규칙) | §2.1 규칙 3 · G-18 |
+| 모든 화면 조회 | `sys_access_log` | 화면 GET 마다 `templating.render` 가 조회 로그 한 행 (로그인 · 오류도 같은 표) | G-18 |
 | F-MAT-011 F-MAT-012 F-MAT-031 F-MAT-032 | `lot_stock` | 입고 LOT 의 재고 행 — 검사대기로 넣고 고친다 | D-510 · function-list F-MAT-011 · F-MAT-031 |
 | F-MAT-021 F-MAT-022 | `lot_stock` `stock_move` | 불출 수량만큼 `qty` 를 줄이고 `stock_move` 한 행(불출 · 불출 취소) | function-list F-MAT-021 |
 | F-INV-021 | `product_lot` `material_lot` | 분할 LOT 의 새 LOT 행 — `parent_lot_id` = 원 LOT · 번호 원 번호 + `-01` 순번 | D-509 · function-list F-INV-021 |
@@ -958,14 +960,14 @@ production_request ──< work_order  ◄──────┘
 <!-- BEGIN:generated views -->
 | 뷰 | 컬럼 | 설명 |
 |---|---|---|
-| `v_work_order_status` | `work_order_id` `work_order_no` `request_id` `request_no` `item_id` `order_qty` `daily_good_qty` `receipt_qty` `shipped_qty` `status` | 지시별 공정 상태 (WO-040) — 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합 · 상태 |
+| `v_work_order_status` | `work_order_id` `work_order_no` `request_id` `request_no` `item_id` `order_qty` `daily_good_qty` `receipt_qty` `shipped_qty` `status` | 지시별 공정 상태 (WO-040) — 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합(확정 출하 · shipment_adjust 반품·정정은 빼지 않는다 — D-515) · 상태 |
 | `v_dq_orders` | `request_no` `request_date` `customer_code` `customer_name` `item_code` `item_name` `qty` `due_date` `status` | 데이터 질의 — 수주(=생산의뢰) |
 | `v_dq_work_orders` | `work_order_no` `request_no` `item_code` `item_name` `equipment_code` `planned_on` `order_qty` `daily_good_qty` `receipt_qty` `shipped_qty` `status` | 데이터 질의 — 생산지시와 진행 수량 |
 | `v_dq_stock` | `lot_kind` `lot_no` `item_code` `item_name` `warehouse_code` `location_code` `qty` `allocated_qty` `available_qty` `status` | 데이터 질의 — LOT × 위치 재고 (가용 = 현재고 − 할당) |
 | `v_dq_shipments` | `shipment_no` `request_no` `customer_code` `customer_name` `due_date` `status` `confirmed_at` `lot_no` `item_code` `item_name` `qty` | 데이터 질의 — 출하 지시 행 (LOT · 수량 · 납기 · 확정) |
 | `v_dq_quality` | `inspection_kind` `lot_no` `item_code` `item_name` `seq` `result` `inspected_at` `is_latest` | 데이터 질의 — 입고검사 · 제품검사 판정 (is_latest = 그 LOT 의 현재 판정) |
 | `v_dq_production_daily` | `work_date` `work_order_no` `item_code` `item_name` `equipment_code` `produced_qty` `good_qty` `loss_qty` `run_minutes` `stop_minutes` | 데이터 질의 — 생산일보 (지시 × 일자 × 설비) |
-| `v_dq_collections` | `batch_no` `period_from` `period_to` `erp_customer_code` `customer_code` `customer_name` `txn_date` `sales_amount` `collected_amount` `balance_amount` `method` `bill_due_date` | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 영업부·회계부·관리자·경영진만 — D-513) |
+| `v_dq_collections` | `batch_no` `period_from` `period_to` `erp_customer_code` `customer_code` `customer_name` `txn_date` `sales_amount` `collected_amount` `balance_amount` `method` `bill_due_date` | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 사용 중 매핑만 · 기간이 겹치면 올라온 그대로 센다 D-516 · 영업부·회계부·관리자·경영진만 — D-513) |
 | `v_dq_receivables` | `erp_customer_code` `customer_code` `customer_name` `sales_amount` `collected_amount` `receivable_amount` `last_txn_date` `as_of` | 데이터 질의 — 거래처별 미수 (매출 합 − 수금 합 · 기준일 = 반영 회차의 마지막 기간 끝) |
 <!-- END:generated views -->
 

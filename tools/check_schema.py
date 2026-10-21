@@ -34,6 +34,7 @@ DB_SCHEMA_MD = ROOT / "contracts" / "db-schema.md"
 SCHEMA_SQL = ROOT / "src" / "lcomfine" / "db" / "schema.sql"
 FN_ID_RE = re.compile(r"F-[A-Z]+-\d+")
 ANY_WRITE = "모든 쓰기"
+ANY_READ = "모든 화면 조회"   # 읽기 쪽 공통 로그 — 기능의 쓰는 테이블과 대조하지 않는다
 
 #: 추적 척추 — (테이블, 컬럼) → 참조 테이블 (db-schema.md §3)
 SPINE_FKS = {
@@ -79,7 +80,10 @@ def contract_exceptions() -> list[tuple[set[str] | None, set[str]]]:
         if len(cells) < 2 or not re.findall(r"`(\w+)`", cells[1]):
             continue
         ids = set(FN_ID_RE.findall(cells[0]))
-        if not ids and cells[0] != ANY_WRITE:
+        if not ids and cells[0] not in (ANY_WRITE, ANY_READ):
+            continue
+        if cells[0] == ANY_READ:
+            out.append((set(), set(re.findall(r"`(\w+)`", cells[1]))))   # 기능에 걸리지 않는 행 — 표에 있음만 확인
             continue
         out.append((ids or None, set(re.findall(r"`(\w+)`", cells[1]))))
     return out
@@ -236,7 +240,7 @@ def main() -> int:
             else:
                 outside.append(f"{f.id}({f.menu_code})→{t}({c_tables[t]})")
     readonly = sorted(f.id for f in contracts.functions() if f.menu_code in ("TRK", "LOT", "PRP") and f.tables)
-    unused = [i for i in range(len(exc)) if i not in used_exc]
+    unused = [i for i, (ids, _) in enumerate(exc) if ids and i not in used_exc]   # 기능 ID 를 적은 행은 실제로 쓰여야 한다
     add("쓰기 경계: 쓰는 테이블 ⊆ 자기 대메뉴 영역 ∪ §2.2 예외 · TRK·LOT·PRP 쓰기 0",
         exc and not missing and not outside and not readonly and not unused,
         f"쓰기 기능 {len(contracts.write_functions())} · 예외 행 {len(exc)}(쓰임 {len(used_exc)})"
@@ -257,8 +261,10 @@ def main() -> int:
     trg = conn.q("""select tgrelid::regclass::text as t, tgtype from pg_trigger
                      where not tgisinternal and tgrelid::regclass::text = any(%s)""", (list(APPEND_ONLY),))
     guarded = sorted({r["t"] for r in trg if r["tgtype"] & 2 and r["tgtype"] & 8 and r["tgtype"] & 16})
-    add("불변 이력 — stock_adjust · shipment_adjust 에 before update or delete 트리거", guarded == sorted(APPEND_ONLY),
-        f"트리거 있는 테이블 {guarded}")
+    no_trunc = sorted({r["t"] for r in trg if r["tgtype"] & 2 and r["tgtype"] & 32})
+    add("불변 이력 — stock_adjust · shipment_adjust 에 before update or delete · before truncate 트리거",
+        guarded == sorted(APPEND_ONLY) and no_trunc == sorted(APPEND_ONLY),
+        f"update·delete {guarded} · truncate {no_trunc}")
 
     # ── 10. 이름 · PK ──
     want = schema_sql_names()

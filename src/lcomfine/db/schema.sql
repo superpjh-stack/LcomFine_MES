@@ -10,6 +10,8 @@
 --   · 컬럼 한 줄에 하나, 줄 끝에 `-- 설명`. 제약 줄은 constraint 로 시작하고 한 줄에 하나.
 --   · 공통 컬럼: id bigserial pk · created_at · created_by · updated_at · updated_by (맨 끝).
 --     불변 행(조정 · 반품·정정)과 로그 테이블은 updated_* 를 두지 않는다. 자연키가 분명한 곳은 그 키가 pk 다.
+--     sys_permission · sys_number_rule · sys_number_seq 에는 created_at 이 없다(설정 · 카운터 행 — updated_at 만, 카운터는 그것도 없음).
+--     로그는 sys_access_log.logged_at · sys_change_log.changed_at 이 created_at 의 자리다.
 --   · 코드 text · 수량 numeric(14,3) · 금액 numeric(16,2) · 날짜 date · 시각 timestamptz · 상태는 한글 check.
 --   · 데이터가 있는 DB 에 컬럼을 더할 때는 ALTER 로 반영하고 여기서도 그 테이블의 맨 끝에 적는다.
 --
@@ -414,6 +416,7 @@ create table product_lot (
     updated_at     timestamptz,                                      -- 수정 일시
     updated_by     text,                                             -- 수정자 login_id
     constraint product_lot_no_uq unique (lot_no),
+    constraint product_lot_wo_uq unique (id, work_order_id),
     constraint product_lot_qty_chk check (qty > 0),
     constraint product_lot_parent_chk check (parent_lot_id is distinct from id)
 );
@@ -436,6 +439,7 @@ create table product_receipt (
     updated_at      timestamptz,                                     -- 수정 일시
     updated_by      text,                                            -- 수정자 login_id
     constraint product_receipt_lot_uq unique (product_lot_id),
+    constraint product_receipt_lot_wo_fk foreign key (product_lot_id, work_order_id) references product_lot (id, work_order_id),
     constraint product_receipt_qty_chk check (qty > 0)
 );
 create index product_receipt_wo_idx on product_receipt (work_order_id);
@@ -945,12 +949,20 @@ create trigger shipment_adjust_append_only_trg
     before update or delete on shipment_adjust
     for each row execute function append_only_guard();
 
+create trigger stock_adjust_no_truncate_trg
+    before truncate on stock_adjust
+    for each statement execute function append_only_guard();
+
+create trigger shipment_adjust_no_truncate_trg
+    before truncate on shipment_adjust
+    for each statement execute function append_only_guard();
+
 -- ════════════════════════════════════════════════════════════════════
 -- 뷰 — 저장하지 않고 계산한다 (읽기 전용). v_dq_* 는 데이터 질의(RPT-130)의 허용 뷰 8 (D-513)
 -- 수량 합은 취소 표시된 입고 행을 빼고, 출하는 확정된 출하만 센다.
 -- ════════════════════════════════════════════════════════════════════
 
--- @view v_work_order_status | 지시별 공정 상태 (WO-040) — 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합 · 상태
+-- @view v_work_order_status | 지시별 공정 상태 (WO-040) — 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합(확정 출하 · shipment_adjust 반품·정정은 빼지 않는다 — D-515) · 상태
 create view v_work_order_status as
 select w.id as work_order_id,
        w.work_order_no,
@@ -1087,7 +1099,8 @@ select d.work_date,
   join work_order w on w.id = d.work_order_id
   join item i on i.id = w.item_id;
 
--- @view v_dq_collections | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 영업부·회계부·관리자·경영진만 — D-513)
+-- 알려진 한계: 기준 기간이 겹치는 회차들은 올라온 그대로 모두 센다(겹침을 풀지 않는다 — 열 구성 · 기간 규칙 D-516).
+-- @view v_dq_collections | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 사용 중 매핑만 · 기간이 겹치면 올라온 그대로 센다 D-516 · 영업부·회계부·관리자·경영진만 — D-513)
 create view v_dq_collections as
 select b.batch_no,
        b.period_from,
@@ -1095,15 +1108,15 @@ select b.batch_no,
        u.parsed ->> 'customer_code' as erp_customer_code,
        c.customer_code,
        c.customer_name,
-       (u.parsed ->> 'txn_date')::date as txn_date,
-       (u.parsed ->> 'sales_amount')::numeric(16,2) as sales_amount,
-       (u.parsed ->> 'collected_amount')::numeric(16,2) as collected_amount,
-       (u.parsed ->> 'balance_amount')::numeric(16,2) as balance_amount,
-       u.parsed ->> 'method' as method,
-       (u.parsed ->> 'bill_due_date')::date as bill_due_date
+       nullif(u.parsed ->> 'txn_date', '')::date as txn_date,
+       nullif(u.parsed ->> 'sales_amount', '')::numeric(16,2) as sales_amount,
+       nullif(u.parsed ->> 'collected_amount', '')::numeric(16,2) as collected_amount,
+       nullif(u.parsed ->> 'balance_amount', '')::numeric(16,2) as balance_amount,
+       nullif(u.parsed ->> 'method', '') as method,
+       nullif(u.parsed ->> 'bill_due_date', '')::date as bill_due_date
   from erp_upload_row u
   join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
-  left join erp_customer_map cm on cm.erp_code = u.parsed ->> 'customer_code'
+  left join erp_customer_map cm on cm.erp_code = u.parsed ->> 'customer_code' and cm.use_yn = 'Y'
   left join customer c on c.id = cm.customer_id
  where u.error is null and u.parsed is not null;
 
