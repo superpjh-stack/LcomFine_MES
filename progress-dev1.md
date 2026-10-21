@@ -43,11 +43,25 @@
 - F-WO-021 은 같은 트랜잭션에서 `notify.handle_by_link(cur, <request_created link>, user)` 로 그 의뢰의 알림을 닫는다.
 - **개발2 MAT-020 불출**은 `order_issued` 알림을 닫으려면 쓰기 트랜잭션에서 `notify.handle_by_link(cur, nav.path_of("MAT-020") + f"?wo={work_order_no}", user)` 를 부르면 된다.
 
-## 2. 진행
+## 2. 진행 (W1 · 2026-10-21)
 
 | 항목 | 실측 | 검증 방법 |
 |---|---|---|
+| 담당 기능 (W1 범위 HOME · BAS · STD · WO · SYS · TRK) | **62 / 62** 라우트 + `@pytest.mark.fn` — HOME 5 · BAS 12 · STD 23 · WO 10 · SYS 9 · TRK 3 | `uv run python tools/check_trace.py` — 고아 ①③ 목록에 F-HOME/BAS/STD/WO/SYS/TRK 0 (남은 27 중 개발1 은 DOC 6 · W4) |
+| 개발1 테스트 | **65 passed** (test_dev1_common · bas 12 · std 23 · wo 10 · home 5 · sys 9 · trk 3 · jobs 2) | `uv run pytest tests/test_dev1_*.py -q` |
+| 개발1 placeholder | 화면 23 등록 · 남은 2 = DOC-010 · DOC-020 (W4) | `make gate` G-03 「개발1 2」 |
+| 빌드 전제 | pytest 189 passed · /health 200 | `make gate` (읽기 전용 · 19:47) |
+| 배치 | `due-check` — 대상 의뢰 · 새 알림 행 수를 찍는다. 같은 날 재실행 0행 | `uv run python -m lcomfine.jobs due-check` · tests/test_dev1_jobs.py |
+| 시드 | `seed_dev1.run()` 두 번 → item 4 · customer 2 · location 2 그대로 (전부 `(예시)`) | `uv run python -c "from lcomfine.db import seed_dev1; seed_dev1.run()"` |
+| 결정 | D-601~D-607 (가설) | decisions.md |
+
+- 쓰기는 전부 `rbac.require_fn` · 화면 GET 은 `rbac.require_screen` · 출력 GET(F-STD-054 · F-WO-024)은 `require_fn`. 성공은 `http.saved` 직후 `audit.log_change`.
+- 경로 키가 숫자가 아니거나 없으면 404, 폼으로 고른 값이 틀리면 422(F-WO-021 의 없는 의뢰만 계약대로 404). 템플릿에 스크립트 없음.
+- 「참조가 있으면 사용 중지」는 `routers/bas.py` 의 `remove_or_disable` 한 곳(FK 를 DB 카탈로그에서 읽는다). 개발1 라우터 공용 폼 헬퍼도 bas.py 에 있다.
 
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
-(아직 없음)
+1. **notify (아키텍트)** — F-HOME-031 「개인 추가 알림만 켜고 끈다」: 설정은 저장되지만 `notify.unread` 는 `to_role = 사용자 부서` 행만 보여서, 다른 부서로 가는 이벤트를 켜도 알림함에 나타나지 않는다. `unread` 가 `notification_setting.enabled = true` 인 이벤트의 다른 부서 행(dedupe_key 로 한 줄)도 함께 보이게 할지 판정을 요청한다. 화면에는 이 사실을 안내 문장으로 적었다.
+2. **stats (개발3) / 계약 문장** — TRK 3 화면은 계약상 「집계 SQL 은 `stats` 뿐」이지만 W1 지시대로 `routers/trk.py` 안의 조회 SQL 로 보인다(D-607). `stats` 에 의뢰별 진행(`progress`) 을 옮길지, 계약 문장을 「TRK 는 조회 SQL」로 고칠지 정해 달라. 수금 칸은 `stats.customer_receivable` 공표(W2) 뒤 붙인다.
+3. **개발2 / 개발3 화면 조건** — HOME 카드가 거는 조회 인자: QC-010 · QC-020 `?status=검사대기`, MAT-020 · PRD-010 · SHP-010 · SHP-020 · COL-020 · COL-030 은 인자 없이 연다. 각 화면이 그 인자를 받아 거르면 「조건이 걸린 채 열린다」가 완성된다.
+4. **위치 확인 (아키텍트)** — goal.md §3.2 는 `app/jobs.py`, w1-dev1 · Makefile 은 `python -m lcomfine.jobs` → `src/lcomfine/jobs.py` 로 만들었다. interfaces.md §10 은 개발 시드 `main() -> int`, w1-common 은 `run()` — 둘 다 두었다. CLAUDE.md 는 아직 v1(설계도 · 대메뉴 12) 내용이다.
