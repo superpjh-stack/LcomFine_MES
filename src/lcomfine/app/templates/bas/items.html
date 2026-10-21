@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% set TYPES = [("제품", "제품"), ("원자재", "원자재")] %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">품목 코드는 바꾸지 않는다 · 사용 중지 품목은 의뢰 · 입고 · 출하 지시에서 고를 수 없다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("q", "코드·이름", form.q) }}
+    {{ f.select("item_type", "구분", TYPES, form.item_type, blank="전체") }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("품목 수정 — " ~ edit.item_code, "/bas/items/" ~ edit.id, "F-BAS-012", cancel=nav.path_of("BAS-010")) %}
+  {{ f.input("item_code", "품목 코드", edit.item_code, readonly=true) }}
+  {{ f.input("item_name", "품목명", edit.item_name, required=true) }}
+  {{ f.select("item_type", "구분", TYPES, edit.item_type, required=true, blank=none) }}
+  {{ f.input("spec", "규격", edit.spec) }}
+  {{ f.input("unit", "단위", edit.unit) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("품목 등록", "/bas/items", "F-BAS-011") %}
+  {{ f.input("item_code", "품목 코드", required=true) }}
+  {{ f.input("item_name", "품목명", required=true) }}
+  {{ f.select("item_type", "구분", TYPES, "", required=true) }}
+  {{ f.input("spec", "규격") }}
+  {{ f.input("unit", "단위") }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>품목 코드</th><th>품목명</th><th>구분</th><th>규격</th><th>단위</th><th>사용</th><th>비고</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.item_code }}</code></td><td>{{ r.item_name }}</td><td>{{ r.item_type }}</td>
+      <td>{{ r.spec | txt }}</td><td>{{ r.unit | txt }}</td><td>{{ f.use_chip(r.use_yn) }}</td><td>{{ r.note | txt }}</td>
+      <td>{% if fn_allowed.get("F-BAS-012") %}<a class="btn btn-sm" href="?edit={{ r.id }}">수정</a>{% endif %}
+          {{ f.del_btn("/bas/items/" ~ r.id ~ "/delete", "F-BAS-013") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

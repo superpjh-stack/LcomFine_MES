@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">위치(랙·구역)는 창고 아래에 둔다 · 코드는 바꾸지 않는다 · 재고가 남은 위치는 삭제할 수 없다.</p>
+</section>
+
+{% if edit %}
+{% call f.form_panel("창고 수정 — " ~ edit.warehouse_code, "/bas/warehouses/" ~ edit.id, "F-BAS-032", cancel=nav.path_of("BAS-030")) %}
+  <input type="hidden" name="target" value="warehouse">
+  {{ f.input("warehouse_code", "창고 코드", edit.warehouse_code, readonly=true) }}
+  {{ f.input("warehouse_name", "창고명", edit.warehouse_name, required=true) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% elif edit_location %}
+{% call f.form_panel("위치 수정 — " ~ edit_location.location_code, "/bas/warehouses/" ~ edit_location.id, "F-BAS-032", cancel=nav.path_of("BAS-030")) %}
+  <input type="hidden" name="target" value="location">
+  {{ f.input("location_code", "위치 코드", edit_location.location_code, readonly=true) }}
+  {{ f.input("location_name", "위치명", edit_location.location_name, required=true) }}
+  {{ f.use_select(edit_location.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("창고 등록", "/bas/warehouses", "F-BAS-031") %}
+  <input type="hidden" name="target" value="warehouse">
+  {{ f.input("warehouse_code", "창고 코드", required=true) }}
+  {{ f.input("warehouse_name", "창고명", required=true) }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% call f.form_panel("위치 등록", "/bas/warehouses", "F-BAS-031") %}
+  <input type="hidden" name="target" value="location">
+  {% set opts = [] %}
+  {% for w in warehouses if w.use_yn == "Y" %}{% set _ = opts.append((w.id, w.warehouse_code ~ " " ~ w.warehouse_name)) %}{% endfor %}
+  {{ f.select("warehouse_id", "창고", opts, "", required=true) }}
+  {{ f.input("location_code", "위치 코드", required=true) }}
+  {{ f.input("location_name", "위치명", required=true) }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  <h2 class="panel__title" style="margin:12px 16px 0">창고</h2>
+  {% if warehouses %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>창고 코드</th><th>창고명</th><th class="num">위치 수</th><th>사용</th><th>비고</th><th></th></tr></thead>
+    <tbody>
+    {% for r in warehouses %}
+    <tr>
+      <td><code>{{ r.warehouse_code }}</code></td><td>{{ r.warehouse_name }}</td><td class="num">{{ r.location_count | num }}</td>
+      <td>{{ f.use_chip(r.use_yn) }}</td><td>{{ r.note | txt }}</td>
+      <td>{% if fn_allowed.get("F-BAS-032") %}<a class="btn btn-sm" href="?edit={{ r.id }}">수정</a>{% endif %}
+          {{ f.del_btn("/bas/warehouses/" ~ r.id ~ "/delete", "F-BAS-033", hidden={"target": "warehouse"}) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel panel--grid">
+  <h2 class="panel__title" style="margin:12px 16px 0">위치 (랙·구역)</h2>
+  {% if locations %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>창고</th><th>위치 코드</th><th>위치명</th><th class="num">현재고</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in locations %}
+    <tr>
+      <td><code>{{ r.warehouse_code }}</code></td><td><code>{{ r.location_code }}</code></td><td>{{ r.location_name }}</td>
+      <td class="num">{{ r.stock_qty | num(3) }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{% if fn_allowed.get("F-BAS-032") %}<a class="btn btn-sm" href="?edit_location={{ r.id }}">수정</a>{% endif %}
+          {{ f.del_btn("/bas/warehouses/" ~ r.id ~ "/delete", "F-BAS-033", hidden={"target": "location"}, confirm="위치를 삭제할까요? 재고가 남은 위치는 삭제할 수 없고, 참조가 있으면 사용 중지로 바꿉니다.") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

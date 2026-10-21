@@ -36,7 +36,7 @@
 
 | 이벤트 | 기능 | link | dedupe_key |
 |---|---|---|---|
-| `request_created` | F-WO-011 | `nav.path_of("WO-020") + "?request=<의뢰번호>"` | `request_created:<의뢰번호>` |
+| `request_created` | F-WO-011 | `nav.path_of("WO-010") + "?q=<의뢰번호>"` (수신 PR · DS 둘 다 WO-010 을 볼 수 있다 — DS 는 WO-020 칸이 없다) | `request_created:<의뢰번호>` |
 | `order_issued` | F-WO-021 | `nav.path_of("MAT-020") + "?wo=<지시번호>"` | `order_issued:<지시번호>` |
 | `due_d3_unshipped` | `uv run python -m lcomfine.jobs due-check` | `nav.path_of("TRK-020") + "?request=<의뢰번호>"` | `due:<의뢰번호>:<YYYY-MM-DD>` |
 

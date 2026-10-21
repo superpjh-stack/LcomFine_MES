@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">거래처 코드는 바꾸지 않는다 · ERP 거래처 코드와의 짝은 수금리포트의
+    <a href="{{ nav.path_of('COL-030') }}">거래처 코드 매핑</a>에서 관리한다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("q", "코드·이름", form.q) }}
+    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("거래처 수정 — " ~ edit.customer_code, "/bas/customers/" ~ edit.id, "F-BAS-022", cancel=nav.path_of("BAS-020")) %}
+  {{ f.input("customer_code", "거래처 코드", edit.customer_code, readonly=true) }}
+  {{ f.input("customer_name", "거래처명", edit.customer_name, required=true) }}
+  {{ f.input("contact_name", "담당자", edit.contact_name) }}
+  {{ f.input("phone", "연락처", edit.phone) }}
+  {{ f.input("address", "주소", edit.address) }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("거래처 등록", "/bas/customers", "F-BAS-021") %}
+  {{ f.input("customer_code", "거래처 코드", required=true) }}
+  {{ f.input("customer_name", "거래처명", required=true) }}
+  {{ f.input("contact_name", "담당자") }}
+  {{ f.input("phone", "연락처") }}
+  {{ f.input("address", "주소") }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>거래처 코드</th><th>거래처명</th><th>담당자</th><th>연락처</th><th>주소</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.customer_code }}</code></td><td>{{ r.customer_name }}</td><td>{{ r.contact_name | txt }}</td>
+      <td>{{ r.phone | txt }}</td><td>{{ r.address | txt }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td><a class="btn btn-sm" href="{{ nav.path_of('TRK-030') }}?customer={{ r.id }}">종합 조회</a>
+          {% if fn_allowed.get("F-BAS-022") %}<a class="btn btn-sm" href="?edit={{ r.id }}">수정</a>{% endif %}
+          {{ f.del_btn("/bas/customers/" ~ r.id ~ "/delete", "F-BAS-023") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

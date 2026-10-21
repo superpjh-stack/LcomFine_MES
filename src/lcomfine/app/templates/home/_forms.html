@@ -1,0 +1,66 @@
+{# 개발1 화면 공용 폼 매크로 — `{% import "home/_forms.html" as f with context %}` (fn_allowed 를 읽는다).
+   스크립트 없음. 확인 대화는 app.js 의 `data-confirm`. #}
+
+{% macro input(name, label, value="", type="text", required=false, readonly=false, placeholder="", step="") -%}
+<label class="field"><span>{{ label }}{% if required %} <b aria-hidden="true">*</b>{% endif %}</span>
+  <input type="{{ type }}" name="{{ name }}" value="{{ value if value is not none else '' }}"{% if required %} required{% endif %}{% if readonly %} readonly{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if step %} step="{{ step }}"{% endif %}>
+</label>
+{%- endmacro %}
+
+{# options: [(value, label), ...] #}
+{% macro select(name, label, options, value="", required=false, blank="선택") -%}
+<label class="field"><span>{{ label }}{% if required %} <b aria-hidden="true">*</b>{% endif %}</span>
+  <select name="{{ name }}"{% if required %} required{% endif %}>
+    {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+    {% for v, l in options %}
+    <option value="{{ v }}"{% if (v | string) == (value | string) %} selected{% endif %}>{{ l }}</option>
+    {% endfor %}
+  </select>
+</label>
+{%- endmacro %}
+
+{% macro textarea(name, label, value="", rows=4, placeholder="") -%}
+<label class="field"><span>{{ label }}</span>
+  <textarea name="{{ name }}" rows="{{ rows }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ value if value is not none else '' }}</textarea>
+</label>
+{%- endmacro %}
+
+{# 등록·수정 폼 패널. 권한이 없는 부서는 폼 대신 안내 한 줄 (서버도 403 으로 막는다) #}
+{% macro form_panel(title, action, fn_id, enctype="", cancel="") -%}
+<section class="panel">
+  <h2>{{ title }}</h2>
+  {% if fn_allowed.get(fn_id) %}
+  <form class="search" method="post" action="{{ action }}"{% if enctype %} enctype="{{ enctype }}"{% endif %}>
+    {{ caller() }}
+    <div class="actions">
+      {% if cancel %}<a class="btn" href="{{ cancel }}">취소</a>{% endif %}
+      <button type="submit" class="btn btn-primary">저장</button>
+    </div>
+  </form>
+  {% else %}
+  <p class="muted">이 부서는 이 기능을 실행할 권한이 없습니다 <code>{{ fn_id }}</code></p>
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{# 삭제(참조가 있으면 사용 중지) 단추 — 작은 폼 하나 #}
+{% macro del_btn(action, fn_id, label="삭제", hidden={}, confirm="삭제할까요? 참조가 있으면 지우지 않고 사용 중지로 바꿉니다.") -%}
+{% if fn_allowed.get(fn_id) %}
+<form method="post" action="{{ action }}" class="inline">
+  {% for k, v in hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <button type="submit" class="btn btn-sm" data-confirm="{{ confirm }}">{{ label }}</button>
+</form>
+{% endif %}
+{%- endmacro %}
+
+{% macro use_select(value="Y") -%}
+{{ select("use_yn", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], value or "Y", blank=none) }}
+{%- endmacro %}
+
+{% macro use_chip(v) -%}
+<span class="chip chip--{{ 'ok' if v == 'Y' else 'muted' }}">{{ '사용' if v == 'Y' else '사용 중지' }}</span>
+{%- endmacro %}
+
+{% macro kv(d) -%}
+{% if d %}<dl class="kv">{% for k, v in d.items() %}<dt>{{ k }}</dt><dd>{{ v | txt }}</dd>{% endfor %}</dl>{% else %}<span class="muted">미수집</span>{% endif %}
+{%- endmacro %}
