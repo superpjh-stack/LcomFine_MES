@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">지시별 진행 단계를 한 화면에서 본다 · 지시 수량 · 일보 완료(양품) 합 · 제품 입고 합 · 확정 출하 합 —
+    뷰 <code>v_work_order_status</code> 를 읽기만 한다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("q", "지시번호·의뢰번호·제품", form.q) }}
+    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>지시번호</th><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">지시 수량</th>
+      <th class="num">일보 완료</th><th class="num">제품 입고</th><th class="num">출하</th><th class="num">남은 수량</th><th>상태</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.work_order_no }}</code></td><td><code>{{ r.request_no }}</code></td><td>{{ r.customer_name }}</td>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.due_date | dt }}</td>
+      <td class="num">{{ r.order_qty | num(3) }}</td><td class="num">{{ r.daily_good_qty | num(3) }}</td>
+      <td class="num">{{ r.receipt_qty | num(3) }}</td><td class="num">{{ r.shipped_qty | num(3) }}</td>
+      <td class="num">{{ (r.order_qty - r.shipped_qty) | num(3) }}</td><td>{{ ui.chip(r.status) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

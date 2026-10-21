@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
+{% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">이 화면의 의뢰가 IA 전체의 "수주" 기준이다 · 의뢰번호가 생산지시서 → 일보 → 제품 입고 → 출하로 이어지는 연결 키가 된다 ·
+    영업지원의 발주서는 FINE_MES에 남고, 발주 내용을 의뢰로 등록한다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("q", "의뢰번호·거래처·제품", form.q) }}
+    {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
+    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+    {{ f.input("due_from", "납기 시작", form.due_from, type="date") }}
+    {{ f.input("due_to", "납기 끝", form.due_to, type="date") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% set ed_opts = [] %}{% for s in editable_statuses %}{% set _ = ed_opts.append((s, s)) %}{% endfor %}
+{% if edit.status == "지시완료" %}{% set _ = ed_opts.append(("지시완료", "지시완료")) %}{% endif %}
+{% call f.form_panel("의뢰 수정 — " ~ edit.request_no, "/wo/requests/" ~ edit.id, "F-WO-012", cancel=nav.path_of("WO-010")) %}
+  {{ f.input("request_no", "의뢰번호", edit.request_no, readonly=true) }}
+  {{ f.select("customer_id", "거래처", cust_opts, edit.customer_id, required=true) }}
+  {{ f.item_select(items, edit.item_id) }}
+  {{ f.input("qty", "수량", edit.qty, type="number", required=true, step="0.001") }}
+  {{ f.input("due_date", "납기", edit.due_date, type="date", required=true) }}
+  {{ f.select("status", "상태 (단가·납기 확인 후 확정)", ed_opts, edit.status, required=true, blank=none) }}
+  {{ f.input("note", "비고 (발주 내용 요약)", edit.note) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("의뢰 등록 — 다음 번호 " ~ next_no, "/wo/requests", "F-WO-011") %}
+  {{ f.select("customer_id", "거래처", cust_opts, "", required=true) }}
+  {{ f.item_select(items) }}
+  {{ f.input("qty", "수량", type="number", required=true, step="0.001") }}
+  {{ f.input("due_date", "납기", type="date", required=true) }}
+  {{ f.input("request_date", "의뢰일 (비우면 오늘)", type="date") }}
+  {{ f.input("note", "비고 (발주 내용 요약)") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>의뢰일</th><th>거래처</th><th>제품</th><th class="num">수량</th><th>납기</th><th class="num">D-day</th>
+      <th>상태</th><th class="num">지시</th><th class="num">출하</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.request_no }}</code></td><td>{{ r.request_date | dt }}</td><td>{{ r.customer_name }}</td>
+      <td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td class="num">{{ r.qty | num(3) }}</td>
+      <td>{{ r.due_date | dt }}</td><td class="num">{{ r.d_day }}</td><td>{{ ui.chip(r.status) }}</td>
+      <td class="num">{{ r.order_count | num }}</td><td class="num">{{ r.shipped_qty | num(3) }}</td>
+      <td><a class="btn btn-sm" href="{{ nav.path_of('TRK-010') }}?request={{ r.request_no }}">진행</a>
+        {% if can_order and r.status in ("확인대기", "확정", "지시완료") %}<a class="btn btn-sm" href="{{ nav.path_of('WO-020') }}?request_no={{ r.request_no }}">지시서 작성</a>{% endif %}
+        {{ f.edit_link("F-WO-012", "edit=" ~ r.id) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}
