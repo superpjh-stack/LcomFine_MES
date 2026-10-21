@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% macro stock_options(selected="") -%}
+<option value="">LOT 선택</option>
+{% for s in stock %}
+<option value="{{ s.id }}"{% if (s.id | string) == (selected | string) %} selected{% endif %}>{{ s.lot_no }} · {{ s.item_name }} · {{ s.location_code }} · 가용 {{ s.available | num(3) }}</option>
+{% endfor %}
+{%- endmacro %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">가용 재고 안에서만 LOT 를 할당한다(가용 = 현재고 − 할당 · D-510). 생산의뢰 번호를 고르면 거래처 · 제품 · 수량 · 납기를 불러온다.
+    확정은 <a href="{{ nav.path_of('SHP-020') }}">출하 확정</a> · 재고는 <a href="{{ nav.path_of('INV-010') }}">LOT별 재고 조회</a>.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+        {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == form.customer %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
+      </select></label>
+    {{ f.select("status", "상태", [("지시", "지시"), ("확정", "확정"), ("취소", "취소")], form.status) }}
+    {{ f.input("due_from", "납기 시작", form.due_from, type="date") }}
+    {{ f.input("due_to", "납기 끝", form.due_to, type="date") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+<section class="panel">
+  <h2>출하 지시 수정 — {{ edit.shipment_no }} {{ ui.chip(edit.status) }}</h2>
+  {% if edit.status != "지시" %}
+  <p class="muted">{{ edit.status }}된 출하는 고칠 수 없습니다. 확정 후 정정은 <a href="{{ nav.path_of('SHP-020') }}">출하 확정</a>의 반품·정정 등록으로 남긴다.</p>
+  {% elif fn_allowed.get("F-SHP-012") %}
+  <p class="muted">거래처 {{ edit.customer_name }} · 의뢰 {{ edit.request_no | txt }} — 할당 줄을 통째로 바꾼다(이전 할당은 풀린다).</p>
+  <form class="search" method="post" action="{{ nav.path_of('SHP-010') }}/{{ edit.id }}">
+    {{ f.input("due_date", "납기", edit.due_date, type="date") }}
+    {{ f.input("note", "비고", edit.note) }}
+    {% for i in range(slots) %}
+    {% set ln = edit.lines[i] if i < (edit.lines | length) else none %}
+    <label class="field"><span>{{ i + 1 }}번 LOT</span><select name="stock_id">{{ stock_options(ln.stock_id if ln else "") }}</select></label>
+    {{ f.input("qty", (i + 1) ~ "번 수량", ln.qty if ln else "", type="number", step="0.001") }}
+    {% endfor %}
+    <div class="actions"><a class="btn" href="{{ nav.path_of('SHP-010') }}">취소</a><button type="submit" class="btn btn-primary">저장</button></div>
+  </form>
+  {% else %}{{ f.denied("F-SHP-012") }}{% endif %}
+</section>
+{% else %}
+<section class="panel">
+  <h2>출하 지시 등록</h2>
+  {% if fn_allowed.get("F-SHP-011") %}
+  <form class="search" method="get" role="search" aria-label="생산의뢰 불러오기">
+    <label class="field"><span>생산의뢰 번호 (공정 이관 시)</span>
+      <select name="request_no"><option value="">없음</option>
+        {% for q in requests %}<option value="{{ q.request_no }}"{% if q.request_no == form.request_no %} selected{% endif %}>{{ q.request_no }} · {{ q.customer_name }} · {{ q.item_name }} · 납기 {{ q.due_date | dt }}</option>{% endfor %}
+      </select></label>
+    <div class="actions"><button type="submit" class="btn">불러오기</button></div>
+  </form>
+  {% if prefill %}
+  <dl class="kv">
+    <dt>생산의뢰</dt><dd><code>{{ prefill.request_no }}</code> {{ ui.chip(prefill.status) }}</dd>
+    <dt>거래처</dt><dd>{{ prefill.customer_name }}</dd>
+    <dt>제품</dt><dd>{{ prefill.item_code }} · {{ prefill.item_name }}</dd>
+    <dt>의뢰 수량</dt><dd class="num">{{ prefill.qty | num(3) }} (이미 지시·확정 {{ prefill.already_qty | num(3) }} · 남은 {{ prefill.remaining_qty | num(3) }})</dd>
+    <dt>납기</dt><dd>{{ prefill.due_date | dt }}</dd>
+  </dl>
+  {% endif %}
+  <form class="search" method="post" action="{{ nav.path_of('SHP-010') }}">
+    <input type="hidden" name="request_no" value="{{ prefill.request_no if prefill else '' }}">
+    <label class="field"><span>거래처 <b aria-hidden="true">*</b></span>
+      <select name="customer_id" required><option value="">선택</option>
+        {% for c in customers if c.use_yn == "Y" %}<option value="{{ c.id }}"{% if prefill and prefill.customer_id == c.id %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
+      </select></label>
+    {{ f.input("due_date", "납기", prefill.due_date if prefill else "", type="date", required=true) }}
+    {{ f.input("note", "비고") }}
+    {% for i in range(slots) %}
+    <label class="field"><span>{{ i + 1 }}번 LOT{% if i == 0 %} <b aria-hidden="true">*</b>{% endif %}</span><select name="stock_id">{{ stock_options() }}</select></label>
+    {{ f.input("qty", (i + 1) ~ "번 수량", (prefill.remaining_qty if (prefill and i == 0 and prefill.remaining_qty > 0) else ""), type="number", step="0.001") }}
+    {% endfor %}
+    <div class="actions"><button type="submit" class="btn btn-primary">출하 지시 등록</button></div>
+  </form>
+  {% if not stock %}{{ ui.empty("할당할 수 있는 가용 제품 LOT 가 없다 — 미수집") }}{% endif %}
+  {% else %}{{ f.denied("F-SHP-011") }}{% endif %}
+</section>
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>출하 번호</th><th>상태</th><th>거래처</th><th>생산의뢰</th><th>납기</th><th>LOT 할당</th><th class="num">수량 합</th><th>확정 일시</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.shipment_no }}</code></td><td>{{ ui.chip(r.status) }}</td>
+      <td>{{ r.customer_name }}</td><td>{{ r.request_no | txt }}</td><td>{{ r.due_date | dt }}</td>
+      <td>{% for ln in lines.get(r.id, []) %}{{ ln.lot_no }} ({{ ln.location_code }}) {{ ln.qty | num(3) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td class="num">{{ r.total_qty | num(3) }}</td><td>{{ r.confirmed_at | dt }}</td>
+      <td>{% if r.status == "지시" and fn_allowed.get("F-SHP-012") %}<a class="btn btn-sm" href="?edit={{ r.id }}">수정</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

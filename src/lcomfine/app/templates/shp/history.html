@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">확정된 출하 — 반품·정정 행을 원 출하 아래에 묶어 보여 준다(재고 반영은 {{ ui.undecided("D-515") }}). 수금 대조는 <a href="{{ nav.path_of('COL-070') }}">출하 대비 수금 조회</a>.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("date_from", "확정일 시작", form.date_from, type="date") }}
+    {{ f.input("date_to", "확정일 끝", form.date_to, type="date") }}
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+        {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == form.customer %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span>품목</span>
+      <select name="item"><option value="">전체</option>
+        {% for i in items %}<option value="{{ i.id }}"{% if (i.id | string) == form.item %} selected{% endif %}>{{ i.item_code }} · {{ i.item_name }}</option>{% endfor %}
+      </select></label>
+    {{ f.input("no", "출하 번호", form.no) }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid plain">
+    <thead><tr><th>출하 번호</th><th>확정 일시</th><th>거래처</th><th>생산의뢰</th><th>납기</th><th>LOT · 품목</th><th class="num">출하 수량</th><th class="num">반품·정정 합</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.shipment_no }}</code></td><td>{{ r.confirmed_at | dt }}</td><td>{{ r.customer_name }}</td>
+      <td>{{ r.request_no | txt }}</td><td>{{ r.due_date | dt }}</td>
+      <td>{% for ln in lines.get(r.id, []) %}{{ ln.lot_no }} · {{ ln.item_name }} {{ ln.qty | num(3) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td class="num">{{ r.shipped_qty | num(3) }}</td><td class="num">{{ r.adjust_qty | num(3) }}</td>
+      <td><a class="btn btn-sm" href="{{ trace_path }}?shipment_no={{ r.shipment_no }}">역추적</a></td>
+    </tr>
+    {% for a in adjusts.get(r.id, []) %}
+    <tr class="dim" data-adjust-of="{{ r.shipment_no }}">
+      <td>└ {{ a.kind }}</td><td>{{ a.created_at | dt }}</td><td colspan="3">{{ a.reason }} · {{ a.created_by | txt }}</td>
+      <td>{{ a.lot_no | txt("출하 전체") }}</td><td></td><td class="num">{{ a.qty | num(3) }}</td><td></td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">검사 판정 확인 — 검사 미판정·불합격 LOT 가 하나라도 있으면 확정하지 않는다(D-515). 확정하면 출하 수량만큼 현재고와 할당을 함께 줄인다(가용은 그대로 · D-510).
+    판정은 <a href="{{ nav.path_of('QC-020') }}">제품검사 판정</a> · 추적은 <a href="{{ nav.path_of('LOT-010') }}">정방향 추적</a>.</p>
+  <form class="search" method="get" role="search">
+    {{ f.input("no", "출하 번호", form.no) }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+<section class="panel"><h2>확정 대상 (상태 지시)</h2></section>
+<section class="panel panel--grid">
+  {% if pending %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>출하 번호</th><th>거래처</th><th>생산의뢰</th><th>납기</th><th>LOT · 판정 · 재고 상태</th><th class="num">수량 합</th><th></th></tr></thead>
+    <tbody>
+    {% for r in pending %}
+    {% set ls = lines.get(r.id, []) %}
+    <tr>
+      <td><code>{{ r.shipment_no }}</code></td><td>{{ r.customer_name }}</td><td>{{ r.request_no | txt }}</td><td>{{ r.due_date | dt }}</td>
+      <td>{% for ln in ls %}{{ ln.lot_no }} {{ ln.qty | num(3) }} · {{ ui.chip(ln.judgement) }} · {{ ui.chip(ln.stock_status) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td class="num">{{ ls | sum(attribute="qty") | num(3) }}</td>
+      <td>
+        {% if fn_allowed.get("F-SHP-021") %}
+          {% if r.blockers %}
+          <span class="chip chip--bad" title="{{ r.blockers | join(', ') }}">확정 불가 {{ r.blockers | length }} LOT</span>
+          {% endif %}
+          <form method="post" action="{{ nav.path_of('SHP-020') }}/{{ r.id }}/confirm" class="inline">
+            <button type="submit" class="btn btn-sm btn-primary" data-confirm="{{ r.shipment_no }} 를 확정할까요? 확정 후에는 고칠 수 없고 반품·정정 행으로만 남긴다.">확정</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel"><h2>최근 확정 · 반품·정정 등록</h2>
+  <p class="muted">확정 후 정정은 반품·정정 행으로 남긴다 — 재고는 바꾸지 않는다(재고 반영은 {{ ui.undecided("D-515") }}). 행은 고치거나 지우지 않는다.</p></section>
+<section class="panel panel--grid">
+  {% if confirmed %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>출하 번호</th><th>거래처</th><th>확정 일시</th><th>LOT</th><th>반품·정정</th></tr></thead>
+    <tbody>
+    {% for r in confirmed %}
+    {% set ls = lines.get(r.id, []) %}
+    <tr>
+      <td><code>{{ r.shipment_no }}</code></td><td>{{ r.customer_name }}</td><td>{{ r.confirmed_at | dt }}</td>
+      <td>{% for ln in ls %}{{ ln.lot_no }} {{ ln.qty | num(3) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td>
+        {% if fn_allowed.get("F-SHP-023") %}
+        <form method="post" action="{{ nav.path_of('SHP-020') }}/{{ r.id }}/adjust" class="search">
+          <label class="field"><span>구분 *</span><select name="kind" required>{% for k in adjust_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
+          <label class="field"><span>LOT</span><select name="lot_no"><option value="">출하 전체</option>{% for ln in ls %}<option value="{{ ln.lot_no }}">{{ ln.lot_no }}</option>{% endfor %}</select></label>
+          {{ f.input("qty", "수량", type="number", step="0.001", required=true) }}
+          {{ f.input("reason", "사유", required=true) }}
+          <button type="submit" class="btn btn-sm">등록</button>
+        </form>
+        {% else %}{{ f.denied("F-SHP-023") }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}
