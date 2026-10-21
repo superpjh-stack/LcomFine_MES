@@ -1,0 +1,1216 @@
+<title>엘컴화인 MES 통합본</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<style>
+/* =====================================================================
+   엘컴화인 MES 통합본 — 화면 구조(IA) · 부서 간 업무 변화 2개 탭
+   - 위쪽 탭 줄은 고정, 아래는 선택한 페이지가 화면 높이만큼 차지하고 그 안에서 스크롤
+   - 페이지끼리 걸린 링크는 새 창 대신 탭 전환
+   - 부서별 업무의 화면 ID를 누르면 화면 구조 탭에서 그 화면이 열림
+   ===================================================================== */
+:root{ --bg:#f5f6f8; --surface:#ffffff; --ink:#1b2333; --muted:#5d6779; --line:#dde1e8; --accent:#0b7a8a;
+  --f:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;--accent:#4cc0cf;color-scheme:dark; } }
+:root[data-theme="dark"]{ --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;--accent:#4cc0cf;color-scheme:dark; }
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);display:flex;flex-direction:column}
+.top{flex:none;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 0;
+  display:flex;flex-wrap:wrap;gap:6px 20px;align-items:flex-end}
+.brand{display:grid;gap:0;padding-bottom:10px}
+.brand b{font-size:1rem}
+.brand span{font-size:.75rem;color:var(--muted)}
+.tabs{display:flex;gap:2px;overflow-x:auto;min-width:0;max-width:100%}
+.tabs button{flex:none;font:inherit;font-size:.9rem;color:var(--muted);background:transparent;border:0;border-bottom:3px solid transparent;padding:8px 14px 9px;cursor:pointer}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+main{flex:1;min-height:0;position:relative}
+iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
+</style>
+
+<div class="top">
+  <div class="brand"><b>엘컴화인 MES 구축</b><span>화면 구조 · 부서 간 업무 변화 · 2026-10-21</span></div>
+  <nav class="tabs" role="tablist" aria-label="문서"><button id="t-ia" data-key="ia" role="tab" aria-selected="false">화면 구조 (IA)</button><button id="t-guide" data-key="guide" role="tab" aria-selected="false">부서 간 업무 변화</button></nav>
+</div>
+<main><iframe id="f-ia" title="화면 구조 (IA)" data-key="ia" srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;html{color-scheme:light}body{margin:0;font-size:14px;font-family:system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;title&gt;엘컴화인 MES IA&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* =====================================================================
+   엘컴화인 MES IA (정보 구조) — 독립 HTML, 2026-10-21 개정 2
+   ---------------------------------------------------------------------
+   범위
+     - 공정 메뉴 21개: FINE_MES 원래 구성(이름·묶음) 그대로 새 MES에 넣음
+       (조작부에서 &quot;FINE_MES에서 계속 사용&quot;으로 바꿔 볼 수 있음)
+     - 창고·출하·검사: 대안1 범위
+     - 수금리포트: ERP 수금현황을 올리고 조회하는 업무
+     - AI 리포트: 수주(생산의뢰)부터 생산·출하·수금까지 보는 리포트 모음
+     - 문서관리는 제외
+   구조: 묶음 → L1 대메뉴 → L2 화면(화면 ID) → L3 화면 구성
+   보기 3종: 사이트맵 / 트리 목록 / 권한 매트릭스, 상단에 업무 흐름 띠
+   색 개념(인쇄 CMYK에서 착안)
+     시안=대안1 유지, 마젠타=FINE_MES 공정 이관, 주황=로직 변경, 옐로=신규
+   ===================================================================== */
+:root{
+  /* --- 색 토큰 (라이트) --- */
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#1b2333; --muted:#5d6779; --line:#dde1e8;
+  --cyan:#0b7a8a; --cyan-soft:#e0f1f3;     /* 대안1 유지 */
+  --mag:#a8336a;  --mag-soft:#f6e4ec;      /* FINE_MES 공정 이관 */
+  --org:#b4471f;  --org-soft:#fbe7df;      /* 로직 변경 */
+  --yel:#9a6400;  --yel-soft:#fbf0d6;      /* 신규 */
+  --hl:#fff3b0;                             /* 검색 강조 */
+  --gray-soft:#e8eaee; --gray-ink:#7a8190;  /* 별도 시스템(문서관리) */
+  /* --- 글꼴 토큰 --- */
+  --f-body:&quot;IBM Plex Sans KR&quot;,&quot;Apple SD Gothic Neo&quot;,&quot;Malgun Gothic&quot;,sans-serif;
+  --f-mono:&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SFMono-Regular&quot;,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme=&quot;light&quot;]){
+    --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;
+    --cyan:#4cc0cf;--cyan-soft:#143039;--mag:#e07aa6;--mag-soft:#3a1c2b;
+    --org:#f08a64;--org-soft:#3d1f15;--yel:#e6b54f;--yel-soft:#3a2d10;--hl:#4a4116;--gray-soft:#262c38;--gray-ink:#8b93a3;color-scheme:dark;
+  }
+}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;
+  --cyan:#4cc0cf;--cyan-soft:#143039;--mag:#e07aa6;--mag-soft:#3a1c2b;
+  --org:#f08a64;--org-soft:#3d1f15;--yel:#e6b54f;--yel-soft:#3a2d10;--hl:#4a4116;--gray-soft:#262c38;--gray-ink:#8b93a3;color-scheme:dark;
+}
+
+/* ---------- 기본 ---------- */
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1280px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:24px 64px;display:grid;gap:18px}
+h1,h2,h3{margin:0;line-height:1.3;text-wrap:balance}
+h1{font-size:1.55rem}
+h2{font-size:1.05rem}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:.84rem}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* ---------- 요약 띠 ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stats div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:0}
+.stats .v{font-family:var(--f-mono);font-weight:600;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.stats .k{font-size:.74rem;color:var(--muted)}
+
+/* ---------- 업무 흐름 띠 (수주 → 수금) ---------- */
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.fstep{flex:1 1 130px;min-width:0;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;display:grid;gap:1px}
+.fstep:hover{border-color:var(--ink)}
+.fstep b{font-size:.88rem}
+.fstep span{font-size:.74rem;color:var(--muted)}
+.fstep .t{font-family:var(--f-mono)}
+.fstep.ext{border-style:dashed}
+.farrow{align-self:center;color:var(--muted)}
+@media (max-width:700px){.farrow{display:none}}
+
+/* ---------- 조작부 ---------- */
+.controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.seg{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:5px 12px;cursor:pointer;font-size:.85rem;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=&quot;true&quot;]{background:var(--ink);color:var(--surface);font-weight:600}
+.controls label{display:inline-flex;align-items:center;gap:6px;font-size:.85rem}
+.controls input[type=search],.controls select{padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);min-width:0}
+.controls input[type=search]{width:170px}
+.controls input[type=checkbox]{accent-color:var(--yel)}
+.ctl-label{font-size:.78rem;color:var(--muted)}
+
+/* ---------- 칩 ---------- */
+.chip{display:inline-block;font-size:.72rem;font-weight:600;padding:0 7px;border-radius:999px;white-space:nowrap;line-height:1.6}
+.s-keep{background:var(--cyan-soft);color:var(--cyan)}
+.s-fine{background:var(--mag-soft);color:var(--mag)}
+.s-mod{background:var(--org-soft);color:var(--org)}
+.s-new{background:var(--yel-soft);color:var(--yel)}
+.s-out{background:var(--bg);color:var(--muted);border:1px dashed var(--line)}
+.s-ext{background:var(--gray-soft);color:var(--gray-ink)}
+.t{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+
+/* ---------- 본문 2열: 보기 + 상세 패널 ---------- */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:960px){.main{grid-template-columns:minmax(0,1fr)}}
+.detail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:12px;max-height:calc(100vh - 24px);overflow:auto}
+@media (max-width:960px){.detail{position:static;max-height:none}}
+.detail ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:.86rem}
+.detail .kv{display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:.85rem;margin:0}
+.detail .kv dt{color:var(--muted)}
+.detail .kv dd{margin:0}
+.linkbtn{border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:1px 8px;font-size:.78rem;cursor:pointer;margin:0 4px 4px 0}
+
+/* ---------- 보기 1: 사이트맵 ---------- */
+.bundle{display:grid;gap:10px;margin-bottom:22px}
+.bundle-h{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;border-bottom:2px solid var(--ink);padding-bottom:6px}
+.bundle-h b{font-size:.95rem}
+.map{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px;align-items:start}
+.l1{background:var(--surface);border:1px solid var(--line);border-radius:8px;display:grid;overflow:hidden}
+.l1-h{padding:10px 12px;border-bottom:1px solid var(--line);display:grid;gap:2px}
+.l1-h b{font-size:.95rem}
+.l1.new .l1-h{background:var(--yel-soft)}
+.l1.fine .l1-h{background:var(--mag-soft)}
+.l1.outside{opacity:.55;border-style:dashed}
+.l1-list{display:grid;padding:6px}
+.l2{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;background:transparent;border:0;border-radius:5px;padding:6px 8px;cursor:pointer;align-items:center}
+.l2:hover{background:var(--bg)}
+.l2[aria-current=&quot;true&quot;]{background:var(--cyan-soft)}
+.l2 .nm{font-size:.86rem}
+.l2 .id{font-family:var(--f-mono);font-size:.68rem;color:var(--muted);grid-column:1}
+.l2.dim{opacity:.35}
+.l2.hit .nm{background:var(--hl);border-radius:3px}
+.l2.st-mod{box-shadow:inset 3px 0 0 var(--org)}
+.l2.st-new{box-shadow:inset 3px 0 0 var(--yel)}
+.l2.st-fine{box-shadow:inset 3px 0 0 var(--mag)}
+.batch{border-top:1px dashed var(--line);margin:4px 6px 0;padding:6px 2px;font-size:.76rem;color:var(--muted)}
+.sso{font-family:var(--f-mono);font-size:.68rem;font-weight:600;color:var(--yel);border:1px solid var(--yel);border-radius:3px;padding:0 4px;white-space:nowrap}
+/* 문서관리 = 별도 시스템: 카드 전체를 회색으로 */
+.l1.extsys{border-style:dashed;background:var(--gray-soft)}
+.l1.extsys .l1-h{background:var(--gray-soft)}
+.l1.extsys .l1-h b,.l1.extsys .nm{color:var(--gray-ink)}
+.l1.extsys .l2 .sso{color:var(--gray-ink);border-color:var(--gray-ink)}
+.l2.st-ext{box-shadow:inset 3px 0 0 var(--gray-ink)}
+
+/* ---------- 보기 2·3: 표 ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--bg);color:var(--muted);font-size:.76rem;font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tr.bgrp td{background:var(--ink);color:var(--surface);font-weight:600;font-size:.8rem}
+tr.grp td{background:var(--bg);font-weight:600}
+tr.row{cursor:pointer}
+tr.row:hover td{background:var(--bg)}
+tr.row.sel td{background:var(--cyan-soft)}
+tr.row.dim td{opacity:.35}
+td.c,th.c{text-align:center}
+.lv3{color:var(--muted);font-size:.8rem}
+.rw{font-family:var(--f-mono);font-weight:600}
+.rw.W{color:var(--cyan)}
+.rw.R{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted)}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.bar{width:3px;height:14px;display:inline-block}
+.warn{background:var(--org-soft);border-left:3px solid var(--org);padding:8px 12px;border-radius:4px;font-size:.85rem}
+.note{font-size:.82rem;color:var(--muted);max-width:86ch;display:grid;gap:6px}
+&lt;/style&gt;
+
+&lt;div class=&quot;wrap&quot;&gt;
+
+  &lt;!-- ===== 머리말 ===== --&gt;
+  &lt;header style=&quot;display:grid;gap:6px&quot;&gt;
+    &lt;p class=&quot;eyebrow&quot;&gt;정보 구조 · 2026-10-21&lt;/p&gt;
+    &lt;h1&gt;엘컴화인 MES IA&lt;/h1&gt;
+    &lt;p class=&quot;muted&quot; style=&quot;max-width:76ch&quot;&gt;FINE_MES 공정 메뉴 21개를 원래 이름과 묶음 그대로 넣었습니다. 여기에 창고·출하(대안1), ERP 수금현황을 올려 조회하는 수금리포트, 수주부터 수금까지 보는 AI 리포트, 별도 문서관리 시스템으로 SSO 연결되는 문서관리 메뉴를 더했습니다. 대메뉴는 일이 흘러가는 순서(기준 → 수주·지시 → 자재·생산 → 품질·재고 → 출하·수금 → 추적·분석 → 지원)로 놓았습니다. 화면을 누르면 처리 로직과 연결 화면이 보입니다. 권한은 부서 단위이며, 부서별 사용법은 &lt;a href=&quot;https://claude.ai/artifact/TP8tvPZZJAhhWK9rkn6khi&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; style=&quot;color:var(--cyan)&quot;&gt;부서별 업무&lt;/a&gt; 페이지에 있습니다.&lt;/p&gt;
+  &lt;/header&gt;
+
+  &lt;!-- ===== 요약 띠 ===== --&gt;
+  &lt;div class=&quot;stats&quot; id=&quot;stats&quot;&gt;&lt;/div&gt;
+
+  &lt;!-- ===== 업무 흐름 띠: 수주부터 수금까지 화면이 어떻게 이어지는지 ===== --&gt;
+  &lt;div style=&quot;display:grid;gap:8px&quot;&gt;
+    &lt;p class=&quot;eyebrow&quot;&gt;업무 흐름 · 수주에서 수금까지&lt;/p&gt;
+    &lt;div class=&quot;flow&quot; id=&quot;flow&quot;&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- ===== 조작부 ===== --&gt;
+  &lt;div class=&quot;controls&quot;&gt;
+    &lt;div class=&quot;seg&quot; role=&quot;group&quot; aria-label=&quot;보기&quot;&gt;
+      &lt;button id=&quot;v-map&quot; data-view=&quot;map&quot; aria-pressed=&quot;true&quot;&gt;사이트맵&lt;/button&gt;
+      &lt;button id=&quot;v-tree&quot; data-view=&quot;tree&quot;&gt;트리 목록&lt;/button&gt;
+      &lt;button id=&quot;v-role&quot; data-view=&quot;role&quot;&gt;권한 매트릭스&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;seg&quot; role=&quot;group&quot; aria-label=&quot;상태&quot;&gt;
+      &lt;button id=&quot;f-all&quot; data-st=&quot;all&quot; aria-pressed=&quot;true&quot;&gt;전체&lt;/button&gt;
+      &lt;button id=&quot;f-keep&quot; data-st=&quot;keep&quot;&gt;유지&lt;/button&gt;
+      &lt;button id=&quot;f-fine&quot; data-st=&quot;fine&quot;&gt;공정 이관&lt;/button&gt;
+      &lt;button id=&quot;f-mod&quot; data-st=&quot;mod&quot;&gt;변경&lt;/button&gt;
+      &lt;button id=&quot;f-new&quot; data-st=&quot;new&quot;&gt;신규&lt;/button&gt;
+      &lt;button id=&quot;f-ext&quot; data-st=&quot;ext&quot;&gt;별도 시스템&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;label for=&quot;role&quot;&gt;역할
+      &lt;select id=&quot;role&quot;&gt;&lt;option value=&quot;&quot;&gt;전체&lt;/option&gt;&lt;/select&gt;
+    &lt;/label&gt;
+    &lt;label for=&quot;q&quot;&gt;&lt;input type=&quot;search&quot; id=&quot;q&quot; placeholder=&quot;화면명·ID 검색&quot;&gt;&lt;/label&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;controls&quot;&gt;
+    &lt;span class=&quot;ctl-label&quot;&gt;공정 메뉴&lt;/span&gt;
+    &lt;div class=&quot;seg&quot; role=&quot;group&quot; aria-label=&quot;공정 메뉴 처리&quot;&gt;
+      &lt;button id=&quot;p-move&quot; data-proc=&quot;move&quot; aria-pressed=&quot;true&quot;&gt;새 MES로 이관&lt;/button&gt;
+      &lt;button id=&quot;p-keep&quot; data-proc=&quot;keep&quot;&gt;FINE_MES에서 계속 사용&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;label for=&quot;opt-col&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;opt-col&quot; checked&gt;수금리포트&lt;/label&gt;
+    &lt;label for=&quot;opt-ai&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;opt-ai&quot; checked&gt;AI 리포트&lt;/label&gt;
+    &lt;label for=&quot;opt-doc&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;opt-doc&quot; checked&gt;문서관리 (SSO)&lt;/label&gt;
+    &lt;label for=&quot;opt-self&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;opt-self&quot; checked&gt;내 업무·통합 조회&lt;/label&gt;
+  &lt;/div&gt;
+  &lt;div id=&quot;warns&quot; style=&quot;display:grid;gap:6px&quot;&gt;&lt;/div&gt;
+
+  &lt;div class=&quot;legend&quot;&gt;
+    &lt;span&gt;&lt;i class=&quot;bar&quot; style=&quot;background:var(--cyan)&quot;&gt;&lt;/i&gt;대안1 유지&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;bar&quot; style=&quot;background:var(--mag)&quot;&gt;&lt;/i&gt;FINE_MES 공정 이관&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;bar&quot; style=&quot;background:var(--org)&quot;&gt;&lt;/i&gt;로직 변경&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;bar&quot; style=&quot;background:var(--yel)&quot;&gt;&lt;/i&gt;신규&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;bar&quot; style=&quot;background:var(--gray-ink)&quot;&gt;&lt;/i&gt;별도 시스템 (문서관리)&lt;/span&gt;
+    &lt;span&gt;W 처리 · R 조회&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;!-- ===== 본문 ===== --&gt;
+  &lt;div class=&quot;main&quot;&gt;
+    &lt;div id=&quot;view&quot; style=&quot;min-width:0&quot;&gt;&lt;/div&gt;
+    &lt;aside class=&quot;detail&quot; id=&quot;detail&quot; aria-live=&quot;polite&quot;&gt;&lt;/aside&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;note&quot;&gt;
+    &lt;p&gt;공정 메뉴 이름과 원래 위치는 FINE_MES 분석 리포트의 메뉴 목록에서 가져왔습니다. 화면 내용은 원가 화면만 확인했기 때문에, 공정 화면의 구성과 로직은 메뉴 이름에서 추정한 것입니다.&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+/* =======================================================================
+   1. 역할
+   ======================================================================= */
+/* 권한 단위 = 부서 (개정 3)
+   FINE_MES 부서 구성(영업지원, 생산관리부, 출하실, 디자인실·개발실, 관리부)에 전략부·경영진을 더함.
+   품질 검사·원단(자재) 관리는 FINE_MES에서 생산관리부 메뉴였으므로 생산부에 둔다.
+   화면 정의 안의 옛 역할 코드(WH·QC·AC)는 아래 mapRoles()에서 부서로 바꾼다. */
+const ROLES = [
+  {id:&#x27;SL&#x27;,  name:&#x27;영업부&#x27;},
+  {id:&#x27;PR&#x27;,  name:&#x27;생산부&#x27;},
+  {id:&#x27;SH&#x27;,  name:&#x27;출하실&#x27;},
+  {id:&#x27;DS&#x27;,  name:&#x27;디자인·개발실&#x27;},
+  {id:&#x27;AC&#x27;,  name:&#x27;회계부&#x27;},
+  {id:&#x27;ST&#x27;,  name:&#x27;전략부&#x27;},
+  {id:&#x27;EX&#x27;,  name:&#x27;경영진&#x27;},
+  {id:&#x27;ADM&#x27;, name:&#x27;전산 관리자&#x27;}
+];
+
+/* =======================================================================
+   2. 규모 상수
+   ======================================================================= */
+const W = {EI:4.0, EO:5.2, EQ:3.9, ILF:7.5};
+const FP_BASE = 227.2;   // 대안1 (데이터 60.0 포함)
+const FP_PROC = 242.1;   // 대안2 증분 = FINE_MES 공정 메뉴 이관·재개발 + 데이터 이관
+const FP_LINK = 23.0;    // FINE_MES 데이터 연계 (공정을 FINE_MES에 둘 때 AI 리포트 원천용)
+
+/* =======================================================================
+   3. IA 데이터
+   - bundle : 사이트맵 묶음
+   - L1     : code, name, kind(&#x27;base&#x27;|&#x27;fine&#x27;|&#x27;new&#x27;), opt(&#x27;proc&#x27;|&#x27;col&#x27;|&#x27;ai&#x27;|&#x27;doc&#x27;|&#x27;self&#x27;)
+   - L2     : id, name, type(화면 유형), st(&#x27;keep&#x27;|&#x27;fine&#x27;|&#x27;mod&#x27;|&#x27;new&#x27;),
+              orig(FINE_MES 원래 메뉴 위치), modBy(변경 조건),
+              roles{역할:&#x27;W&#x27;|&#x27;R&#x27;}, l3(화면 구성), logic(처리 규칙), links(연결 화면)
+   - modBy  : &#x27;move&#x27;(공정 이관일 때 변경), &#x27;col&#x27;, &#x27;ai&#x27;, &#x27;any&#x27;(수금·AI 중 하나라도)
+   ======================================================================= */
+/* 사이트맵 묶음 = 업무 프로세스 단계 (위에서 아래로 일이 흘러가는 순서) */
+const BUNDLES = [
+  {key:&#x27;s0&#x27;, name:&#x27;⓪ 내 업무&#x27;,    desc:&#x27;로그인하면 처음 보는 곳: 내 부서가 처리할 일과 알림&#x27;},
+  {key:&#x27;s1&#x27;, name:&#x27;① 기준&#x27;,       desc:&#x27;품목·거래처·창고, 제품별 인쇄 사양&#x27;},
+  {key:&#x27;s2&#x27;, name:&#x27;② 수주·지시&#x27;,  desc:&#x27;생산의뢰(수주) → 생산지시 → 순서·진행&#x27;},
+  {key:&#x27;s3&#x27;, name:&#x27;③ 자재·생산&#x27;,  desc:&#x27;원자재 입고 → 불출 → 생산 → 공정 검사 → 제품 입고&#x27;},
+  {key:&#x27;s4&#x27;, name:&#x27;④ 품질·재고&#x27;,  desc:&#x27;입고·제품 검사 판정, LOT 재고&#x27;},
+  {key:&#x27;s5&#x27;, name:&#x27;⑤ 출하·수금&#x27;,  desc:&#x27;출하 지시·확정 → ERP 수금 확인&#x27;},
+  {key:&#x27;s6&#x27;, name:&#x27;⑥ 추적·분석&#x27;,  desc:&#x27;통합 조회, LOT 추적, 생산 보고서, AI 리포트&#x27;},
+  {key:&#x27;s7&#x27;, name:&#x27;⑦ 지원&#x27;,       desc:&#x27;문서관리(SSO), 시스템&#x27;}
+];
+/* 대메뉴 프로세스 순서와 단계 배정 (IA 배열 정의 순서와 상관없이 이 순서로 보여 줌) */
+const ORDER = [
+  [&#x27;HOME&#x27;,&#x27;s0&#x27;],
+  [&#x27;BAS&#x27;,&#x27;s1&#x27;],[&#x27;STD&#x27;,&#x27;s1&#x27;],
+  [&#x27;WO&#x27;,&#x27;s2&#x27;],
+  [&#x27;MAT&#x27;,&#x27;s3&#x27;],[&#x27;PRD&#x27;,&#x27;s3&#x27;],[&#x27;INS&#x27;,&#x27;s3&#x27;],
+  [&#x27;QC&#x27;,&#x27;s4&#x27;],[&#x27;INV&#x27;,&#x27;s4&#x27;],
+  [&#x27;SHP&#x27;,&#x27;s5&#x27;],[&#x27;COL&#x27;,&#x27;s5&#x27;],
+  [&#x27;TRK&#x27;,&#x27;s6&#x27;],[&#x27;LOT&#x27;,&#x27;s6&#x27;],[&#x27;PRP&#x27;,&#x27;s6&#x27;],[&#x27;RPT&#x27;,&#x27;s6&#x27;],
+  [&#x27;DOC&#x27;,&#x27;s7&#x27;],[&#x27;SYS&#x27;,&#x27;s7&#x27;]
+];
+
+const IA = [
+ /* ------------------------- 공정 (FINE_MES 원래 구성) ------------------------- */
+ /* ------------------------- 내 업무 (부서 자가 처리 기반) -------------------------
+    목적: 다른 부서에 전화·메신저로 묻거나 요청하지 않고, 앞 단계가 끝나면 다음 부서가 알림으로 바로 이어받게 한다. */
+ {bundle:&#x27;s0&#x27;, code:&#x27;HOME&#x27;, name:&#x27;내 업무&#x27;, kind:&#x27;new&#x27;, opt:&#x27;self&#x27;, screens:[
+   {id:&#x27;HOME-010&#x27;, name:&#x27;내 할 일&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,DS:&#x27;R&#x27;,AC:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;부서별 대기 건 카드 (건수 + 바로가기)&#x27;,&#x27;납기 임박·지연&#x27;,&#x27;오늘 처리한 건&#x27;],
+    logic:[&#x27;로그인한 사람의 부서에 맞는 대기 건만 모아 보여 준다&#x27;,&#x27;영업부: 단가·납기 확인이 필요한 의뢰, 납기 D-3 미출하, 판정 끝난 출하 대기&#x27;,&#x27;생산부: 지시 대기 의뢰, 불출 대기 지시, 입고검사·제품검사 대기 LOT, 일보 미입력 지시&#x27;,&#x27;출하실: 출하 지시 대기, 판정 완료 LOT&#x27;,&#x27;디자인·개발실: 시안 미등록 의뢰, 판 준비 필요 지시&#x27;,&#x27;회계부: 미매핑 ERP 거래처, 업로드 오류 행, 90일 초과 미수&#x27;,&#x27;전략부·경영진: 확정 대기 리포트, 이상 요약&#x27;,&#x27;카드를 누르면 해당 처리 화면이 조건이 걸린 채 열린다&#x27;],
+    links:[&#x27;HOME-020&#x27;,&#x27;TRK-010&#x27;]},
+   {id:&#x27;HOME-020&#x27;, name:&#x27;알림함&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,DS:&#x27;R&#x27;,AC:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;알림 목록 (읽음·안 읽음)&#x27;,&#x27;알림 → 해당 화면 바로가기&#x27;],
+    logic:[&#x27;앞 단계 부서가 일을 끝내면 다음 부서에 자동으로 알린다 (아래 배치 목록)&#x27;,&#x27;알림은 부서 단위로 가고, 한 사람이 처리하면 같은 부서의 다른 사람에게는 &quot;처리됨&quot;으로 바뀐다&#x27;,&#x27;알림을 눌러 연 화면에서 처리하면 알림이 닫힌다&#x27;],
+    links:[&#x27;HOME-010&#x27;,&#x27;HOME-030&#x27;]},
+   {id:&#x27;HOME-030&#x27;, name:&#x27;알림 설정&#x27;, type:&#x27;설정&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;W&#x27;,PR:&#x27;W&#x27;,SH:&#x27;W&#x27;,DS:&#x27;W&#x27;,AC:&#x27;W&#x27;,ST:&#x27;W&#x27;,EX:&#x27;W&#x27;,ADM:&#x27;W&#x27;},
+    l3:[&#x27;받을 알림 종류&#x27;,&#x27;받는 방법 (MES 안, 메일, 메신저 연동은 확인 필요)&#x27;],
+    logic:[&#x27;부서 기본 알림은 끌 수 없고, 개인 추가 알림만 켜고 끈다&#x27;]}
+ ], data:[&#x27;알림·처리 이력&#x27;],
+  batch:[&#x27;의뢰 등록 → 생산부·디자인실&#x27;,&#x27;지시 발행 → 생산부(불출 준비)&#x27;,&#x27;원자재 입고 → 생산부(입고검사)&#x27;,&#x27;제품 입고 → 생산부(제품검사)&#x27;,&#x27;판정 완료 → 출하실·영업부&#x27;,&#x27;출하 확정 → 영업부·회계부&#x27;,&#x27;ERP 업로드 오류·미매핑 → 회계부&#x27;,&#x27;납기 D-3 미출하 → 영업부·생산부&#x27;,&#x27;리포트 초안 → 작성 부서&#x27;]},
+
+ /* ------------------------- 통합 조회 (부서 간 문의를 없애는 조회 화면) ------------------------- */
+ {bundle:&#x27;s6&#x27;, code:&#x27;TRK&#x27;, name:&#x27;통합 조회&#x27;, kind:&#x27;new&#x27;, opt:&#x27;self&#x27;, screens:[
+   {id:&#x27;TRK-010&#x27;, name:&#x27;주문 진행 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,DS:&#x27;R&#x27;,AC:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;의뢰번호·거래처·제품 검색&#x27;,&#x27;단계 막대 (의뢰 → 지시 → 생산 → 검사 → 제품 입고 → 출하)&#x27;,&#x27;단계별 날짜·수량·담당 부서&#x27;],
+    logic:[&#x27;생산의뢰 번호 하나로 지금 어느 단계인지와 남은 수량을 실시간으로 보여 준다&#x27;,&#x27;고객 납기 문의에 영업부가 생산부에 묻지 않고 바로 답할 수 있게 하는 화면이다&#x27;,&#x27;공정을 FINE_MES에 두면 의뢰·지시·일보는 연계로 받은 값으로 보여 준다&#x27;],
+    links:[&#x27;WO-010&#x27;,&#x27;WO-040&#x27;,&#x27;MAT-030&#x27;,&#x27;SHP-030&#x27;]},
+   {id:&#x27;TRK-020&#x27;, name:&#x27;납기 현황&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;납기 임박 (D-7, D-3)&#x27;,&#x27;납기 지연&#x27;,&#x27;거래처·제품별&#x27;],
+    logic:[&#x27;납기는 생산의뢰서 값, 완료는 출하 확정일 기준&#x27;,&#x27;지연 건은 어느 단계에서 멈췄는지 함께 보여 준다&#x27;], links:[&#x27;TRK-010&#x27;,&#x27;RPT-050&#x27;]},
+   {id:&#x27;TRK-030&#x27;, name:&#x27;거래처 종합 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,AC:&#x27;R&#x27;,SH:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;거래처 선택&#x27;,&#x27;진행 중 주문&#x27;,&#x27;가용 재고 (그 거래처 제품)&#x27;,&#x27;최근 출하&#x27;,&#x27;수금·미수 (ERP 업로드 기준일 표시)&#x27;],
+    logic:[&#x27;영업부가 고객 통화 중에 한 화면으로 주문·재고·출하·미수를 확인한다&#x27;,&#x27;미수는 회계부가 올린 ERP 데이터를 그대로 보여 주고 고치지 않는다&#x27;], links:[&#x27;COL-050&#x27;,&#x27;INV-010&#x27;,&#x27;SHP-030&#x27;]}
+ ]},
+
+ {bundle:&#x27;proc&#x27;, code:&#x27;STD&#x27;, name:&#x27;인쇄 기준&#x27;, kind:&#x27;fine&#x27;, opt:&#x27;proc&#x27;, screens:[
+   {id:&#x27;STD-010&#x27;, name:&#x27;제조사양기준서&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 제조사양기준서&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;,QC:&#x27;R&#x27;},
+    l3:[&#x27;제품별 사양 목록&#x27;,&#x27;사양 등록·수정&#x27;], logic:[&#x27;제품별 인쇄 사양 기준을 관리한다&#x27;,&#x27;생산지시서를 만들 때 이 사양을 불러온다&#x27;], links:[&#x27;WO-020&#x27;]},
+   {id:&#x27;STD-020&#x27;, name:&#x27;표준관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 표준관리&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;},
+    l3:[&#x27;표준 조건 목록&#x27;,&#x27;등록·수정&#x27;], logic:[&#x27;표준 조건을 관리한다 (FINE_MES 화면 내용 확인 필요)&#x27;]},
+   {id:&#x27;STD-030&#x27;, name:&#x27;판관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;개발실 &gt; 판관리&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;},
+    l3:[&#x27;판 목록&#x27;,&#x27;판 등록·사용 이력&#x27;], logic:[&#x27;인쇄 판의 보유와 사용 이력을 관리한다&#x27;]},
+   {id:&#x27;STD-040&#x27;, name:&#x27;시안등록&#x27;, type:&#x27;등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;디자인실 &gt; 시안등록&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;R&#x27;},
+    l3:[&#x27;시안 이미지 등록&#x27;,&#x27;제품 연결&#x27;], logic:[&#x27;시안 이미지를 제품에 연결해 작업지시와 함께 볼 수 있게 한다&#x27;], links:[&#x27;WO-020&#x27;]},
+   {id:&#x27;STD-050&#x27;, name:&#x27;표준견본서&#x27;, type:&#x27;등록·출력&#x27;, st:&#x27;fine&#x27;, orig:&#x27;영업지원 &gt; 표준견본서&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;R&#x27;,AC:&#x27;W&#x27;},
+    l3:[&#x27;견본서 작성&#x27;,&#x27;출력&#x27;], logic:[&#x27;제품별 표준 견본서를 만들고 출력한다&#x27;]},
+   {id:&#x27;STD-060&#x27;, name:&#x27;예외제품관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;환경설정 &gt; 예외제품관리&#x27;, roles:{ADM:&#x27;W&#x27;},
+    l3:[&#x27;예외 제품 목록&#x27;,&#x27;등록&#x27;], logic:[&#x27;예외로 다루는 제품을 지정한다 (적용 규칙은 FINE_MES 확인 필요)&#x27;]}
+ ]},
+ {bundle:&#x27;proc&#x27;, code:&#x27;WO&#x27;, name:&#x27;작업지시&#x27;, kind:&#x27;fine&#x27;, opt:&#x27;proc&#x27;, screens:[
+   {id:&#x27;WO-010&#x27;, name:&#x27;생산의뢰서&#x27;, type:&#x27;등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산의뢰서&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;,AC:&#x27;W&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;의뢰 목록&#x27;,&#x27;의뢰 등록 (거래처·제품·수량·납기)&#x27;],
+    logic:[&#x27;이 화면의 의뢰가 IA 전체의 &quot;수주&quot; 기준이다&#x27;,&#x27;의뢰번호가 생산지시서 → 일보 → 제품 입고 → 출하로 이어지는 연결 키가 된다&#x27;,&#x27;영업지원의 발주서는 FINE_MES에 남고, 발주 내용을 의뢰로 등록한다&#x27;],
+    links:[&#x27;WO-020&#x27;,&#x27;RPT-010&#x27;,&#x27;RPT-070&#x27;]},
+   {id:&#x27;WO-020&#x27;, name:&#x27;생산지시서&#x27;, type:&#x27;등록·출력&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산지시서&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;,WH:&#x27;R&#x27;,QC:&#x27;R&#x27;},
+    l3:[&#x27;지시 목록&#x27;,&#x27;지시서 작성 (사양·시안 불러오기)&#x27;,&#x27;지시서 출력&#x27;],
+    logic:[&#x27;생산의뢰 한 건에서 지시서를 만든다&#x27;,&#x27;지시번호는 불출·제품 입고에서 고르는 값이 된다 (이관할 때)&#x27;], links:[&#x27;WO-010&#x27;,&#x27;STD-010&#x27;,&#x27;MAT-020&#x27;,&#x27;MAT-030&#x27;]},
+   {id:&#x27;WO-030&#x27;, name:&#x27;생산순서관리&#x27;, type:&#x27;처리&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산순서관리&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;},
+    l3:[&#x27;설비별 작업 순서&#x27;,&#x27;순서 변경&#x27;], logic:[&#x27;설비별로 지시의 작업 순서를 정한다&#x27;]},
+   {id:&#x27;WO-040&#x27;, name:&#x27;공정상태&#x27;, type:&#x27;조회&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 공정상태&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;지시별 공정 진행 상태&#x27;], logic:[&#x27;지시별 진행 단계를 한 화면에서 본다&#x27;], links:[&#x27;RPT-020&#x27;]}
+ ]},
+ {bundle:&#x27;proc&#x27;, code:&#x27;PRD&#x27;, name:&#x27;생산일보&#x27;, kind:&#x27;fine&#x27;, opt:&#x27;proc&#x27;, screens:[
+   {id:&#x27;PRD-010&#x27;, name:&#x27;생산일보&#x27;, type:&#x27;등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산일보 &gt; 생산일보&#x27;, roles:{ADM:&#x27;W&#x27;,PR:&#x27;W&#x27;},
+    l3:[&#x27;일자·설비 선택&#x27;,&#x27;지시별 생산량·로스 입력&#x27;], logic:[&#x27;지시번호별로 생산량과 로스를 일 단위로 입력한다&#x27;], links:[&#x27;WO-020&#x27;,&#x27;MAT-030&#x27;]},
+   {id:&#x27;PRD-020&#x27;, name:&#x27;생산일보출력&#x27;, type:&#x27;출력&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산일보 &gt; 생산일보출력&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;},
+    l3:[&#x27;일자 선택&#x27;,&#x27;출력 양식&#x27;], logic:[&#x27;입력한 일보를 양식으로 출력한다&#x27;]},
+   {id:&#x27;PRD-030&#x27;, name:&#x27;생산일보현황&#x27;, type:&#x27;조회&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산일보 &gt; 생산일보현황&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·설비·제품 조건&#x27;], logic:[&#x27;기간별 일보를 모아 본다&#x27;]},
+   {id:&#x27;PRD-040&#x27;, name:&#x27;생산지시서 대비 생산 로스율&#x27;, type:&#x27;리포트&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 생산일보 &gt; 생산지시서 대비 생산 로스율&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·지시 조건&#x27;,&#x27;지시별 로스율&#x27;], logic:[&#x27;지시 수량 대비 생산 로스를 비율로 본다 (산식은 FINE_MES 확인 필요)&#x27;], links:[&#x27;RPT-020&#x27;]}
+ ]},
+ {bundle:&#x27;proc&#x27;, code:&#x27;INS&#x27;, name:&#x27;검사일보&#x27;, kind:&#x27;fine&#x27;, opt:&#x27;proc&#x27;, screens:[
+   {id:&#x27;INS-010&#x27;, name:&#x27;검사일보&#x27;, type:&#x27;등록&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 검사일보 &gt; 검사일보&#x27;, roles:{ADM:&#x27;W&#x27;,QC:&#x27;W&#x27;,PR:&#x27;R&#x27;},
+    l3:[&#x27;일자 선택&#x27;,&#x27;지시별 검사 수량·불량 입력&#x27;], logic:[&#x27;공정 검사 결과를 일 단위로 입력한다&#x27;,&#x27;입고검사·제품검사 판정(품질 검사 메뉴)과는 다른 공정 검사 기록이다&#x27;], links:[&#x27;QC-020&#x27;]},
+   {id:&#x27;INS-020&#x27;, name:&#x27;검사일보출력&#x27;, type:&#x27;출력&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 검사일보 &gt; 검사일보출력&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;},
+    l3:[&#x27;일자 선택&#x27;,&#x27;출력 양식&#x27;], logic:[&#x27;입력한 검사일보를 양식으로 출력한다&#x27;]},
+   {id:&#x27;INS-030&#x27;, name:&#x27;검사일보현황&#x27;, type:&#x27;조회&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 검사일보 &gt; 검사일보현황&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·제품 조건&#x27;], logic:[&#x27;기간별 검사일보를 모아 본다&#x27;]},
+   {id:&#x27;INS-040&#x27;, name:&#x27;생산지시서 대비 검사 로스율&#x27;, type:&#x27;리포트&#x27;, st:&#x27;fine&#x27;, orig:&#x27;생산관리부 &gt; 검사일보 &gt; 생산지시서 대비 검사 로스율&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·지시 조건&#x27;,&#x27;지시별 검사 로스율&#x27;], logic:[&#x27;지시 수량 대비 검사 로스를 비율로 본다 (산식은 FINE_MES 확인 필요)&#x27;], links:[&#x27;RPT-030&#x27;]}
+ ]},
+ {bundle:&#x27;proc&#x27;, code:&#x27;PRP&#x27;, name:&#x27;생산 보고서&#x27;, kind:&#x27;fine&#x27;, opt:&#x27;proc&#x27;, screens:[
+   {id:&#x27;PRP-010&#x27;, name:&#x27;월별 가동률&#x27;, type:&#x27;리포트&#x27;, st:&#x27;fine&#x27;, orig:&#x27;보고서 &gt; 월별 가동률&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;연·월 선택&#x27;,&#x27;설비별 가동률&#x27;], logic:[&#x27;월 단위 설비 가동률을 본다&#x27;], links:[&#x27;RPT-020&#x27;]},
+   {id:&#x27;PRP-020&#x27;, name:&#x27;기계별통계&#x27;, type:&#x27;리포트&#x27;, st:&#x27;fine&#x27;, orig:&#x27;보고서 &gt; 기계별통계&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간 선택&#x27;,&#x27;기계별 생산·로스 통계&#x27;], logic:[&#x27;기계별 생산 통계를 본다&#x27;]},
+   {id:&#x27;PRP-030&#x27;, name:&#x27;생산완료집계&#x27;, type:&#x27;리포트&#x27;, st:&#x27;fine&#x27;, orig:&#x27;보고서 &gt; 생산완료집계&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·거래처 조건&#x27;,&#x27;완료 수량 집계&#x27;], logic:[&#x27;생산 완료 건을 집계한다&#x27;], links:[&#x27;MAT-030&#x27;]}
+ ]},
+
+ /* ------------------------- 기준·창고·출하 (대안1) ------------------------- */
+ {bundle:&#x27;wh&#x27;, code:&#x27;BAS&#x27;, name:&#x27;기준정보&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;BAS-010&#x27;, name:&#x27;품목 관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;,PR:&#x27;R&#x27;,QC:&#x27;R&#x27;,SH:&#x27;R&#x27;,AC:&#x27;R&#x27;},
+    l3:[&#x27;품목 목록&#x27;,&#x27;품목 등록·수정&#x27;,&#x27;규격·단위&#x27;], logic:[&#x27;품목코드 중복 금지&#x27;,&#x27;사용 중지 품목은 입고·출하 지시에서 고를 수 없다&#x27;]},
+   {id:&#x27;BAS-020&#x27;, name:&#x27;거래처 관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,AC:&#x27;W&#x27;,SH:&#x27;R&#x27;,WH:&#x27;R&#x27;},
+    l3:[&#x27;거래처 목록&#x27;,&#x27;등록·수정&#x27;], logic:[&#x27;ERP 거래처 코드와의 짝은 수금리포트의 거래처 코드 매핑에서 관리한다&#x27;], links:[&#x27;COL-030&#x27;]},
+   {id:&#x27;BAS-030&#x27;, name:&#x27;창고·위치 관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;},
+    l3:[&#x27;창고 목록&#x27;,&#x27;위치(랙·구역)&#x27;], logic:[&#x27;재고가 남은 위치는 삭제할 수 없다&#x27;]}
+ ]},
+ {bundle:&#x27;wh&#x27;, code:&#x27;MAT&#x27;, name:&#x27;자재·입고&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;MAT-010&#x27;, name:&#x27;원자재 입고&#x27;, type:&#x27;등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;,QC:&#x27;R&#x27;},
+    l3:[&#x27;입고 헤더(공급사·입고일)&#x27;,&#x27;LOT 행 입력&#x27;,&#x27;라벨 출력&#x27;], logic:[&#x27;입고 LOT 번호 자동 채번&#x27;,&#x27;입고검사 대상은 검사 대기 상태로 재고에 잡힌다&#x27;], links:[&#x27;QC-010&#x27;,&#x27;INV-010&#x27;]},
+   {id:&#x27;MAT-020&#x27;, name:&#x27;불출&#x27;, type:&#x27;등록&#x27;, st:&#x27;mod&#x27;, modBy:&#x27;move&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;,PR:&#x27;R&#x27;},
+    l3:[&#x27;작업지시 번호&#x27;,&#x27;불출 LOT 선택&#x27;],
+    logic:[&#x27;변경 (공정 이관 시): 작업지시 번호를 직접 입력하지 않고 생산지시서 목록에서 고른다&#x27;,&#x27;공정을 FINE_MES에 두면 번호를 직접 입력한다&#x27;,&#x27;검사 대기·불합격 LOT는 불출할 수 없다&#x27;], links:[&#x27;WO-020&#x27;,&#x27;LOT-010&#x27;]},
+   {id:&#x27;MAT-030&#x27;, name:&#x27;제품 입고&#x27;, type:&#x27;등록&#x27;, st:&#x27;mod&#x27;, modBy:&#x27;move&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;,PR:&#x27;R&#x27;},
+    l3:[&#x27;작업지시 번호&#x27;,&#x27;제품 LOT·수량&#x27;],
+    logic:[&#x27;변경 (공정 이관 시): 지시를 고르면 생산일보의 완료 수량을 기본값으로 불러온다&#x27;,&#x27;제품 LOT는 지시번호와 묶여 LOT 추적에 쓰인다&#x27;,&#x27;제품검사 판정 전까지 검사 대기 상태다&#x27;], links:[&#x27;WO-020&#x27;,&#x27;PRD-010&#x27;,&#x27;QC-020&#x27;]},
+   {id:&#x27;MAT-040&#x27;, name:&#x27;입고·불출 내역&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,WH:&#x27;R&#x27;,QC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·품목·공급사 조건&#x27;,&#x27;엑셀&#x27;], logic:[&#x27;취소 건은 취소 표시로 남긴다&#x27;]}
+ ]},
+ {bundle:&#x27;wh&#x27;, code:&#x27;INV&#x27;, name:&#x27;재고&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;INV-010&#x27;, name:&#x27;LOT별 재고 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,WH:&#x27;R&#x27;,QC:&#x27;R&#x27;,SH:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;품목·창고·LOT 조건&#x27;,&#x27;상태 필터(가용·검사 대기·보류)&#x27;], logic:[&#x27;가용 수량 = 현재고 − 출하 지시 할당량&#x27;]},
+   {id:&#x27;INV-020&#x27;, name:&#x27;재고 이동&#x27;, type:&#x27;등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;},
+    l3:[&#x27;출발·도착 위치&#x27;,&#x27;LOT·수량&#x27;], logic:[&#x27;LOT를 나눠 옮기면 원 LOT 번호에 분할 순번을 붙인다&#x27;]},
+   {id:&#x27;INV-030&#x27;, name:&#x27;재고 조정·실사&#x27;, type:&#x27;등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,WH:&#x27;W&#x27;},
+    l3:[&#x27;실사 수량&#x27;,&#x27;차이 사유&#x27;], logic:[&#x27;차이 사유는 필수&#x27;,&#x27;조정 이력은 수정·삭제하지 않는다&#x27;], links:[&#x27;RPT-040&#x27;]}
+ ]},
+ {bundle:&#x27;wh&#x27;, code:&#x27;QC&#x27;, name:&#x27;품질 검사&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;QC-010&#x27;, name:&#x27;입고검사&#x27;, type:&#x27;등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,QC:&#x27;W&#x27;,WH:&#x27;R&#x27;},
+    l3:[&#x27;검사 대기 LOT&#x27;,&#x27;검사 항목&#x27;,&#x27;판정&#x27;], logic:[&#x27;합격 시 가용, 불합격 시 보류로 재고 상태가 바뀐다&#x27;], links:[&#x27;MAT-010&#x27;]},
+   {id:&#x27;QC-020&#x27;, name:&#x27;제품검사 판정&#x27;, type:&#x27;등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,QC:&#x27;W&#x27;,SH:&#x27;R&#x27;},
+    l3:[&#x27;제품 LOT 목록&#x27;,&#x27;검사 결과&#x27;,&#x27;판정&#x27;], logic:[&#x27;미판정·불합격 제품 LOT는 출하 확정 불가&#x27;], links:[&#x27;MAT-030&#x27;,&#x27;SHP-020&#x27;]},
+   {id:&#x27;QC-030&#x27;, name:&#x27;검사 이력&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·품목·판정 조건&#x27;], logic:[&#x27;재판정 건은 이전 판정을 함께 보여 준다&#x27;]}
+ ]},
+ {bundle:&#x27;wh&#x27;, code:&#x27;SHP&#x27;, name:&#x27;출하&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;SHP-010&#x27;, name:&#x27;출하 지시&#x27;, type:&#x27;등록&#x27;, st:&#x27;mod&#x27;, modBy:&#x27;move&#x27;, roles:{ADM:&#x27;W&#x27;,SH:&#x27;W&#x27;,WH:&#x27;R&#x27;,AC:&#x27;R&#x27;},
+    l3:[&#x27;거래처·납기&#x27;,&#x27;품목·수량&#x27;,&#x27;LOT 할당&#x27;,&#x27;생산의뢰 번호 (공정 이관 시)&#x27;],
+    logic:[&#x27;가용 재고 안에서만 LOT를 할당한다&#x27;,&#x27;변경 (공정 이관 시): 생산의뢰 번호를 고르면 거래처·제품·수량·납기를 불러온다. 수주와 출하가 이어져 납기 준수율을 낼 수 있다&#x27;], links:[&#x27;WO-010&#x27;,&#x27;INV-010&#x27;]},
+   {id:&#x27;SHP-020&#x27;, name:&#x27;출하 확정&#x27;, type:&#x27;처리&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;,SH:&#x27;W&#x27;,AC:&#x27;R&#x27;},
+    l3:[&#x27;확정 대상&#x27;,&#x27;검사 판정 확인&#x27;], logic:[&#x27;검사 미판정·불합격 LOT가 있으면 확정을 막는다&#x27;,&#x27;확정 후 정정은 반품·정정 행으로 남긴다&#x27;], links:[&#x27;QC-020&#x27;,&#x27;LOT-010&#x27;]},
+   {id:&#x27;SHP-030&#x27;, name:&#x27;출하 이력&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,SH:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·거래처·품목 조건&#x27;], logic:[&#x27;반품·정정 행을 원 출하 아래에 묶어 보여 준다&#x27;,&#x27;FINE_MES 출하실 &gt; 완료현황에 해당한다&#x27;], links:[&#x27;COL-070&#x27;]}
+ ]},
+ {bundle:&#x27;wh&#x27;, code:&#x27;LOT&#x27;, name:&#x27;LOT 추적&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;LOT-010&#x27;, name:&#x27;정방향 추적&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,WH:&#x27;R&#x27;,SH:&#x27;R&#x27;},
+    l3:[&#x27;원자재 LOT 입력&#x27;,&#x27;불출 → 지시 → 제품 입고 → 출하&#x27;], logic:[&#x27;작업지시 번호로 불출과 제품 입고를 잇는다&#x27;]},
+   {id:&#x27;LOT-020&#x27;, name:&#x27;역방향 추적&#x27;, type:&#x27;조회&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,SH:&#x27;R&#x27;},
+    l3:[&#x27;출하 번호·제품 LOT 입력&#x27;,&#x27;원자재 LOT 목록&#x27;], logic:[&#x27;클레임 대응: 출하 한 건에서 원자재 LOT까지 거슬러 올라간다&#x27;]}
+ ]},
+
+ /* ------------------------- 수금리포트 (ERP 업로드·조회) ------------------------- */
+ {bundle:&#x27;col&#x27;, code:&#x27;COL&#x27;, name:&#x27;수금리포트&#x27;, kind:&#x27;new&#x27;, opt:&#x27;col&#x27;, screens:[
+   {id:&#x27;COL-010&#x27;, name:&#x27;ERP 수금현황 업로드&#x27;, type:&#x27;등록&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;,AC:&#x27;W&#x27;},
+    l3:[&#x27;기준 기간 선택&#x27;,&#x27;ERP 엑셀 파일 올리기&#x27;,&#x27;검증 결과 미리보기&#x27;,&#x27;반영&#x27;],
+    logic:[&#x27;ERP에서 내려받은 수금현황 엑셀을 양식 변환 없이 그대로 올린다&#x27;,&#x27;처음 한 번 열 이름 매핑(거래처코드, 일자, 매출액, 수금액, 수단, 어음 만기 등)을 저장해 두고 다음부터 자동 적용한다&#x27;,&#x27;검증: 필수 열, 숫자·날짜 형식, 거래처 코드 매핑 여부. 오류 행은 빨간색으로 표시하고 반영에서 뺀다&#x27;,&#x27;같은 기준 기간을 다시 올리면 이전 회차를 새 회차로 바꾼다. 이전 회차는 지우지 않고 이력에 남는다&#x27;,&#x27;MES는 수금 데이터를 고치지 않는다. 원본은 ERP이고 틀리면 ERP에서 고쳐 다시 올린다&#x27;],
+    links:[&#x27;COL-020&#x27;,&#x27;COL-030&#x27;]},
+   {id:&#x27;COL-020&#x27;, name:&#x27;업로드 이력&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;},
+    l3:[&#x27;회차 목록 (기간·건수·오류 건·올린 사람)&#x27;,&#x27;회차별 오류 행 보기&#x27;], logic:[&#x27;현재 반영된 회차와 교체된 회차를 구분해 보여 준다&#x27;]},
+   {id:&#x27;COL-030&#x27;, name:&#x27;거래처 코드 매핑&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;,AC:&#x27;W&#x27;},
+    l3:[&#x27;ERP 거래처코드 ↔ MES 거래처&#x27;,&#x27;미매핑 코드 목록&#x27;],
+    logic:[&#x27;업로드에서 처음 보는 ERP 코드는 미매핑 목록에 쌓인다&#x27;,&#x27;매핑하면 해당 오류 행을 다시 반영할 수 있다&#x27;,&#x27;이 매핑이 출하(MES)와 수금(ERP)을 잇는 유일한 키다&#x27;], links:[&#x27;BAS-020&#x27;,&#x27;COL-010&#x27;]},
+   {id:&#x27;COL-040&#x27;, name:&#x27;수금 현황 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·거래처·수단 조건&#x27;,&#x27;일자별 수금 목록&#x27;,&#x27;엑셀&#x27;], logic:[&#x27;어음은 만기일과 만기 도래 여부를 함께 보여 준다&#x27;]},
+   {id:&#x27;COL-050&#x27;, name:&#x27;거래처별 미수 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기준일&#x27;,&#x27;거래처별 매출·수금·미수 잔액&#x27;], logic:[&#x27;ERP 수금현황에 매출(청구)액과 잔액 열이 있다는 가정이다 (확인 필요)&#x27;,&#x27;미수 0인 거래처는 기본으로 숨긴다&#x27;]},
+   {id:&#x27;COL-060&#x27;, name:&#x27;미수 연령 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기준일&#x27;,&#x27;구간별 금액 (30·60·90일, 90일 초과)&#x27;], logic:[&#x27;매출일 기준 경과일로 나눈다&#x27;,&#x27;90일 초과는 AI 리포트의 수금 리포트에서 따로 짚는다&#x27;], links:[&#x27;RPT-060&#x27;]},
+   {id:&#x27;COL-070&#x27;, name:&#x27;출하 대비 수금 조회&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,SH:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;월·거래처 선택&#x27;,&#x27;MES 출하 수량·건수와 ERP 매출·수금 나란히&#x27;],
+    logic:[&#x27;거래처 코드 매핑으로 MES 출하와 ERP 수금을 월·거래처 단위로 맞춘다&#x27;,&#x27;출하 건 하나와 수금 한 건을 짝짓지는 않는다 (ERP 수금이 거래처 단위이기 때문)&#x27;], links:[&#x27;SHP-030&#x27;,&#x27;COL-030&#x27;]}
+ ], data:[&#x27;ERP 수금 데이터(업로드 회차 포함)&#x27;,&#x27;거래처 코드 매핑&#x27;]},
+
+ /* ------------------------- AI 리포트 (수주 → 수금 리포트 모음) ------------------------- */
+ {bundle:&#x27;rpt&#x27;, code:&#x27;RPT&#x27;, name:&#x27;AI 리포트&#x27;, kind:&#x27;new&#x27;, opt:&#x27;ai&#x27;, screens:[
+   {id:&#x27;RPT-010&#x27;, name:&#x27;수주 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, src:&#x27;proc&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간별 생산의뢰 건수·수량&#x27;,&#x27;거래처 상위&#x27;,&#x27;납기 분포&#x27;,&#x27;미착수 의뢰&#x27;], logic:[&#x27;원천: 생산의뢰서&#x27;,&#x27;의뢰는 있는데 지시서가 없는 건을 &quot;미착수&quot;로 짚는다&#x27;], links:[&#x27;WO-010&#x27;]},
+   {id:&#x27;RPT-020&#x27;, name:&#x27;생산 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, src:&#x27;proc&#x27;, roles:{ADM:&#x27;R&#x27;,PR:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;지시 대비 생산 실적&#x27;,&#x27;생산 로스율&#x27;,&#x27;가동률·기계별&#x27;], logic:[&#x27;원천: 생산일보, 생산 로스율, 월별 가동률, 기계별통계&#x27;], links:[&#x27;PRD-040&#x27;,&#x27;PRP-010&#x27;]},
+   {id:&#x27;RPT-030&#x27;, name:&#x27;품질 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,QC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;검사 로스율&#x27;,&#x27;입고·제품 불합격 LOT&#x27;,&#x27;재판정&#x27;], logic:[&#x27;원천: 검사일보(공정), 입고검사·제품검사 판정&#x27;], links:[&#x27;INS-040&#x27;,&#x27;QC-030&#x27;]},
+   {id:&#x27;RPT-040&#x27;, name:&#x27;재고·창고 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,WH:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;입고·불출&#x27;,&#x27;재고 변동 상위&#x27;,&#x27;장기 체류 LOT&#x27;,&#x27;실사 차이&#x27;], logic:[&#x27;원천: 자재·입고, 재고&#x27;], links:[&#x27;INV-030&#x27;]},
+   {id:&#x27;RPT-050&#x27;, name:&#x27;출하 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,SH:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;출하 건수·수량&#x27;,&#x27;거래처별&#x27;,&#x27;납기 준수율&#x27;], logic:[&#x27;원천: 출하&#x27;,&#x27;납기 준수율은 출하 지시에 생산의뢰 번호가 있을 때(공정 이관 시)만 낸다&#x27;], links:[&#x27;SHP-010&#x27;]},
+   {id:&#x27;RPT-060&#x27;, name:&#x27;수금 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, src:&#x27;col&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;월별 수금액&#x27;,&#x27;출하 대비 수금&#x27;,&#x27;미수 연령&#x27;,&#x27;90일 초과 거래처&#x27;], logic:[&#x27;원천: ERP 수금현황 업로드분&#x27;,&#x27;가장 최근 업로드 기준일을 리포트에 명시한다&#x27;], links:[&#x27;COL-060&#x27;,&#x27;COL-070&#x27;]},
+   {id:&#x27;RPT-070&#x27;, name:&#x27;주문 흐름 리포트&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, src:&#x27;proc&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;의뢰별 단계 소요일 (의뢰 → 지시 → 생산 완료 → 제품 입고 → 출하)&#x27;,&#x27;병목 단계&#x27;,&#x27;거래처·월별 수금&#x27;],
+    logic:[&#x27;생산의뢰 번호를 키로 의뢰부터 출하까지 단계별 날짜를 잇는다&#x27;,&#x27;수금은 거래처·월 단위로 붙인다 (건 단위로 짝짓지 않음)&#x27;,&#x27;단계 소요일이 기준보다 긴 의뢰를 병목으로 짚는다 (기준일 수는 설계 때 확정)&#x27;],
+    links:[&#x27;WO-010&#x27;,&#x27;WO-020&#x27;,&#x27;MAT-030&#x27;,&#x27;SHP-030&#x27;,&#x27;COL-070&#x27;]},
+   {id:&#x27;RPT-080&#x27;, name:&#x27;경영 요약&#x27;, type:&#x27;리포트&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;일일 · 주간 · 월간&#x27;,&#x27;위 리포트의 핵심 수치와 짧은 해설&#x27;], logic:[&#x27;일일은 창고·출하 중심, 주간·월간에 수주·생산·수금을 더한다&#x27;]},
+   {id:&#x27;RPT-090&#x27;, name:&#x27;리포트 생성·스케줄&#x27;, type:&#x27;처리&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;,AC:&#x27;W&#x27;,PR:&#x27;W&#x27;,SH:&#x27;W&#x27;},
+    l3:[&#x27;리포트·기간·범위 선택&#x27;,&#x27;스케줄 (일일 18:00, 주간 월 08:00, 월간 1일)&#x27;], logic:[&#x27;초안이 나오면 담당자에게 알린다&#x27;]},
+   {id:&#x27;RPT-100&#x27;, name:&#x27;초안 검토·확정&#x27;, type:&#x27;처리&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;,AC:&#x27;W&#x27;,PR:&#x27;W&#x27;,SH:&#x27;W&#x27;},
+    l3:[&#x27;초안 편집&#x27;,&#x27;숫자 대조 결과&#x27;,&#x27;확정&#x27;],
+    logic:[&#x27;숫자는 SQL로 먼저 집계하고, AI는 그 집계값을 설명하는 문장만 쓴다&#x27;,&#x27;초안의 숫자를 집계값과 대조해 맞지 않는 문장을 표시한다. 표시가 남아 있으면 확정할 수 없다&#x27;,&#x27;AI 호출이 실패하면 집계표만 담은 리포트로 일정대로 낸다&#x27;,&#x27;확정본은 고칠 수 없고 새 판으로만 다시 낸다&#x27;]},
+   {id:&#x27;RPT-110&#x27;, name:&#x27;리포트 이력&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,AC:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;기간·종류 조건&#x27;,&#x27;입력 집계값·지침 판·모델·검토자&#x27;], logic:[&#x27;생성 당시 입력값을 그대로 보관해 근거를 다시 볼 수 있게 한다&#x27;]},
+   {id:&#x27;RPT-120&#x27;, name:&#x27;리포트 양식 관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;},
+    l3:[&#x27;양식 목록&#x27;,&#x27;섹션별 집계 쿼리·작성 지침&#x27;], logic:[&#x27;양식을 바꾸면 판 번호가 오르고 이력은 당시 판을 가리킨다&#x27;]},
+   {id:&#x27;RPT-130&#x27;, name:&#x27;데이터 질의&#x27;, type:&#x27;조회&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;R&#x27;,EX:&#x27;R&#x27;},
+    l3:[&#x27;질문 입력&#x27;,&#x27;생성된 쿼리&#x27;,&#x27;결과 표&#x27;], logic:[&#x27;허용 목록의 조회 뷰만 읽기 전용으로 쓴다&#x27;,&#x27;수금 뷰는 영업·경리·관리자·경영진만 질의할 수 있다&#x27;,&#x27;질의 로그를 남긴다&#x27;]}
+ ], data:[&#x27;리포트 양식&#x27;,&#x27;리포트 생성 이력&#x27;], batch:[&#x27;리포트 스케줄 생성 (일일·주간·월간)&#x27;]},
+
+ /* ------------------------- 문서관리 (별도 시스템, SSO 연결) -------------------------
+    MES는 문서를 저장·관리하지 않는다. 메뉴는 진입점이고, 계정 매핑과 토큰 발급만 MES가 맡는다. */
+ {bundle:&#x27;ext&#x27;, code:&#x27;DOC&#x27;, name:&#x27;문서관리&#x27;, kind:&#x27;new&#x27;, opt:&#x27;doc&#x27;, screens:[
+   {id:&#x27;DOC-010&#x27;, name:&#x27;문서관리 바로가기&#x27;, type:&#x27;외부 연계(SSO)&#x27;, sso:true, st:&#x27;new&#x27;, roles:{SL:&#x27;R&#x27;,PR:&#x27;R&#x27;,SH:&#x27;R&#x27;,DS:&#x27;R&#x27;,AC:&#x27;R&#x27;,ST:&#x27;R&#x27;,EX:&#x27;R&#x27;,ADM:&#x27;R&#x27;},
+    l3:[&#x27;메뉴 클릭 → 새 창&#x27;,&#x27;문서관리 시스템 첫 화면 (로그인된 상태)&#x27;],
+    logic:[&#x27;메뉴를 누르면 MES 서버가 로그인 사용자 기준으로 일회용 SSO 토큰을 발급한다 (서명된 토큰, 유효 60초, 한 번만 사용)&#x27;,&#x27;새 창으로 문서관리 시스템의 SSO 진입 주소를 열고 토큰을 넘긴다. 토큰은 주소창에 남지 않게 POST로 보낸다&#x27;,&#x27;문서관리 시스템이 서명·만료·재사용 여부를 확인하고 세션을 만든다&#x27;,&#x27;방식은 문서관리 시스템이 지원하는 표준(SAML 2.0 또는 OIDC)을 먼저 쓰고, 지원하지 않으면 서명 토큰 방식으로 붙인다&#x27;,&#x27;계정 매핑이 없거나 비활성 사용자면 토큰을 발급하지 않고 &quot;관리자에게 계정 연결을 요청하세요&quot; 안내를 띄운다&#x27;,&#x27;토큰 검증이 실패하면 문서관리 시스템의 로그인 화면으로 넘어가 직접 로그인할 수 있다&#x27;,&#x27;메뉴는 역할·권한에서 &quot;문서관리 접근&quot;이 있는 사용자에게만 보인다. 문서별 권한은 문서관리 시스템이 관리한다&#x27;,&#x27;SSO 호출(사용자, 시각, 성공·실패)은 로그에 남긴다&#x27;],
+    links:[&#x27;DOC-020&#x27;,&#x27;SYS-020&#x27;,&#x27;SYS-040&#x27;]},
+   {id:&#x27;DOC-020&#x27;, name:&#x27;문서관리 계정 매핑&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;new&#x27;, roles:{ADM:&#x27;W&#x27;},
+    l3:[&#x27;MES 사용자 ↔ 문서관리 계정 ID&#x27;,&#x27;미연결 사용자 목록&#x27;,&#x27;엑셀 일괄 등록&#x27;],
+    logic:[&#x27;MES 사번과 문서관리 계정 ID를 1:1로 잇는다&#x27;,&#x27;MES에서 사용자를 비활성으로 바꾸면 SSO 토큰 발급도 바로 막힌다&#x27;,&#x27;양쪽 사번이 같으면 매핑 없이 사번을 그대로 넘기는 방식도 고를 수 있다 (설계 때 확정)&#x27;],
+    links:[&#x27;DOC-010&#x27;,&#x27;SYS-010&#x27;]}
+ ]},
+
+ /* ------------------------- 시스템 ------------------------- */
+ {bundle:&#x27;sys&#x27;, code:&#x27;SYS&#x27;, name:&#x27;시스템&#x27;, kind:&#x27;base&#x27;, screens:[
+   {id:&#x27;SYS-010&#x27;, name:&#x27;사용자 관리&#x27;, type:&#x27;목록·등록&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;}, l3:[&#x27;사용자 목록&#x27;,&#x27;등록·비활성&#x27;], logic:[&#x27;퇴사자는 삭제하지 않고 비활성으로 둔다&#x27;]},
+   {id:&#x27;SYS-020&#x27;, name:&#x27;역할·권한&#x27;, type:&#x27;설정&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;}, l3:[&#x27;역할 목록&#x27;,&#x27;메뉴 × 역할 처리·조회&#x27;], logic:[&#x27;권한 매트릭스 보기의 W·R이 기본값이다&#x27;]},
+   {id:&#x27;SYS-030&#x27;, name:&#x27;공통코드&#x27;, type:&#x27;설정&#x27;, st:&#x27;keep&#x27;, roles:{ADM:&#x27;W&#x27;}, l3:[&#x27;코드 그룹&#x27;,&#x27;코드 값&#x27;], logic:[&#x27;설비·불량유형·수금수단 코드를 여기서 관리한다&#x27;]},
+   {id:&#x27;SYS-040&#x27;, name:&#x27;로그&#x27;, type:&#x27;조회&#x27;, st:&#x27;mod&#x27;, modBy:&#x27;any&#x27;, roles:{ADM:&#x27;R&#x27;}, l3:[&#x27;접속 로그&#x27;,&#x27;변경 감사 로그&#x27;,&#x27;업로드·AI 호출 로그&#x27;],
+    logic:[&#x27;변경: ERP 업로드 회차·교체 이력을 남긴다 (수금리포트)&#x27;,&#x27;변경: AI 호출 건수·실패·응답 시간을 남긴다 (AI 리포트)&#x27;,&#x27;변경: 문서관리 SSO 호출의 사용자·시각·성공 여부를 남긴다 (문서관리)&#x27;]}
+ ]}
+];
+
+/* 프로세스 순서로 정렬하고 단계(bundle)를 다시 배정 */
+const POS = Object.fromEntries(ORDER.map(([c,b],i)=&gt;[c,{i,b}]));
+IA.forEach(l=&gt;l.bundle = POS[l.code].b);
+IA.sort((a,b)=&gt;POS[a.code].i - POS[b.code].i);
+
+/* -----------------------------------------------------------------------
+   부서 권한으로 변환 (mapRoles)
+   - 옛 코드 WH(창고)·QC(품질) → PR(생산부)
+   - 옛 코드 AC(영업·경리) → 수금리포트는 AC(회계부) + 영업부 조회, 그 밖은 SL(영업부) + 회계부 조회
+   - 옛 코드 EX → EX(경영진) + ST(전략부) 조회
+   - 같은 부서에 W와 R이 겹치면 W를 남긴다
+   ----------------------------------------------------------------------- */
+const up = (o,k,v)=&gt;{ if(o[k]!==&#x27;W&#x27;) o[k]=v; };
+function mapRoles(s,l){
+  if(l.code===&#x27;HOME&#x27; || l.code===&#x27;TRK&#x27; || l.code===&#x27;DOC&#x27;) return s.roles;   // 새로 정의한 화면은 이미 부서 코드
+  const r = {};
+  Object.entries(s.roles).forEach(([k,v])=&gt;{
+    if(k===&#x27;WH&#x27;||k===&#x27;QC&#x27;||k===&#x27;PR&#x27;) up(r,&#x27;PR&#x27;,v);
+    else if(k===&#x27;AC&#x27;){ if(l.code===&#x27;COL&#x27;){ up(r,&#x27;AC&#x27;,v); up(r,&#x27;SL&#x27;,&#x27;R&#x27;); } else { up(r,&#x27;SL&#x27;,v); up(r,&#x27;AC&#x27;,&#x27;R&#x27;); } }
+    else if(k===&#x27;EX&#x27;){ up(r,&#x27;EX&#x27;,v); up(r,&#x27;ST&#x27;,&#x27;R&#x27;); }
+    else up(r,k,v);
+  });
+  return r;
+}
+/* 자가 처리 보강 권한: &quot;다른 부서에 묻지 않고 직접 확인·처리&quot;하려고 더한 권한 (이유를 함께 남김) */
+const SELF_GRANTS = [
+  [&#x27;INV-010&#x27;,&#x27;SL&#x27;,&#x27;R&#x27;,&#x27;고객 재고 문의에 창고에 묻지 않고 답한다&#x27;],
+  [&#x27;WO-040&#x27;,&#x27;SL&#x27;,&#x27;R&#x27;,&#x27;공정 진행을 생산부에 묻지 않고 본다&#x27;],
+  [&#x27;SHP-010&#x27;,&#x27;SL&#x27;,&#x27;W&#x27;,&#x27;출하 요청을 전화 대신 출하 지시로 직접 등록한다 (확정은 출하실)&#x27;],
+  [&#x27;LOT-020&#x27;,&#x27;SL&#x27;,&#x27;R&#x27;,&#x27;클레임 대응 때 원자재 LOT를 품질에 묻지 않고 찾는다&#x27;],
+  [&#x27;QC-030&#x27;,&#x27;SL&#x27;,&#x27;R&#x27;,&#x27;검사 결과를 고객에게 바로 안내한다&#x27;],
+  [&#x27;SHP-010&#x27;,&#x27;PR&#x27;,&#x27;R&#x27;,&#x27;출하 일정을 보고 생산 순서를 정한다&#x27;],
+  [&#x27;SHP-030&#x27;,&#x27;AC&#x27;,&#x27;R&#x27;,&#x27;ERP 매출과 출하를 대조한다&#x27;],
+  [&#x27;STD-010&#x27;,&#x27;DS&#x27;,&#x27;R&#x27;,&#x27;시안 작업 때 제조 사양을 본다&#x27;],
+  [&#x27;STD-030&#x27;,&#x27;DS&#x27;,&#x27;W&#x27;,&#x27;판관리는 FINE_MES에서 개발실 메뉴였다&#x27;],
+  [&#x27;STD-040&#x27;,&#x27;DS&#x27;,&#x27;W&#x27;,&#x27;시안등록은 FINE_MES에서 디자인실 메뉴였다&#x27;],
+  [&#x27;WO-010&#x27;,&#x27;DS&#x27;,&#x27;R&#x27;,&#x27;새 의뢰의 시안 준비 여부를 본다&#x27;],
+  [&#x27;RPT-090&#x27;,&#x27;ST&#x27;,&#x27;W&#x27;,&#x27;전략부가 리포트를 직접 만든다&#x27;],
+  [&#x27;RPT-100&#x27;,&#x27;ST&#x27;,&#x27;W&#x27;,&#x27;전략부가 경영 요약을 검토·확정한다&#x27;],
+  [&#x27;RPT-120&#x27;,&#x27;ST&#x27;,&#x27;W&#x27;,&#x27;리포트 양식을 전략부가 관리한다&#x27;],
+  [&#x27;RPT-130&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;데이터 질의로 필요한 숫자를 직접 뽑는다&#x27;],
+  [&#x27;RPT-010&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;수주 리포트&#x27;],[&#x27;RPT-020&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;생산 리포트&#x27;],[&#x27;RPT-050&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;출하 리포트&#x27;],[&#x27;RPT-060&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;수금 리포트&#x27;],[&#x27;RPT-070&#x27;,&#x27;ST&#x27;,&#x27;R&#x27;,&#x27;주문 흐름 리포트&#x27;]
+];
+IA.forEach(l=&gt;l.screens.forEach(s=&gt;{ s.roles = mapRoles(s,l); }));
+SELF_GRANTS.forEach(([id,r,v])=&gt;{ const s=IA.flatMap(l=&gt;l.screens).find(x=&gt;x.id===id); if(s) up(s.roles,r,v); });
+/* 전산 관리자는 모든 화면을 조회할 수 있다 */
+IA.forEach(l=&gt;l.screens.forEach(s=&gt;up(s.roles,&#x27;ADM&#x27;,&#x27;R&#x27;)));
+
+/* 화면 ID 색인 */
+const IDX = {};
+IA.forEach(l=&gt;l.screens.forEach(s=&gt;IDX[s.id]={s,l}));
+
+/* 업무 흐름 띠: 수주 → 수금 */
+const FLOW = [
+  {id:&#x27;WO-010&#x27;, step:&#x27;수주&#x27;, sub:&#x27;생산의뢰서&#x27;},
+  {id:&#x27;WO-020&#x27;, step:&#x27;작업지시&#x27;, sub:&#x27;생산지시서&#x27;},
+  {id:&#x27;MAT-020&#x27;, step:&#x27;자재 불출&#x27;, sub:&#x27;불출&#x27;},
+  {id:&#x27;PRD-010&#x27;, step:&#x27;생산·검사&#x27;, sub:&#x27;생산일보 · 검사일보&#x27;},
+  {id:&#x27;MAT-030&#x27;, step:&#x27;제품 입고&#x27;, sub:&#x27;제품 입고 · 판정&#x27;},
+  {id:&#x27;SHP-020&#x27;, step:&#x27;출하&#x27;, sub:&#x27;출하 지시 · 확정&#x27;},
+  {id:&#x27;COL-010&#x27;, step:&#x27;수금&#x27;, sub:&#x27;ERP 수금현황 업로드&#x27;, ext:true}
+];
+
+/* =======================================================================
+   4. 상태
+   ======================================================================= */
+const state = {view:&#x27;map&#x27;, st:&#x27;all&#x27;, role:&#x27;&#x27;, q:&#x27;&#x27;, proc:&#x27;move&#x27;, col:true, ai:true, doc:true, self:true, sel:&#x27;TRK-010&#x27;};
+
+/* 대메뉴가 새 MES 안에 있는가 / 보이기는 하는가 */
+const inScope = l =&gt; l.opt===&#x27;proc&#x27; ? state.proc===&#x27;move&#x27; : (!l.opt || state[l.opt]);
+const visible = l =&gt; l.opt===&#x27;proc&#x27; ? true : inScope(l);    // 공정은 FINE_MES 유지여도 흐리게 보여 줌
+
+/* 현재 범위에서 화면의 실제 상태 */
+function effSt(s, l){
+  if(l.code===&#x27;DOC&#x27;) return &#x27;ext&#x27;;                                  // 문서관리 = 별도 시스템 (회색)
+  if(l.opt===&#x27;proc&#x27; &amp;&amp; state.proc===&#x27;keep&#x27;) return &#x27;out&#x27;;          // FINE_MES에 남음
+  if(s.st!==&#x27;mod&#x27;) return s.st;
+  if(s.modBy===&#x27;move&#x27;) return state.proc===&#x27;move&#x27; ? &#x27;mod&#x27; : &#x27;keep&#x27;;
+  if(s.modBy===&#x27;any&#x27;)  return (state.col||state.ai||state.doc) ? &#x27;mod&#x27; : &#x27;keep&#x27;;
+  return &#x27;mod&#x27;;
+}
+function matches(s,l){
+  const st = effSt(s,l);
+  if(state.st!==&#x27;all&#x27; &amp;&amp; st!==state.st) return false;
+  if(state.role &amp;&amp; !s.roles[state.role]) return false;
+  return true;
+}
+const hit = s =&gt; state.q &amp;&amp; (s.name.includes(state.q) || s.id.toLowerCase().includes(state.q.toLowerCase()));
+const ST = {keep:[&#x27;대안1 유지&#x27;,&#x27;s-keep&#x27;], fine:[&#x27;공정 이관&#x27;,&#x27;s-fine&#x27;], mod:[&#x27;변경&#x27;,&#x27;s-mod&#x27;], new:[&#x27;신규&#x27;,&#x27;s-new&#x27;], out:[&#x27;FINE_MES 사용&#x27;,&#x27;s-out&#x27;], ext:[&#x27;별도 시스템&#x27;,&#x27;s-ext&#x27;]};
+
+
+/* =======================================================================
+   5. 요약 띠 · 경고 · 흐름 띠
+   ======================================================================= */
+function drawStats(){
+  const on = IA.filter(inScope);
+  const scr = on.flatMap(l=&gt;l.screens.map(s=&gt;({s,l})));
+  const cnt = st =&gt; scr.filter(x=&gt;effSt(x.s,x.l)===st).length;
+  document.getElementById(&#x27;stats&#x27;).innerHTML = [
+    [&#x27;대메뉴&#x27;, on.length+&#x27;개&#x27;],
+    [&#x27;화면&#x27;, scr.length+&#x27;개&#x27;],
+    [&#x27;공정 이관 · 신규 · 변경&#x27;, `${cnt(&#x27;fine&#x27;)} · ${cnt(&#x27;new&#x27;)} · ${cnt(&#x27;mod&#x27;)}`],
+    [&#x27;권한 부서&#x27;, ROLES.length+&#x27;개&#x27;],
+    [&#x27;별도 시스템&#x27;, IA.some(l=&gt;l.code===&#x27;DOC&#x27;&amp;&amp;inScope(l))?&#x27;문서관리 (SSO)&#x27;:&#x27;없음&#x27;]
+  ].map(([k,v])=&gt;`&lt;div&gt;&lt;p class=&quot;k&quot;&gt;${k}&lt;/p&gt;&lt;p class=&quot;v&quot;&gt;${v}&lt;/p&gt;&lt;/div&gt;`).join(&#x27;&#x27;);
+
+  const w = [];
+  if(state.proc===&#x27;keep&#x27; &amp;&amp; state.ai) w.push(&#x27;공정을 FINE_MES에 두면 AI 리포트가 생산의뢰·일보 데이터를 읽도록 FINE_MES 데이터 연계가 필요합니다. 납기 준수율과 주문 흐름 리포트는 연계 범위만큼만 나옵니다.&#x27;);
+  if(!state.col &amp;&amp; state.ai) w.push(&#x27;수금리포트를 끄면 AI 리포트의 수금 리포트와 주문 흐름 리포트의 수금 부분은 원천이 없어 빠집니다.&#x27;);
+  document.getElementById(&#x27;warns&#x27;).innerHTML = w.map(t=&gt;`&lt;p class=&quot;warn&quot;&gt;${t}&lt;/p&gt;`).join(&#x27;&#x27;);
+}
+
+function drawFlow(){
+  document.getElementById(&#x27;flow&#x27;).innerHTML = FLOW.map((f,i)=&gt;{
+    const e = IDX[f.id]; const off = !inScope(e.l);
+    const where = off ? (e.l.opt===&#x27;proc&#x27; ? &#x27;FINE_MES&#x27; : &#x27;범위 밖&#x27;) : f.id;
+    return (i?&#x27;&lt;span class=&quot;farrow&quot;&gt;→&lt;/span&gt;&#x27;:&#x27;&#x27;) +
+      `&lt;button class=&quot;fstep ${f.ext?&#x27;ext&#x27;:&#x27;&#x27;}&quot; data-sel=&quot;${f.id}&quot; style=&quot;${off?&#x27;opacity:.5&#x27;:&#x27;&#x27;}&quot;&gt;
+        &lt;span class=&quot;t&quot;&gt;${where}&lt;/span&gt;&lt;b&gt;${f.step}&lt;/b&gt;&lt;span&gt;${f.sub}${f.ext?&#x27; (ERP)&#x27;:&#x27;&#x27;}&lt;/span&gt;&lt;/button&gt;`;
+  }).join(&#x27;&#x27;);
+}
+
+/* =======================================================================
+   6. 보기 1: 사이트맵 (묶음 → 대메뉴 카드 → 화면 버튼)
+   ======================================================================= */
+function drawMap(){
+  let n = 0;
+  return BUNDLES.map(b=&gt;{
+    const tops = IA.filter(l=&gt;l.bundle===b.key &amp;&amp; visible(l));
+    if(!tops.length) return &#x27;&#x27;;
+    return `&lt;div class=&quot;bundle&quot;&gt;&lt;div class=&quot;bundle-h&quot;&gt;&lt;b&gt;${b.name}&lt;/b&gt;&lt;span class=&quot;small muted&quot;&gt;${b.desc}&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;map&quot;&gt;${tops.map(l=&gt;{ n++;
+        const out = !inScope(l);
+        const meta = `${l.screens.length}개 화면`;
+        return `&lt;div class=&quot;l1 ${l.kind===&#x27;new&#x27;&amp;&amp;l.code!==&#x27;DOC&#x27;?&#x27;new&#x27;:&#x27;&#x27;} ${l.kind===&#x27;fine&#x27;?&#x27;fine&#x27;:&#x27;&#x27;} ${out?&#x27;outside&#x27;:&#x27;&#x27;} ${l.code===&#x27;DOC&#x27;?&#x27;extsys&#x27;:&#x27;&#x27;}&quot;&gt;
+          &lt;div class=&quot;l1-h&quot;&gt;&lt;span class=&quot;t&quot;&gt;${n}. ${l.code}&lt;/span&gt;&lt;b&gt;${l.name}&lt;/b&gt;
+            &lt;span class=&quot;small muted&quot;&gt;${meta} ${l.code===&#x27;DOC&#x27;?&#x27;&lt;span class=&quot;chip s-ext&quot;&gt;별도 시스템&lt;/span&gt;&#x27;:(l.kind===&#x27;new&#x27;?&#x27;&lt;span class=&quot;chip s-new&quot;&gt;신규&lt;/span&gt;&#x27;:&#x27;&#x27;)}${l.kind===&#x27;fine&#x27;?`&lt;span class=&quot;chip ${out?&#x27;s-out&#x27;:&#x27;s-fine&#x27;}&quot;&gt;${out?&#x27;FINE_MES&#x27;:&#x27;이관&#x27;}&lt;/span&gt;`:&#x27;&#x27;}&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;l1-list&quot;&gt;${l.screens.map(s=&gt;{const st=effSt(s,l);
+            return `&lt;button class=&quot;l2 st-${st} ${matches(s,l)?&#x27;&#x27;:&#x27;dim&#x27;} ${hit(s)?&#x27;hit&#x27;:&#x27;&#x27;}&quot; data-sel=&quot;${s.id}&quot; aria-current=&quot;${state.sel===s.id}&quot;&gt;
+              &lt;span class=&quot;nm&quot;&gt;${s.name}${s.sso?&#x27; &lt;span class=&quot;sso&quot;&gt;↗ SSO&lt;/span&gt;&#x27;:&#x27;&#x27;}&lt;/span&gt;&lt;span class=&quot;t&quot;&gt;${s.type}&lt;/span&gt;&lt;span class=&quot;id&quot;&gt;${s.id}&lt;/span&gt;&lt;/button&gt;`;}).join(&#x27;&#x27;)}
+          ${(l.batch||[]).map(x=&gt;`&lt;p class=&quot;batch&quot;&gt;배치 · ${x}&lt;/p&gt;`).join(&#x27;&#x27;)}
+          ${(l.data||[]).length?`&lt;p class=&quot;batch&quot;&gt;데이터 · ${l.data.join(&#x27;, &#x27;)}&lt;/p&gt;`:&#x27;&#x27;}
+          &lt;/div&gt;&lt;/div&gt;`;}).join(&#x27;&#x27;)}&lt;/div&gt;&lt;/div&gt;`;
+  }).join(&#x27;&#x27;);
+}
+
+/* =======================================================================
+   7. 보기 2: 트리 목록
+   ======================================================================= */
+function drawTree(){
+  let n = 0;
+  const rows = BUNDLES.map(b=&gt;{
+    const tops = IA.filter(l=&gt;l.bundle===b.key &amp;&amp; visible(l));
+    if(!tops.length) return &#x27;&#x27;;
+    return `&lt;tr class=&quot;bgrp&quot;&gt;&lt;td colspan=&quot;4&quot;&gt;${b.name} · ${b.desc}&lt;/td&gt;&lt;/tr&gt;` + tops.map(l=&gt;{ n++;
+      /* 트리 목록도 프로세스 순서(ORDER)를 따른다 */
+      return `&lt;tr class=&quot;grp&quot;&gt;&lt;td class=&quot;mono&quot;&gt;${l.code}&lt;/td&gt;&lt;td colspan=&quot;3&quot;&gt;${n}. ${l.name}${l.code===&#x27;DOC&#x27;?&#x27; · 별도 시스템&#x27;:&#x27;&#x27;}&lt;/td&gt;&lt;/tr&gt;` +
+        l.screens.map(s=&gt;{const st=effSt(s,l);
+          return `&lt;tr class=&quot;row ${state.sel===s.id?&#x27;sel&#x27;:&#x27;&#x27;} ${matches(s,l)?&#x27;&#x27;:&#x27;dim&#x27;}&quot; data-sel=&quot;${s.id}&quot;&gt;
+            &lt;td class=&quot;mono&quot;&gt;${s.id}&lt;/td&gt;
+            &lt;td&gt;&lt;b ${hit(s)?&#x27;style=&quot;background:var(--hl)&quot;&#x27;:&#x27;&#x27;}&gt;${s.name}&lt;/b&gt;&lt;br&gt;&lt;span class=&quot;lv3&quot;&gt;${s.l3.join(&#x27; · &#x27;)}&lt;/span&gt;${s.orig?`&lt;br&gt;&lt;span class=&quot;lv3&quot;&gt;FINE_MES: ${s.orig}&lt;/span&gt;`:&#x27;&#x27;}&lt;/td&gt;
+            &lt;td&gt;${s.type}&lt;/td&gt;
+            &lt;td&gt;&lt;span class=&quot;chip ${ST[st][1]}&quot;&gt;${ST[st][0]}&lt;/span&gt;&lt;/td&gt;&lt;/tr&gt;`;}).join(&#x27;&#x27;);
+    }).join(&#x27;&#x27;);
+  }).join(&#x27;&#x27;);
+  return `&lt;div class=&quot;tbl-wrap&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;화면 ID&lt;/th&gt;&lt;th&gt;화면 · 구성(L3)&lt;/th&gt;&lt;th&gt;유형&lt;/th&gt;&lt;th&gt;상태&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${rows}&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;`;
+}
+
+/* =======================================================================
+   8. 보기 3: 권한 매트릭스
+   ======================================================================= */
+function drawRole(){
+  const rows = IA.filter(visible).map((l,i)=&gt;
+    `&lt;tr class=&quot;grp&quot;&gt;&lt;td colspan=&quot;${ROLES.length+2}&quot;&gt;${i+1}. ${l.name}${inScope(l)?&#x27;&#x27;:&#x27; (FINE_MES에서 사용)&#x27;}&lt;/td&gt;&lt;/tr&gt;` +
+    l.screens.map(s=&gt;`&lt;tr class=&quot;row ${state.sel===s.id?&#x27;sel&#x27;:&#x27;&#x27;} ${matches(s,l)?&#x27;&#x27;:&#x27;dim&#x27;}&quot; data-sel=&quot;${s.id}&quot;&gt;
+      &lt;td class=&quot;mono&quot;&gt;${s.id}&lt;/td&gt;&lt;td&gt;${s.name}&lt;/td&gt;
+      ${ROLES.map(r=&gt;`&lt;td class=&quot;c&quot;&gt;${s.roles[r.id]?`&lt;span class=&quot;rw ${s.roles[r.id]}&quot;&gt;${s.roles[r.id]}&lt;/span&gt;`:&#x27;&lt;span class=&quot;muted&quot;&gt;·&lt;/span&gt;&#x27;}&lt;/td&gt;`).join(&#x27;&#x27;)}&lt;/tr&gt;`).join(&#x27;&#x27;)
+  ).join(&#x27;&#x27;);
+  return `&lt;div class=&quot;tbl-wrap&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;화면 ID&lt;/th&gt;&lt;th&gt;화면&lt;/th&gt;${ROLES.map(r=&gt;`&lt;th class=&quot;c&quot; ${state.role===r.id?&#x27;style=&quot;color:var(--ink)&quot;&#x27;:&#x27;&#x27;}&gt;${r.name}&lt;/th&gt;`).join(&#x27;&#x27;)}&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${rows}&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;`;
+}
+
+/* =======================================================================
+   9. 상세 패널
+   ======================================================================= */
+function drawDetail(){
+  const box = document.getElementById(&#x27;detail&#x27;);
+  const e = IDX[state.sel];
+  if(!e || !visible(e.l)){ box.innerHTML = `&lt;p class=&quot;muted small&quot;&gt;화면을 고르면 처리 로직과 연결 화면이 여기에 보입니다.&lt;/p&gt;`; return; }
+  const {s,l} = e, st = effSt(s,l);
+  const links = (s.links||[]).filter(id=&gt;IDX[id] &amp;&amp; visible(IDX[id].l));
+  // 원천 데이터가 범위 밖이면 안내
+  let srcNote = &#x27;&#x27;;
+  if(s.src===&#x27;proc&#x27; &amp;&amp; state.proc===&#x27;keep&#x27;) srcNote = &#x27;공정을 FINE_MES에 두면 이 리포트는 FINE_MES 데이터 연계가 있어야 만들 수 있습니다.&#x27;;
+  if(s.src===&#x27;col&#x27; &amp;&amp; !state.col) srcNote = &#x27;수금리포트가 꺼져 있어 이 리포트의 원천이 없습니다.&#x27;;
+  box.innerHTML = `
+    &lt;div style=&quot;display:grid;gap:4px&quot;&gt;
+      &lt;p class=&quot;t&quot;&gt;${s.id}&lt;/p&gt;
+      &lt;h2&gt;${s.name}&lt;/h2&gt;
+      &lt;p class=&quot;small muted&quot;&gt;${l.name} › ${s.name}&lt;/p&gt;
+    &lt;/div&gt;
+    &lt;dl class=&quot;kv&quot;&gt;
+      &lt;dt&gt;유형&lt;/dt&gt;&lt;dd&gt;${s.type}&lt;/dd&gt;
+      &lt;dt&gt;상태&lt;/dt&gt;&lt;dd&gt;&lt;span class=&quot;chip ${ST[st][1]}&quot;&gt;${ST[st][0]}&lt;/span&gt;&lt;/dd&gt;
+      ${s.orig?`&lt;dt&gt;FINE_MES&lt;/dt&gt;&lt;dd&gt;${s.orig}&lt;/dd&gt;`:&#x27;&#x27;}
+      &lt;dt&gt;권한&lt;/dt&gt;&lt;dd&gt;${ROLES.filter(r=&gt;s.roles[r.id]).map(r=&gt;`${r.name} &lt;span class=&quot;rw ${s.roles[r.id]}&quot;&gt;${s.roles[r.id]}&lt;/span&gt;`).join(&#x27;, &#x27;)}&lt;/dd&gt;
+    &lt;/dl&gt;
+    ${srcNote?`&lt;p class=&quot;warn&quot;&gt;${srcNote}&lt;/p&gt;`:&#x27;&#x27;}
+    ${s.sso?`&lt;p class=&quot;small muted&quot;&gt;이 메뉴는 MES 화면이 아닙니다. 별도 문서관리 시스템으로 SSO 로그인해 새 창으로 넘어갑니다. 문서관리 시스템은 MES와 별도로 구축·운영합니다.&lt;/p&gt;`:&#x27;&#x27;}
+    &lt;div style=&quot;display:grid;gap:6px&quot;&gt;&lt;p class=&quot;eyebrow&quot;&gt;화면 구성&lt;/p&gt;&lt;ul&gt;${s.l3.map(x=&gt;`&lt;li&gt;${x}&lt;/li&gt;`).join(&#x27;&#x27;)}&lt;/ul&gt;&lt;/div&gt;
+    &lt;div style=&quot;display:grid;gap:6px&quot;&gt;&lt;p class=&quot;eyebrow&quot;&gt;처리 로직&lt;/p&gt;&lt;ul&gt;${s.logic.map(x=&gt;`&lt;li&gt;${x}&lt;/li&gt;`).join(&#x27;&#x27;)}&lt;/ul&gt;&lt;/div&gt;
+    ${links.length?`&lt;div style=&quot;display:grid;gap:6px&quot;&gt;&lt;p class=&quot;eyebrow&quot;&gt;연결 화면&lt;/p&gt;&lt;div&gt;${links.map(id=&gt;`&lt;button class=&quot;linkbtn&quot; data-sel=&quot;${id}&quot;&gt;${id} ${IDX[id].s.name}&lt;/button&gt;`).join(&#x27;&#x27;)}&lt;/div&gt;&lt;/div&gt;`:&#x27;&#x27;}`;
+}
+
+/* =======================================================================
+   10. 그리기 + 이벤트
+   ======================================================================= */
+function render(){
+  drawStats(); drawFlow();
+  document.getElementById(&#x27;view&#x27;).innerHTML = state.view===&#x27;map&#x27; ? drawMap() : state.view===&#x27;tree&#x27; ? drawTree() : drawRole();
+  drawDetail();
+}
+document.getElementById(&#x27;role&#x27;).insertAdjacentHTML(&#x27;beforeend&#x27;, ROLES.map(r=&gt;`&lt;option value=&quot;${r.id}&quot;&gt;${r.name}&lt;/option&gt;`).join(&#x27;&#x27;));
+
+/* 같은 그룹 안에서 눌림 표시를 옮기는 공통 함수 */
+function bindSeg(attr, key){
+  document.querySelectorAll(`[data-${attr}]`).forEach(b=&gt;b.addEventListener(&#x27;click&#x27;,()=&gt;{
+    state[key]=b.dataset[attr];
+    document.querySelectorAll(`[data-${attr}]`).forEach(x=&gt;x.setAttribute(&#x27;aria-pressed&#x27;,x===b));
+    render();
+  }));
+}
+bindSeg(&#x27;view&#x27;,&#x27;view&#x27;); bindSeg(&#x27;st&#x27;,&#x27;st&#x27;); bindSeg(&#x27;proc&#x27;,&#x27;proc&#x27;);
+document.getElementById(&#x27;role&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{ state.role=e.target.value; render(); });
+document.getElementById(&#x27;q&#x27;).addEventListener(&#x27;input&#x27;,e=&gt;{ state.q=e.target.value.trim(); render(); });
+document.getElementById(&#x27;opt-col&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{ state.col=e.target.checked; render(); });
+document.getElementById(&#x27;opt-ai&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{ state.ai=e.target.checked; render(); });
+document.getElementById(&#x27;opt-doc&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{ state.doc=e.target.checked; render(); });
+document.getElementById(&#x27;opt-self&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{ state.self=e.target.checked; render(); });
+
+/* 화면 선택: 사이트맵 버튼, 표 행, 흐름 띠, 연결 화면 버튼 공통 */
+document.addEventListener(&#x27;click&#x27;,e=&gt;{
+  const t=e.target.closest(&#x27;[data-sel]&#x27;); if(!t) return;
+  state.sel=t.dataset.sel; render();
+  if(window.matchMedia(&#x27;(max-width:960px)&#x27;).matches) document.getElementById(&#x27;detail&#x27;).scrollIntoView({behavior:&#x27;smooth&#x27;,block:&#x27;start&#x27;});
+});
+
+render();
+&lt;/script&gt;
+&lt;/html&gt;" hidden></iframe><iframe id="f-guide" title="부서 간 업무 변화" data-key="guide" srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;html{color-scheme:light}body{margin:0;font-size:14px;font-family:system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;title&gt;엘컴화인 MES 부서 간 업무 변화&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* =====================================================================
+   엘컴화인 MES 부서별 업무 가이드 — 탭 페이지 (2026-10-21)
+   ---------------------------------------------------------------------
+   목적: 각 부서가 다른 부서에 묻거나 요청하지 않고 MES에서 직접 처리하는 방법
+   기준: 개정 12 기준안 (공정 메뉴 이관 + 수금리포트 + AI 리포트 + 문서관리 SSO + 내 업무·통합 조회)
+   데이터: 화면별 부서 권한(IA_DATA)은 &quot;엘컴화인 MES IA&quot; 페이지의 데이터를 그대로 옮긴 것
+   탭: #sales #prod #ship #design #acct #strat #exec #admin (주소 뒤 #으로 바로 열 수 있음)
+   ===================================================================== */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#1b2333; --muted:#5d6779; --line:#dde1e8;
+  --cyan:#0b7a8a; --cyan-soft:#e0f1f3;
+  --yel:#9a6400;  --yel-soft:#fbf0d6;
+  --org:#b4471f;  --org-soft:#fbe7df;
+  --ok:#2f7a3d;   --ok-soft:#e3f1e5;
+  --gray-soft:#e8eaee; --gray-ink:#7a8190;   /* 별도 시스템(문서관리) */
+  --f-body:&quot;IBM Plex Sans KR&quot;,&quot;Apple SD Gothic Neo&quot;,&quot;Malgun Gothic&quot;,sans-serif;
+  --f-mono:&quot;IBM Plex Mono&quot;,ui-monospace,&quot;SFMono-Regular&quot;,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme=&quot;light&quot;]){
+    --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;
+    --cyan:#4cc0cf;--cyan-soft:#143039;--yel:#e6b54f;--yel-soft:#3a2d10;
+    --org:#f08a64;--org-soft:#3d1f15;--ok:#6cc27b;--ok-soft:#173222;--gray-soft:#262c38;--gray-ink:#8b93a3;color-scheme:dark;
+  }
+}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#11151d;--surface:#181e29;--ink:#e4e8ef;--muted:#99a3b5;--line:#2a3242;
+  --cyan:#4cc0cf;--cyan-soft:#143039;--yel:#e6b54f;--yel-soft:#3a2d10;
+  --org:#f08a64;--org-soft:#3d1f15;--ok:#6cc27b;--ok-soft:#173222;--gray-soft:#262c38;--gray-ink:#8b93a3;color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:24px 64px;display:grid;gap:20px}
+h1,h2,h3{margin:0;line-height:1.3;text-wrap:balance}
+h1{font-size:1.55rem} h2{font-size:1.15rem} h3{font-size:.98rem}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+a{color:var(--cyan)}
+
+/* ---------- 점검 결과 ---------- */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.verdict div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:2px;min-width:0}
+.verdict .v{font-family:var(--f-mono);font-weight:600;font-size:1.3rem}
+.verdict .ok{border-left:3px solid var(--ok)}
+.verdict .part{border-left:3px solid var(--yel)}
+.verdict .no{border-left:3px solid var(--org)}
+
+/* ---------- 탭 ---------- */
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:2px solid var(--ink);padding-bottom:0}
+.tabs button{flex:none;border:1px solid var(--line);border-bottom:0;background:var(--surface);border-radius:6px 6px 0 0;padding:8px 14px;cursor:pointer;font-size:.9rem;color:var(--muted)}
+.tabs button[aria-selected=&quot;true&quot;]{background:var(--ink);color:var(--surface);border-color:var(--ink);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:12px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.grid2&gt;*{min-width:0}
+
+/* ---------- 이전 → 이제 표 ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--bg);color:var(--muted);font-size:.78rem;font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.before{color:var(--muted)}
+.chip{display:inline-block;font-size:.72rem;font-weight:600;padding:0 7px;border-radius:999px;white-space:nowrap;line-height:1.6}
+.c-ok{background:var(--ok-soft);color:var(--ok)}
+.c-part{background:var(--yel-soft);color:var(--yel)}
+.c-no{background:var(--org-soft);color:var(--org)}
+.sid{font-family:var(--f-mono);font-size:.75rem;color:var(--cyan);white-space:nowrap}
+
+/* ---------- 하루 흐름 ---------- */
+.day{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.day li{display:grid;grid-template-columns:76px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.day li:first-child{border-top:0}
+.day .when{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);padding-top:2px}
+.day b{font-size:.92rem}
+.day p{font-size:.86rem;color:var(--muted)}
+
+/* ---------- 알림 주고받기 ---------- */
+.hand{display:grid;gap:6px;font-size:.88rem}
+.hand div{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start}
+.arr{font-family:var(--f-mono);font-weight:600}
+.arr.in{color:var(--cyan)} .arr.out{color:var(--yel)}
+
+/* ---------- 화면 목록 ---------- */
+.scr{display:grid;gap:10px}
+.scr-grp{display:grid;gap:4px}
+.scr-grp h3{font-size:.82rem;color:var(--muted)}
+.scr-list{display:flex;flex-wrap:wrap;gap:6px}
+.s{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:5px;padding:3px 8px;font-size:.82rem;background:var(--surface)}
+.s.W{border-color:var(--cyan);background:var(--cyan-soft)}
+/* 문서관리 = 별도 시스템: 회색 점선 */
+.s.ext{background:var(--gray-soft);border-color:var(--gray-ink);border-style:dashed;color:var(--gray-ink)}
+.s.ext .sid{color:var(--gray-ink)}
+.tag-ext{font-size:.68rem;color:var(--gray-ink);border:1px solid var(--gray-ink);border-radius:3px;padding:0 4px}
+.s .sid{font-size:.68rem}
+.elsewhere{margin:0;padding-left:18px;display:grid;gap:4px;font-size:.88rem}
+.note{font-size:.82rem;color:var(--muted);max-width:86ch}
+&lt;/style&gt;
+
+&lt;div class=&quot;wrap&quot;&gt;
+  &lt;header style=&quot;display:grid;gap:6px&quot;&gt;
+    &lt;p class=&quot;eyebrow&quot;&gt;부서 간 업무 변화 · 2026-10-21&lt;/p&gt;
+    &lt;h1&gt;엘컴화인 MES 부서 간 업무 변화&lt;/h1&gt;
+    &lt;p class=&quot;muted&quot; style=&quot;max-width:72ch&quot;&gt;부서마다 MES에서 무엇을 직접 처리하고 무엇을 직접 확인하는지 정리했습니다. 전에는 다른 부서에 전화나 메신저로 묻던 일이 이제 어느 화면에서 해결되는지가 핵심입니다. 화면 ID는 &lt;a href=&quot;https://claude.ai/artifact/NJJXwqh83Y1mDUjnQiuvqW&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;MES IA&lt;/a&gt;와 같습니다.&lt;/p&gt;
+  &lt;/header&gt;
+
+  &lt;!-- ===== 점검 결과: 부서 간 요청이 얼마나 없어지는가 ===== --&gt;
+  &lt;section style=&quot;display:grid;gap:10px&quot;&gt;
+    &lt;p class=&quot;eyebrow&quot;&gt;점검 결과&lt;/p&gt;
+    &lt;div class=&quot;verdict&quot; id=&quot;verdict&quot;&gt;&lt;/div&gt;
+    &lt;p class=&quot;note&quot;&gt;MES는 수주부터 출하·수금 조회까지 전 직원이 직접 처리하는 기반이 됩니다. 다만 FINE_MES에 남는 16개 메뉴(영업 매출·발주, 근태, 품의·지출, 원가, 개발실 일보)와 ERP 회계 업무는 MES 밖에 있습니다. 이 일들은 각 탭의 &quot;MES 밖에서 하는 일&quot;에 따로 적었습니다.&lt;/p&gt;
+  &lt;/section&gt;
+
+  &lt;!-- ===== 부서 탭 ===== --&gt;
+  &lt;div class=&quot;tabs&quot; role=&quot;tablist&quot; id=&quot;tabs&quot; aria-label=&quot;부서&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;pane&quot; role=&quot;tabpanel&quot;&gt;&lt;/div&gt;
+
+  &lt;p class=&quot;note&quot;&gt;FINE_MES 공정 메뉴를 새 MES에 포함한 구성 기준입니다. 문서관리는 별도 시스템이며 MES 메뉴에서 SSO로 넘어갑니다(회색 표시). 알림을 메일·메신저로도 받을 수 있을지는 엘컴화인 환경을 확인한 뒤 정합니다.&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+/* =======================================================================
+   1. IA 데이터 (MES IA 페이지에서 추출: 대메뉴 → 화면 → 부서 권한)
+   ======================================================================= */
+const IA_DATA = [{&quot;code&quot;:&quot;HOME&quot;,&quot;name&quot;:&quot;내 업무&quot;,&quot;kind&quot;:&quot;new&quot;,&quot;opt&quot;:&quot;self&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;HOME-010&quot;,&quot;name&quot;:&quot;내 할 일&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;HOME-020&quot;,&quot;name&quot;:&quot;알림함&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;HOME-030&quot;,&quot;name&quot;:&quot;알림 설정&quot;,&quot;type&quot;:&quot;설정&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;W&quot;,&quot;DS&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;W&quot;,&quot;ST&quot;:&quot;W&quot;,&quot;EX&quot;:&quot;W&quot;,&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;BAS&quot;,&quot;name&quot;:&quot;기준정보&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;BAS-010&quot;,&quot;name&quot;:&quot;품목 관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;BAS-020&quot;,&quot;name&quot;:&quot;거래처 관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;BAS-030&quot;,&quot;name&quot;:&quot;창고·위치 관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;STD&quot;,&quot;name&quot;:&quot;인쇄 기준&quot;,&quot;kind&quot;:&quot;fine&quot;,&quot;opt&quot;:&quot;proc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;STD-010&quot;,&quot;name&quot;:&quot;제조사양기준서&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;DS&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;STD-020&quot;,&quot;name&quot;:&quot;표준관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;STD-030&quot;,&quot;name&quot;:&quot;판관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;DS&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;STD-040&quot;,&quot;name&quot;:&quot;시안등록&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;STD-050&quot;,&quot;name&quot;:&quot;표준견본서&quot;,&quot;type&quot;:&quot;등록·출력&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;STD-060&quot;,&quot;name&quot;:&quot;예외제품관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;WO&quot;,&quot;name&quot;:&quot;작업지시&quot;,&quot;kind&quot;:&quot;fine&quot;,&quot;opt&quot;:&quot;proc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;WO-010&quot;,&quot;name&quot;:&quot;생산의뢰서&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;WO-020&quot;,&quot;name&quot;:&quot;생산지시서&quot;,&quot;type&quot;:&quot;등록·출력&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;WO-030&quot;,&quot;name&quot;:&quot;생산순서관리&quot;,&quot;type&quot;:&quot;처리&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;WO-040&quot;,&quot;name&quot;:&quot;공정상태&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;MAT&quot;,&quot;name&quot;:&quot;자재·입고&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;MAT-010&quot;,&quot;name&quot;:&quot;원자재 입고&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;MAT-020&quot;,&quot;name&quot;:&quot;불출&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;MAT-030&quot;,&quot;name&quot;:&quot;제품 입고&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;MAT-040&quot;,&quot;name&quot;:&quot;입고·불출 내역&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;PRD&quot;,&quot;name&quot;:&quot;생산일보&quot;,&quot;kind&quot;:&quot;fine&quot;,&quot;opt&quot;:&quot;proc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;PRD-010&quot;,&quot;name&quot;:&quot;생산일보&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;PRD-020&quot;,&quot;name&quot;:&quot;생산일보출력&quot;,&quot;type&quot;:&quot;출력&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;PRD-030&quot;,&quot;name&quot;:&quot;생산일보현황&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;PRD-040&quot;,&quot;name&quot;:&quot;생산지시서 대비 생산 로스율&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;INS&quot;,&quot;name&quot;:&quot;검사일보&quot;,&quot;kind&quot;:&quot;fine&quot;,&quot;opt&quot;:&quot;proc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;INS-010&quot;,&quot;name&quot;:&quot;검사일보&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;INS-020&quot;,&quot;name&quot;:&quot;검사일보출력&quot;,&quot;type&quot;:&quot;출력&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;INS-030&quot;,&quot;name&quot;:&quot;검사일보현황&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;INS-040&quot;,&quot;name&quot;:&quot;생산지시서 대비 검사 로스율&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;QC&quot;,&quot;name&quot;:&quot;품질 검사&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;QC-010&quot;,&quot;name&quot;:&quot;입고검사&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;QC-020&quot;,&quot;name&quot;:&quot;제품검사 판정&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;QC-030&quot;,&quot;name&quot;:&quot;검사 이력&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;INV&quot;,&quot;name&quot;:&quot;재고&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;INV-010&quot;,&quot;name&quot;:&quot;LOT별 재고 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;INV-020&quot;,&quot;name&quot;:&quot;재고 이동&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;INV-030&quot;,&quot;name&quot;:&quot;재고 조정·실사&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;W&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;SHP&quot;,&quot;name&quot;:&quot;출하&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;SHP-010&quot;,&quot;name&quot;:&quot;출하 지시&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;W&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;SHP-020&quot;,&quot;name&quot;:&quot;출하 확정&quot;,&quot;type&quot;:&quot;처리&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;SHP-030&quot;,&quot;name&quot;:&quot;출하 이력&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;COL&quot;,&quot;name&quot;:&quot;수금리포트&quot;,&quot;kind&quot;:&quot;new&quot;,&quot;opt&quot;:&quot;col&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;COL-010&quot;,&quot;name&quot;:&quot;ERP 수금현황 업로드&quot;,&quot;type&quot;:&quot;등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-020&quot;,&quot;name&quot;:&quot;업로드 이력&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-030&quot;,&quot;name&quot;:&quot;거래처 코드 매핑&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-040&quot;,&quot;name&quot;:&quot;수금 현황 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-050&quot;,&quot;name&quot;:&quot;거래처별 미수 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-060&quot;,&quot;name&quot;:&quot;미수 연령 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;COL-070&quot;,&quot;name&quot;:&quot;출하 대비 수금 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;TRK&quot;,&quot;name&quot;:&quot;통합 조회&quot;,&quot;kind&quot;:&quot;new&quot;,&quot;opt&quot;:&quot;self&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;TRK-010&quot;,&quot;name&quot;:&quot;주문 진행 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;TRK-020&quot;,&quot;name&quot;:&quot;납기 현황&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;TRK-030&quot;,&quot;name&quot;:&quot;거래처 종합 조회&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;LOT&quot;,&quot;name&quot;:&quot;LOT 추적&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;LOT-010&quot;,&quot;name&quot;:&quot;정방향 추적&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;LOT-020&quot;,&quot;name&quot;:&quot;역방향 추적&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;PRP&quot;,&quot;name&quot;:&quot;생산 보고서&quot;,&quot;kind&quot;:&quot;fine&quot;,&quot;opt&quot;:&quot;proc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;PRP-010&quot;,&quot;name&quot;:&quot;월별 가동률&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;PRP-020&quot;,&quot;name&quot;:&quot;기계별통계&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;PRP-030&quot;,&quot;name&quot;:&quot;생산완료집계&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;RPT&quot;,&quot;name&quot;:&quot;AI 리포트&quot;,&quot;kind&quot;:&quot;new&quot;,&quot;opt&quot;:&quot;ai&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;RPT-010&quot;,&quot;name&quot;:&quot;수주 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-020&quot;,&quot;name&quot;:&quot;생산 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-030&quot;,&quot;name&quot;:&quot;품질 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-040&quot;,&quot;name&quot;:&quot;재고·창고 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-050&quot;,&quot;name&quot;:&quot;출하 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-060&quot;,&quot;name&quot;:&quot;수금 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-070&quot;,&quot;name&quot;:&quot;주문 흐름 리포트&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-080&quot;,&quot;name&quot;:&quot;경영 요약&quot;,&quot;type&quot;:&quot;리포트&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-090&quot;,&quot;name&quot;:&quot;리포트 생성·스케줄&quot;,&quot;type&quot;:&quot;처리&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;W&quot;,&quot;ST&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-100&quot;,&quot;name&quot;:&quot;초안 검토·확정&quot;,&quot;type&quot;:&quot;처리&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;SL&quot;:&quot;W&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;W&quot;,&quot;SH&quot;:&quot;W&quot;,&quot;ST&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-110&quot;,&quot;name&quot;:&quot;리포트 이력&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;SL&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-120&quot;,&quot;name&quot;:&quot;리포트 양식 관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;,&quot;ST&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;RPT-130&quot;,&quot;name&quot;:&quot;데이터 질의&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;DOC&quot;,&quot;name&quot;:&quot;문서관리&quot;,&quot;kind&quot;:&quot;new&quot;,&quot;opt&quot;:&quot;doc&quot;,&quot;screens&quot;:[{&quot;id&quot;:&quot;DOC-010&quot;,&quot;name&quot;:&quot;문서관리 바로가기&quot;,&quot;type&quot;:&quot;외부 연계(SSO)&quot;,&quot;roles&quot;:{&quot;SL&quot;:&quot;R&quot;,&quot;PR&quot;:&quot;R&quot;,&quot;SH&quot;:&quot;R&quot;,&quot;DS&quot;:&quot;R&quot;,&quot;AC&quot;:&quot;R&quot;,&quot;ST&quot;:&quot;R&quot;,&quot;EX&quot;:&quot;R&quot;,&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:true},{&quot;id&quot;:&quot;DOC-020&quot;,&quot;name&quot;:&quot;문서관리 계정 매핑&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false}]},{&quot;code&quot;:&quot;SYS&quot;,&quot;name&quot;:&quot;시스템&quot;,&quot;kind&quot;:&quot;base&quot;,&quot;opt&quot;:null,&quot;screens&quot;:[{&quot;id&quot;:&quot;SYS-010&quot;,&quot;name&quot;:&quot;사용자 관리&quot;,&quot;type&quot;:&quot;목록·등록&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;SYS-020&quot;,&quot;name&quot;:&quot;역할·권한&quot;,&quot;type&quot;:&quot;설정&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;SYS-030&quot;,&quot;name&quot;:&quot;공통코드&quot;,&quot;type&quot;:&quot;설정&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;W&quot;},&quot;sso&quot;:false},{&quot;id&quot;:&quot;SYS-040&quot;,&quot;name&quot;:&quot;로그&quot;,&quot;type&quot;:&quot;조회&quot;,&quot;roles&quot;:{&quot;ADM&quot;:&quot;R&quot;},&quot;sso&quot;:false}]}];
+const SCR = {}; IA_DATA.forEach(l=&gt;l.screens.forEach(s=&gt;SCR[s.id]={...s, top:l.name}));
+const sid = id =&gt; `&lt;span class=&quot;sid&quot;&gt;${id}&lt;/span&gt;`;
+const nm  = id =&gt; SCR[id] ? `${SCR[id].name} ${sid(id)}` : id;
+
+/* =======================================================================
+   2. 부서별 내용
+   - req  : [이전에 하던 방식, 이제 쓰는 화면들, 상태(&#x27;ok&#x27;|&#x27;part&#x27;|&#x27;no&#x27;), 비고]
+   - day  : [시점, 할 일, 화면들, 설명]
+   - inN  : 받는 알림 / outN : 내가 일을 끝내면 넘어가는 곳
+   - out  : MES 밖에서 하는 일
+   ======================================================================= */
+const DEPTS = [
+ {key:&#x27;sales&#x27;, role:&#x27;SL&#x27;, name:&#x27;영업부&#x27;, lead:&#x27;고객 주문을 생산의뢰로 등록하고, 납기·재고·출하·미수를 직접 확인해 고객에게 바로 답합니다.&#x27;,
+  req:[
+   [&#x27;고객 납기 문의 → 생산부에 전화해 진행 확인&#x27;, [&#x27;TRK-010&#x27;,&#x27;TRK-020&#x27;], &#x27;ok&#x27;, &#x27;의뢰번호로 지금 단계와 남은 수량을 본다&#x27;],
+   [&#x27;재고 문의 → 창고에 확인 요청&#x27;, [&#x27;INV-010&#x27;,&#x27;TRK-030&#x27;], &#x27;ok&#x27;, &#x27;가용 수량(할당분 제외)으로 답한다&#x27;],
+   [&#x27;출하 요청 → 출하실에 전화&#x27;, [&#x27;SHP-010&#x27;], &#x27;ok&#x27;, &#x27;출하 지시를 직접 등록, 확정은 출하실&#x27;],
+   [&#x27;미수 금액 → 회계부에 문의&#x27;, [&#x27;TRK-030&#x27;,&#x27;COL-050&#x27;], &#x27;ok&#x27;, &#x27;ERP 업로드 기준일까지의 값&#x27;],
+   [&#x27;클레임 원인 LOT → 품질에 요청&#x27;, [&#x27;LOT-020&#x27;,&#x27;QC-030&#x27;], &#x27;ok&#x27;, &#x27;출하 번호에서 원자재 LOT까지&#x27;],
+   [&#x27;새 주문 시안 준비 → 디자인실에 전달&#x27;, [&#x27;WO-010&#x27;], &#x27;ok&#x27;, &#x27;의뢰 등록 시 디자인실에 자동 알림&#x27;],
+   [&#x27;매출전표·세금계산서&#x27;, [], &#x27;no&#x27;, &#x27;FINE_MES 영업지원·ERP에서 계속&#x27;]
+  ],
+  day:[
+   [&#x27;08:30&#x27;,&#x27;내 할 일 확인&#x27;,[&#x27;HOME-010&#x27;,&#x27;TRK-020&#x27;],&#x27;납기 D-3 미출하, 판정 끝나 출하 기다리는 건&#x27;],
+   [&#x27;오전&#x27;,&#x27;새 발주를 생산의뢰로 등록&#x27;,[&#x27;WO-010&#x27;],&#x27;거래처·제품·수량·납기. 등록하면 생산부·디자인실에 알림&#x27;],
+   [&#x27;수시&#x27;,&#x27;고객 문의 응대&#x27;,[&#x27;TRK-010&#x27;,&#x27;TRK-030&#x27;],&#x27;통화 중에 주문 진행, 재고, 최근 출하, 미수를 한 화면에서&#x27;],
+   [&#x27;판정 완료 알림 후&#x27;,&#x27;출하 지시 등록&#x27;,[&#x27;SHP-010&#x27;],&#x27;의뢰번호를 고르면 납기·수량이 채워짐. 출하실에 알림&#x27;],
+   [&#x27;주간&#x27;,&#x27;수주·출하 리포트 확인&#x27;,[&#x27;RPT-010&#x27;,&#x27;RPT-050&#x27;],&#x27;수주 추이, 납기 준수율&#x27;]
+  ],
+  inN:[&#x27;판정 완료 (출하 가능)&#x27;,&#x27;출하 확정&#x27;,&#x27;납기 D-3 미출하&#x27;],
+  outN:[&#x27;의뢰 등록 → 생산부·디자인실&#x27;,&#x27;출하 지시 → 출하실&#x27;],
+  out:[&#x27;매출전표, 매출현황, 발주서, 예약발주, 포장재 증명서: FINE_MES 영업지원&#x27;,&#x27;세금계산서: ERP&#x27;]},
+
+ {key:&#x27;prod&#x27;, role:&#x27;PR&#x27;, name:&#x27;생산부&#x27;, lead:&#x27;의뢰를 받아 지시를 내리고, 원단 입고·검사·불출부터 생산·검사일보, 제품 입고와 판정까지 처리합니다. (생산관리, 품질, 원단 관리 포함)&#x27;,
+  req:[
+   [&#x27;새 주문이 있는지 영업부에 확인&#x27;, [&#x27;HOME-010&#x27;,&#x27;HOME-020&#x27;], &#x27;ok&#x27;, &#x27;의뢰 등록 알림, 지시 대기 카드&#x27;],
+   [&#x27;출하 일정을 출하실에 문의&#x27;, [&#x27;SHP-010&#x27;,&#x27;TRK-020&#x27;], &#x27;ok&#x27;, &#x27;출하 지시와 납기를 보고 순서를 정한다&#x27;],
+   [&#x27;원단 재고를 장부로 확인&#x27;, [&#x27;INV-010&#x27;], &#x27;ok&#x27;, &#x27;LOT별, 검사 대기·보류 구분&#x27;],
+   [&#x27;불출할 지시번호를 종이로 받아 입력&#x27;, [&#x27;MAT-020&#x27;], &#x27;ok&#x27;, &#x27;지시서 목록에서 고른다&#x27;],
+   [&#x27;일보를 모아 엑셀로 보고&#x27;, [&#x27;PRD-030&#x27;,&#x27;RPT-020&#x27;], &#x27;ok&#x27;, &#x27;현황과 생산 리포트가 자동&#x27;],
+   [&#x27;검사 끝났다고 출하실·영업에 연락&#x27;, [&#x27;QC-020&#x27;], &#x27;ok&#x27;, &#x27;판정을 확정하면 자동 알림&#x27;],
+   [&#x27;근태·특근 신청&#x27;, [], &#x27;no&#x27;, &#x27;FINE_MES에서 계속&#x27;]
+  ],
+  day:[
+   [&#x27;08:00&#x27;,&#x27;내 할 일 확인&#x27;,[&#x27;HOME-010&#x27;],&#x27;지시 대기 의뢰, 불출 대기, 입고·제품검사 대기 LOT, 일보 미입력&#x27;],
+   [&#x27;오전&#x27;,&#x27;생산지시서 작성과 순서 조정&#x27;,[&#x27;WO-020&#x27;,&#x27;WO-030&#x27;],&#x27;제조사양·시안을 불러와 지시. 출하 일정 참고&#x27;],
+   [&#x27;입고 시&#x27;,&#x27;원단 입고와 입고검사&#x27;,[&#x27;MAT-010&#x27;,&#x27;QC-010&#x27;],&#x27;LOT 라벨 출력, 합격하면 가용&#x27;],
+   [&#x27;작업 전&#x27;,&#x27;불출&#x27;,[&#x27;MAT-020&#x27;],&#x27;지시 선택 → LOT 선택. 검사 대기 LOT는 막힘&#x27;],
+   [&#x27;작업 후&#x27;,&#x27;생산일보·검사일보&#x27;,[&#x27;PRD-010&#x27;,&#x27;INS-010&#x27;],&#x27;지시별 생산량·로스, 공정 검사&#x27;],
+   [&#x27;완료 시&#x27;,&#x27;제품 입고와 판정&#x27;,[&#x27;MAT-030&#x27;,&#x27;QC-020&#x27;],&#x27;일보 완료 수량을 불러와 입고. 판정 확정 → 출하실·영업 알림&#x27;],
+   [&#x27;월말&#x27;,&#x27;가동률·로스율 확인&#x27;,[&#x27;PRP-010&#x27;,&#x27;PRD-040&#x27;,&#x27;RPT-020&#x27;],&#x27;설비별 가동률, 지시 대비 로스&#x27;]
+  ],
+  inN:[&#x27;의뢰 등록&#x27;,&#x27;원자재 입고 (입고검사 필요)&#x27;,&#x27;제품 입고 (제품검사 필요)&#x27;,&#x27;납기 D-3 미출하&#x27;],
+  outN:[&#x27;판정 완료 → 출하실·영업부&#x27;,&#x27;지시 발행 → 불출 준비&#x27;],
+  out:[&#x27;출퇴근부, 근태목록, 특근신청·완료보고: FINE_MES&#x27;,&#x27;작업표준서 등 문서: 문서관리 (별도 시스템, MES 메뉴에서 SSO)&#x27;]},
+
+ {key:&#x27;ship&#x27;, role:&#x27;SH&#x27;, name:&#x27;출하실&#x27;, lead:&#x27;영업이 올린 출하 지시를 받아 LOT를 확인하고 출하를 확정합니다.&#x27;,
+  req:[
+   [&#x27;출하 요청을 전화로 받음&#x27;, [&#x27;HOME-010&#x27;,&#x27;HOME-020&#x27;], &#x27;ok&#x27;, &#x27;출하 지시 대기 알림&#x27;],
+   [&#x27;검사 끝났는지 품질에 확인&#x27;, [&#x27;SHP-020&#x27;], &#x27;ok&#x27;, &#x27;미판정·불합격 LOT는 확정이 막힘&#x27;],
+   [&#x27;출하 완료를 영업·회계에 연락&#x27;, [&#x27;SHP-020&#x27;], &#x27;ok&#x27;, &#x27;확정하면 자동 알림&#x27;],
+   [&#x27;완료현황을 출력해 공유&#x27;, [&#x27;SHP-030&#x27;], &#x27;ok&#x27;, &#x27;모두 직접 조회&#x27;]
+  ],
+  day:[
+   [&#x27;수시&#x27;,&#x27;출하 지시 확인&#x27;,[&#x27;HOME-010&#x27;,&#x27;SHP-010&#x27;],&#x27;할당된 LOT와 수량 확인&#x27;],
+   [&#x27;출하 시&#x27;,&#x27;출하 확정&#x27;,[&#x27;SHP-020&#x27;],&#x27;검사 판정 자동 확인. 확정하면 영업·회계 알림&#x27;],
+   [&#x27;오후&#x27;,&#x27;납기 현황 점검&#x27;,[&#x27;TRK-020&#x27;],&#x27;오늘·내일 납기 미출하 건&#x27;]
+  ],
+  inN:[&#x27;출하 지시 등록&#x27;,&#x27;판정 완료&#x27;],
+  outN:[&#x27;출하 확정 → 영업부·회계부&#x27;],
+  out:[]},
+
+ {key:&#x27;design&#x27;, role:&#x27;DS&#x27;, name:&#x27;디자인·개발실&#x27;, lead:&#x27;새 의뢰의 시안과 판을 준비하고, 지시서에 시안이 자동으로 붙게 등록합니다.&#x27;,
+  req:[
+   [&#x27;시안 필요한 주문을 영업에게 들음&#x27;, [&#x27;HOME-020&#x27;,&#x27;WO-010&#x27;], &#x27;ok&#x27;, &#x27;의뢰 등록 알림&#x27;],
+   [&#x27;시안 파일을 메신저로 생산부에 전달&#x27;, [&#x27;STD-040&#x27;], &#x27;ok&#x27;, &#x27;시안을 등록하면 지시서에서 함께 보임&#x27;],
+   [&#x27;판 보유·사용 이력 문의에 답함&#x27;, [&#x27;STD-030&#x27;], &#x27;ok&#x27;, &#x27;생산부도 직접 조회&#x27;],
+   [&#x27;개발실 일보&#x27;, [], &#x27;no&#x27;, &#x27;FINE_MES에서 계속&#x27;]
+  ],
+  day:[
+   [&#x27;오전&#x27;,&#x27;시안 미등록 의뢰 확인&#x27;,[&#x27;HOME-010&#x27;],&#x27;새 의뢰 중 시안이 없는 건&#x27;],
+   [&#x27;작업 후&#x27;,&#x27;시안 등록&#x27;,[&#x27;STD-040&#x27;],&#x27;제품에 연결&#x27;],
+   [&#x27;수시&#x27;,&#x27;판관리&#x27;,[&#x27;STD-030&#x27;],&#x27;판 등록, 사용 이력&#x27;],
+   [&#x27;수시&#x27;,&#x27;사양서·문서&#x27;,[&#x27;DOC-010&#x27;],&#x27;문서관리(별도 시스템)로 SSO 이동&#x27;]
+  ],
+  inN:[&#x27;의뢰 등록&#x27;],
+  outN:[&#x27;시안 등록 → 생산지시서에 표시&#x27;],
+  out:[&#x27;개발실일보: FINE_MES&#x27;]},
+
+ {key:&#x27;acct&#x27;, role:&#x27;AC&#x27;, name:&#x27;회계부&#x27;, lead:&#x27;ERP 수금현황을 올려 전 부서가 미수를 직접 보게 하고, 출하와 매출을 대조합니다.&#x27;,
+  req:[
+   [&#x27;출하 내역을 출하실에 요청&#x27;, [&#x27;SHP-030&#x27;,&#x27;COL-070&#x27;], &#x27;ok&#x27;, &#x27;출하 이력, 출하 대비 수금&#x27;],
+   [&#x27;미수 현황 엑셀을 만들어 영업·경영진에 배포&#x27;, [&#x27;COL-010&#x27;], &#x27;ok&#x27;, &#x27;한 번 올리면 각 부서가 직접 조회&#x27;],
+   [&#x27;영업의 미수 문의에 응대&#x27;, [&#x27;TRK-030&#x27;], &#x27;ok&#x27;, &#x27;영업부가 직접 확인&#x27;],
+   [&#x27;회계·세금계산서·원가&#x27;, [], &#x27;no&#x27;, &#x27;ERP, FINE_MES 원가에서 계속&#x27;]
+  ],
+  day:[
+   [&#x27;매일 또는 주 1회&#x27;,&#x27;ERP 수금현황 업로드&#x27;,[&#x27;COL-010&#x27;],&#x27;ERP 엑셀을 그대로 올림. 같은 기간은 새 회차로 교체&#x27;],
+   [&#x27;업로드 후&#x27;,&#x27;오류·미매핑 정리&#x27;,[&#x27;COL-020&#x27;,&#x27;COL-030&#x27;],&#x27;처음 보는 ERP 거래처 코드를 MES 거래처에 연결&#x27;],
+   [&#x27;주간&#x27;,&#x27;미수·연령 점검&#x27;,[&#x27;COL-050&#x27;,&#x27;COL-060&#x27;],&#x27;90일 초과 거래처&#x27;],
+   [&#x27;월말&#x27;,&#x27;출하 대비 수금, 수금 리포트&#x27;,[&#x27;COL-070&#x27;,&#x27;RPT-060&#x27;],&#x27;거래처·월 단위 대조&#x27;]
+  ],
+  inN:[&#x27;출하 확정&#x27;,&#x27;ERP 업로드 오류·미매핑&#x27;],
+  outN:[&#x27;업로드 반영 → 영업·전략·경영진 조회 가능&#x27;],
+  out:[&#x27;회계 전표, 세금계산서: ERP&#x27;,&#x27;품의서·지출대장: FINE_MES&#x27;,&#x27;원가: FINE_MES&#x27;]},
+
+ {key:&#x27;strat&#x27;, role:&#x27;ST&#x27;, name:&#x27;전략부&#x27;, lead:&#x27;부서에 자료를 요청하지 않고 AI 리포트와 데이터 질의로 숫자를 직접 뽑아 경영 보고를 만듭니다.&#x27;,
+  req:[
+   [&#x27;각 부서에 실적 자료 요청&#x27;, [&#x27;RPT-010&#x27;,&#x27;RPT-020&#x27;,&#x27;RPT-050&#x27;,&#x27;RPT-060&#x27;], &#x27;ok&#x27;, &#x27;수주·생산·출하·수금 리포트&#x27;],
+   [&#x27;월간 보고서를 엑셀로 수작업&#x27;, [&#x27;RPT-080&#x27;,&#x27;RPT-100&#x27;], &#x27;ok&#x27;, &#x27;AI 초안 → 숫자 대조 → 검토·확정&#x27;],
+   [&#x27;특정 숫자를 전산에 요청&#x27;, [&#x27;RPT-130&#x27;], &#x27;ok&#x27;, &#x27;허용된 조회 뷰에서 읽기 전용 질의&#x27;],
+   [&#x27;병목 파악을 위해 생산부 면담&#x27;, [&#x27;RPT-070&#x27;], &#x27;part&#x27;, &#x27;단계별 소요일로 먼저 보고, 원인은 면담&#x27;]
+  ],
+  day:[
+   [&#x27;월요일&#x27;,&#x27;주간 경영 요약 검토·확정&#x27;,[&#x27;RPT-080&#x27;,&#x27;RPT-100&#x27;],&#x27;틀린 숫자 문장은 표시되어 확정이 막힘&#x27;],
+   [&#x27;주간&#x27;,&#x27;주문 흐름 병목 확인&#x27;,[&#x27;RPT-070&#x27;,&#x27;TRK-020&#x27;],&#x27;의뢰부터 출하까지 오래 걸린 단계&#x27;],
+   [&#x27;수시&#x27;,&#x27;데이터 질의&#x27;,[&#x27;RPT-130&#x27;],&#x27;질의와 결과가 로그로 남음&#x27;],
+   [&#x27;분기&#x27;,&#x27;리포트 양식 개선&#x27;,[&#x27;RPT-120&#x27;],&#x27;섹션·지침 수정, 판 번호 관리&#x27;]
+  ],
+  inN:[&#x27;리포트 초안&#x27;],
+  outN:[&#x27;확정 리포트 → 경영진&#x27;],
+  out:[]},
+
+ {key:&#x27;exec&#x27;, role:&#x27;EX&#x27;, name:&#x27;경영진&#x27;, lead:&#x27;확정된 리포트와 통합 조회로 회사 흐름을 봅니다. 처리 화면은 없고 모두 조회입니다.&#x27;,
+  req:[
+   [&#x27;실적을 부서장에게 보고받음&#x27;, [&#x27;RPT-080&#x27;], &#x27;ok&#x27;, &#x27;일·주·월 경영 요약&#x27;],
+   [&#x27;특정 거래처 상황 문의&#x27;, [&#x27;TRK-030&#x27;], &#x27;ok&#x27;, &#x27;주문·재고·출하·미수&#x27;],
+   [&#x27;납기 지연 원인 문의&#x27;, [&#x27;TRK-020&#x27;,&#x27;RPT-070&#x27;], &#x27;part&#x27;, &#x27;멈춘 단계는 보이고, 사유는 담당 부서 확인&#x27;]
+  ],
+  day:[
+   [&#x27;아침&#x27;,&#x27;경영 요약&#x27;,[&#x27;RPT-080&#x27;],&#x27;전일 입고·출하·이상 요약&#x27;],
+   [&#x27;수시&#x27;,&#x27;납기·미수&#x27;,[&#x27;TRK-020&#x27;,&#x27;COL-060&#x27;],&#x27;지연 건, 90일 초과 미수&#x27;],
+   [&#x27;월간&#x27;,&#x27;수주·생산·수금 리포트&#x27;,[&#x27;RPT-010&#x27;,&#x27;RPT-020&#x27;,&#x27;RPT-060&#x27;],&#x27;&#x27;]
+  ],
+  inN:[&#x27;확정 리포트&#x27;,&#x27;이상 요약&#x27;],
+  outN:[],
+  out:[&#x27;원가: FINE_MES&#x27;]},
+
+ {key:&#x27;admin&#x27;, role:&#x27;ADM&#x27;, name:&#x27;전산 관리자&#x27;, lead:&#x27;사용자·부서 권한, 문서관리 계정 연결, 공통코드와 로그를 관리합니다.&#x27;,
+  req:[
+   [&#x27;권한 요청을 메일로 받아 처리&#x27;, [&#x27;SYS-020&#x27;], &#x27;part&#x27;, &#x27;부서 기본 권한은 미리 설정, 예외만 처리&#x27;],
+   [&#x27;문서관리 로그인 문의&#x27;, [&#x27;DOC-020&#x27;], &#x27;ok&#x27;, &#x27;계정 매핑 후 SSO로 자동 로그인&#x27;]
+  ],
+  day:[
+   [&#x27;입·퇴사 시&#x27;,&#x27;사용자 등록·비활성&#x27;,[&#x27;SYS-010&#x27;,&#x27;DOC-020&#x27;],&#x27;비활성 즉시 SSO 차단&#x27;],
+   [&#x27;수시&#x27;,&#x27;권한·공통코드&#x27;,[&#x27;SYS-020&#x27;,&#x27;SYS-030&#x27;],&#x27;부서별 W·R&#x27;],
+   [&#x27;주간&#x27;,&#x27;로그 점검&#x27;,[&#x27;SYS-040&#x27;],&#x27;업로드·AI·SSO 실패&#x27;]
+  ],
+  inN:[&#x27;SSO 실패가 잦은 계정&#x27;],
+  outN:[],
+  out:[]}
+];
+
+/* =======================================================================
+   3. 점검 결과 집계
+   ======================================================================= */
+(function(){
+  const all = DEPTS.flatMap(d=&gt;d.req);
+  const ok = all.filter(r=&gt;r[2]===&#x27;ok&#x27;).length, part = all.filter(r=&gt;r[2]===&#x27;part&#x27;).length, no = all.filter(r=&gt;r[2]===&#x27;no&#x27;).length;
+  document.getElementById(&#x27;verdict&#x27;).innerHTML = `
+    &lt;div class=&quot;ok&quot;&gt;&lt;p class=&quot;small muted&quot;&gt;MES에서 직접 해결&lt;/p&gt;&lt;p class=&quot;v&quot;&gt;${ok}건&lt;/p&gt;&lt;p class=&quot;small muted&quot;&gt;부서 간 문의·요청이 없어짐&lt;/p&gt;&lt;/div&gt;
+    &lt;div class=&quot;part&quot;&gt;&lt;p class=&quot;small muted&quot;&gt;일부 해결&lt;/p&gt;&lt;p class=&quot;v&quot;&gt;${part}건&lt;/p&gt;&lt;p class=&quot;small muted&quot;&gt;숫자는 직접, 사유는 확인 필요&lt;/p&gt;&lt;/div&gt;
+    &lt;div class=&quot;no&quot;&gt;&lt;p class=&quot;small muted&quot;&gt;MES 밖&lt;/p&gt;&lt;p class=&quot;v&quot;&gt;${no}건&lt;/p&gt;&lt;p class=&quot;small muted&quot;&gt;FINE_MES 잔류·ERP 업무&lt;/p&gt;&lt;/div&gt;
+    &lt;div&gt;&lt;p class=&quot;small muted&quot;&gt;점검한 요청&lt;/p&gt;&lt;p class=&quot;v&quot;&gt;${all.length}건&lt;/p&gt;&lt;p class=&quot;small muted&quot;&gt;${DEPTS.length}개 부서&lt;/p&gt;&lt;/div&gt;`;
+})();
+
+/* =======================================================================
+   4. 탭 그리기
+   ======================================================================= */
+const ST = {ok:[&#x27;직접 해결&#x27;,&#x27;c-ok&#x27;], part:[&#x27;일부&#x27;,&#x27;c-part&#x27;], no:[&#x27;MES 밖&#x27;,&#x27;c-no&#x27;]};
+function screensFor(role){
+  // 부서가 W(처리) 또는 R(조회)할 수 있는 화면을 대메뉴별로 묶음 (전산 관리자는 처리 화면만)
+  return IA_DATA.map(l=&gt;({top:l.name, items:l.screens.filter(s=&gt;s.roles[role] &amp;&amp; !(role===&#x27;ADM&#x27; &amp;&amp; s.roles[role]===&#x27;R&#x27;))}))
+    .filter(g=&gt;g.items.length);
+}
+function drawPane(key){
+  const d = DEPTS.find(x=&gt;x.key===key) || DEPTS[0];
+  document.querySelectorAll(&#x27;#tabs button&#x27;).forEach(b=&gt;b.setAttribute(&#x27;aria-selected&#x27;, b.dataset.key===d.key));
+  const groups = screensFor(d.role);
+  const nW = groups.reduce((a,g)=&gt;a+g.items.filter(s=&gt;s.roles[d.role]===&#x27;W&#x27;).length,0);
+  const nR = groups.reduce((a,g)=&gt;a+g.items.filter(s=&gt;s.roles[d.role]===&#x27;R&#x27;).length,0);
+  document.getElementById(&#x27;pane&#x27;).innerHTML = `
+  &lt;div style=&quot;display:grid;gap:14px&quot;&gt;
+    &lt;div style=&quot;display:grid;gap:4px&quot;&gt;&lt;h2&gt;${d.name}&lt;/h2&gt;&lt;p class=&quot;muted&quot; style=&quot;max-width:72ch&quot;&gt;${d.lead}&lt;/p&gt;&lt;/div&gt;
+
+    &lt;div class=&quot;tbl-wrap&quot;&gt;&lt;table&gt;
+      &lt;thead&gt;&lt;tr&gt;&lt;th&gt;이전 (다른 부서에 묻거나 요청)&lt;/th&gt;&lt;th&gt;이제 (MES에서 직접)&lt;/th&gt;&lt;th&gt;결과&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+      &lt;tbody&gt;${d.req.map(([b,ids,st,n])=&gt;`&lt;tr&gt;&lt;td class=&quot;before&quot;&gt;${b}&lt;/td&gt;
+        &lt;td&gt;${ids.length?ids.map(nm).join(&#x27;&lt;br&gt;&#x27;):&#x27;-&#x27;}${n?`&lt;br&gt;&lt;span class=&quot;small muted&quot;&gt;${n}&lt;/span&gt;`:&#x27;&#x27;}&lt;/td&gt;
+        &lt;td&gt;&lt;span class=&quot;chip ${ST[st][1]}&quot;&gt;${ST[st][0]}&lt;/span&gt;&lt;/td&gt;&lt;/tr&gt;`).join(&#x27;&#x27;)}&lt;/tbody&gt;
+    &lt;/table&gt;&lt;/div&gt;
+
+    &lt;div class=&quot;grid2&quot;&gt;
+      &lt;div class=&quot;panel&quot;&gt;&lt;h3&gt;하루 업무 흐름&lt;/h3&gt;
+        &lt;ol class=&quot;day&quot;&gt;${d.day.map(([w,t,ids,n])=&gt;`&lt;li&gt;&lt;span class=&quot;when&quot;&gt;${w}&lt;/span&gt;&lt;div&gt;&lt;b&gt;${t}&lt;/b&gt; ${ids.map(sid).join(&#x27; &#x27;)}${n?`&lt;p&gt;${n}&lt;/p&gt;`:&#x27;&#x27;}&lt;/div&gt;&lt;/li&gt;`).join(&#x27;&#x27;)}&lt;/ol&gt;
+      &lt;/div&gt;
+      &lt;div style=&quot;display:grid;gap:14px;align-content:start&quot;&gt;
+        &lt;div class=&quot;panel&quot;&gt;&lt;h3&gt;알림 주고받기&lt;/h3&gt;
+          &lt;div class=&quot;hand&quot;&gt;
+            ${d.inN.map(t=&gt;`&lt;div&gt;&lt;span class=&quot;arr in&quot;&gt;받음 ←&lt;/span&gt;&lt;span&gt;${t}&lt;/span&gt;&lt;/div&gt;`).join(&#x27;&#x27;)}
+            ${d.outN.map(t=&gt;`&lt;div&gt;&lt;span class=&quot;arr out&quot;&gt;보냄 →&lt;/span&gt;&lt;span&gt;${t}&lt;/span&gt;&lt;/div&gt;`).join(&#x27;&#x27;)}
+            ${!d.inN.length&amp;&amp;!d.outN.length?&#x27;&lt;p class=&quot;small muted&quot;&gt;없음&lt;/p&gt;&#x27;:&#x27;&#x27;}
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;panel&quot;&gt;&lt;h3&gt;MES 밖에서 하는 일&lt;/h3&gt;
+          ${d.out.length?`&lt;ul class=&quot;elsewhere&quot;&gt;${d.out.map(t=&gt;`&lt;li&gt;${t}&lt;/li&gt;`).join(&#x27;&#x27;)}&lt;/ul&gt;`:&#x27;&lt;p class=&quot;small muted&quot;&gt;없음. 이 부서의 일은 MES 안에서 끝납니다.&lt;/p&gt;&#x27;}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;panel&quot;&gt;
+      &lt;h3&gt;쓸 수 있는 화면 · 처리 ${nW}개 · 조회 ${nR}개&lt;/h3&gt;
+      &lt;div class=&quot;scr&quot;&gt;${groups.map(g=&gt;`&lt;div class=&quot;scr-grp&quot;&gt;&lt;h3&gt;${g.top}&lt;/h3&gt;&lt;div class=&quot;scr-list&quot;&gt;${g.items.map(s=&gt;
+        (g.top===&#x27;문서관리&#x27;
+          ? `&lt;span class=&quot;s ext&quot;&gt;${s.name}${s.sso?&#x27; ↗&#x27;:&#x27;&#x27;} &lt;span class=&quot;sid&quot;&gt;${s.id}&lt;/span&gt; &lt;span class=&quot;tag-ext&quot;&gt;별도 시스템&lt;/span&gt;&lt;/span&gt;`
+          : `&lt;span class=&quot;s ${s.roles[d.role]}&quot;&gt;${s.name} &lt;span class=&quot;sid&quot;&gt;${s.id}&lt;/span&gt; &lt;span class=&quot;mono small&quot;&gt;${s.roles[d.role]}&lt;/span&gt;&lt;/span&gt;`)).join(&#x27;&#x27;)}&lt;/div&gt;&lt;/div&gt;`).join(&#x27;&#x27;)}&lt;/div&gt;
+      &lt;p class=&quot;small muted&quot;&gt;파란 칸은 직접 처리(W), 흰 칸은 조회(R), 회색 점선은 별도 시스템(문서관리)입니다.&lt;/p&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+}
+document.getElementById(&#x27;tabs&#x27;).innerHTML = DEPTS.map(d=&gt;`&lt;button role=&quot;tab&quot; id=&quot;tab-${d.key}&quot; data-key=&quot;${d.key}&quot;&gt;${d.name}&lt;/button&gt;`).join(&#x27;&#x27;);
+document.getElementById(&#x27;tabs&#x27;).addEventListener(&#x27;click&#x27;,e=&gt;{
+  const b=e.target.closest(&#x27;[data-key]&#x27;); if(!b) return;
+  drawPane(b.dataset.key);
+  try{ history.replaceState(null,&#x27;&#x27;,&#x27;#&#x27;+b.dataset.key); }catch(err){}
+});
+/* 주소 뒤 #sales 같은 탭 이름으로 바로 열기 */
+const start = (location.hash||&#x27;&#x27;).slice(1);
+drawPane(DEPTS.some(d=&gt;d.key===start) ? start : &#x27;sales&#x27;);
+&lt;/script&gt;
+&lt;/html&gt;" hidden></iframe></main>
+
+<script>
+/* 원본 아티팩트 ID → 탭 키 (페이지 안 링크를 탭 전환으로 바꾸는 데 씀) */
+const ID_MAP = {'NJJXwqh83Y1mDUjnQiuvqW': 'ia', 'TP8tvPZZJAhhWK9rkn6khi': 'guide'};
+const KEYS = ['ia','guide'];
+const frame = k => document.getElementById('f-'+k);
+
+/* 탭 보이기 */
+function show(key){
+  if(!KEYS.includes(key)) key='ia';
+  KEYS.forEach(k=>{ frame(k).hidden = k!==key; document.getElementById('t-'+k).setAttribute('aria-selected', k===key); });
+  try{ history.replaceState(null,'','#'+key); }catch(e){}
+}
+document.querySelector('.tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-key]'); if(b) show(b.dataset.key); });
+
+/* 화면 구조 탭에서 특정 화면 열기 (IA 페이지의 state·render 를 호출) */
+function openScreen(id){
+  show('ia');
+  try{
+    const w = frame('ia').contentWindow;
+    w.eval('state.sel=' + JSON.stringify(id) + '; render();');
+    const d = w.document.getElementById('detail'); if(d && w.innerWidth<=960) d.scrollIntoView({block:'start'});
+  }catch(e){}
+}
+
+/* 테마: 뷰어가 고른 data-theme 를 각 페이지에도 같게 적용 */
+function syncTheme(){
+  const t = document.documentElement.getAttribute('data-theme');
+  KEYS.forEach(k=>{ try{ const r=frame(k).contentDocument.documentElement;
+    if(t) r.setAttribute('data-theme',t); else r.removeAttribute('data-theme'); }catch(e){} });
+}
+new MutationObserver(syncTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* 각 페이지가 열리면: 테마 맞추기, 페이지 간 링크 가로채기, 가이드의 화면 ID 클릭 연결 */
+KEYS.forEach(k=>frame(k).addEventListener('load',()=>{
+  let doc; try{ doc = frame(k).contentDocument; }catch(e){ return; }
+  syncTheme();
+  doc.addEventListener('click',e=>{
+    const a = e.target.closest('a[href]');
+    if(a){ const hit = Object.keys(ID_MAP).find(id=>a.href.includes(id)); if(hit){ e.preventDefault(); show(ID_MAP[hit]); return; } }
+    if(k==='guide'){ const s=e.target.closest('.sid'); if(s){ e.preventDefault(); openScreen(s.textContent.trim()); } }
+  });
+  if(k==='guide'){ const st=doc.createElement('style'); st.textContent='.sid{cursor:pointer;text-decoration:underline dotted}'; doc.head.appendChild(st); }
+}));
+
+/* 주소 뒤 #ia #guide 로 바로 열기 */
+show((location.hash||'').slice(1));
+</script>
