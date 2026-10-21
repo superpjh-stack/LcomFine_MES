@@ -212,3 +212,22 @@
 ## 개발 · QA 결정 (웨이브마다 이 아래에 덧붙인다)
 
 <!-- 개발1 D-6nn · 개발2 D-7nn · 개발3 D-8nn · QA D-9nn -->
+
+## D-701 QC 재판정 경로의 키 · 분할 LOT 의 판정 · 상태: 가설
+- 계약은 `POST /qc/incoming/{id}` · `POST /qc/product/{id}` 의 `{id}` 가 무엇인지 적지 않았다. **재판정할 LOT 의 id**(QC-010 `material_lot.id` · QC-020 `product_lot.id`)로 둔다 — 재판정은 LOT 의 새 차수 행이다(D-515).
+- 분할 LOT(INV-020)은 자기 판정이 없으면 원 LOT 의 판정을 따른다: 판정은 그 LOT 과 자기 판정이 없는 분할 자식의 `lot_stock.status` 에 함께 적용하고, `trace` 의 현재 판정도 자기 → 원 LOT 순으로 가장 가까운 판정이다.
+- 바뀌면 고칠 곳: `routers/qc.py` `_judge` · `trace._judgements`.
+
+## D-702 「출하 후 불합격」 표시 기준 · 상태: 가설
+- D-515 3 의 표시를 이렇게 판정한다: **확정된** 출하에 들어간 제품 LOT 의 현재 판정(가장 큰 seq)이 `불합격` 이고 그 판정 시각 > 출하 확정 시각. 그 뒤 다시 합격으로 재판정하면 표시는 사라진다(이력은 QC-030).
+- 출하 · 할당 · 반품·정정은 건드리지 않는다. 표시는 `trace.backward/forward` 의 `rejected_after_shipment` 와 LOT-010/020 · QC-020 화면.
+
+## D-703 입고 · 불출 수정과 취소의 범위 · 상태: 가설
+- MAT-010 · MAT-030 수정: 수량을 고치거나 취소할 수 있는 LOT 은 **입고 그대로인 LOT**(불출 · 이동 · 분할 · 할당 · 조정 · 출하가 없는 LOT)뿐이다 — 아니면 422(재고 조정은 INV-030). 취소는 입고 행에 `canceled_at` 을 남기고 그 LOT 의 `lot_stock` 행을 지운다.
+- MAT-020 수정: 불출일 · 비고 · **불출 전체 취소**(재고를 되돌리고 `stock_move` `불출 취소` 행)만 한다. LOT 을 바꾸려면 취소 뒤 다시 불출한다.
+- INV-020 수정: `이동` 행만 고친다(옛 이동을 되돌리고 새 값으로 다시 옮긴다). 분할 · 불출 · 출하 행은 고치지 않는다.
+
+## D-704 라벨 출력 · 엑셀 · 알림 링크 · 상태: 가설
+- MAT-010 라벨 = 같은 화면의 `?label=<입고 id>`(읽기) — LOT 번호 글자만 찍는다. 라벨 · 바코드 규격은 미수집.
+- MAT-040 엑셀 = 같은 조회의 `?format=csv`(UTF-8 BOM CSV — 엑셀이 연다). xlsx 생성 라이브러리는 들이지 않았다.
+- 알림 링크(개발2 가 emit 하는 것): `material_received` → `/qc/incoming?receipt=<입고 id>`(그 입고의 LOT 이 모두 판정되면 닫힘) · `product_received` → `/qc/product?lot=<제품 LOT>`(판정하면 닫힘) · `judged` → `/shp/orders?lot=<제품 LOT>`(dedupe `judged:<LOT>:<seq>`). 불출 등록은 `/mat/issues?wo=<지시번호>` 와 `/mat/issues` 링크를 닫는다 — 개발1 의 `order_issued` 링크가 이 꼴이면 불출에서 닫힌다.
