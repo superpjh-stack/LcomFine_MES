@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% set TABS = [("access", "접속 로그"), ("change", "변경 감사 로그"), ("ai", "AI 호출 로그")] %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">접속 로그(로그인 · 화면 조회 · 오류 · 문서관리 SSO 호출의 사용자·시각·성공 여부) · 변경 감사 로그(ERP 업로드 회차·교체 포함) ·
+    AI 호출 로그(건수·실패·응답 시간) — 읽기만 한다 · 최근 {{ limit }}행.</p>
+  <nav class="search" aria-label="로그 탭">
+    {% for k, label in TABS %}<a class="btn{% if tab == k %} btn-primary{% endif %}" href="?tab={{ k }}"{% if tab == k %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+  <form class="search" method="get" role="search">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    {{ f.input("login", "사용자", form.login) }}
+    {% if tab == "access" %}
+    {{ f.select("log_type", "구분", [("로그인", "로그인"), ("조회", "조회"), ("변경", "변경"), ("오류", "오류"), ("SSO", "SSO")], form.log_type, blank="전체") }}
+    {% elif tab == "change" %}
+    {{ f.input("log_type", "기능 ID", form.log_type, placeholder="F-WO-011") }}
+    {% else %}
+    {{ f.input("log_type", "호출 용도", form.log_type) }}
+    {% endif %}
+    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+    {{ f.input("date_to", "끝일", form.date_to, type="date") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if tab == "ai" and summary %}
+<section class="panel"><div class="kpis">
+  {{ ui.kpi("AI 호출", summary.n | num if summary.n else none) }}
+  {{ ui.kpi("실패", summary.failed | num if summary.n else none) }}
+  {{ ui.kpi("평균 응답(ms)", summary.avg_ms | num if summary.avg_ms is not none else none) }}
+</div></section>
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if tab == "access" %}
+  {{ ui.table([("at", "일시"), ("log_type", "구분"), ("login_id", "사용자"), ("role_code", "부서"), ("method", "메서드"), ("path", "경로"), ("screen_id", "화면"), ("function_id", "기능"), ("target", "대상"), ("result", "결과"), ("detail", "내용"), ("client_ip", "IP")], rows) }}
+  {% elif tab == "change" %}
+  {{ ui.table([("at", "일시"), ("login_id", "누가"), ("role_code", "부서"), ("function_id", "기능"), ("screen_id", "화면"), ("target", "무엇을"), ("detail", "내용"), ("path", "경로"), ("client_ip", "IP")], rows) }}
+  {% else %}
+  {{ ui.table([("at", "일시"), ("kind", "용도"), ("model", "모델"), ("ok", "성공"), ("ms", "ms"), ("error", "실패 사유"), ("login_id", "사용자")], rows) }}
+  {% endif %}
+</section>
+{% endblock %}

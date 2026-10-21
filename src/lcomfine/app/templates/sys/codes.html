@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% set g_opts = [] %}{% for g in groups %}{% set _ = g_opts.append((g, g)) %}{% endfor %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">코드 그룹 · 코드 값 · 설비·불량유형·수금수단 코드를 여기서 관리한다 · 참조가 있으면 지우지 않고 사용 중지로 바꾼다 ·
+    그룹·코드 값은 바꾸지 않는다.</p>
+  <form class="search" method="get" role="search">
+    {{ f.select("group", "코드 그룹", g_opts, form.group, blank="전체") }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+
+{% if edit %}
+{% call f.form_panel("공통코드 수정 — " ~ edit.group_code ~ " · " ~ edit.code, "/sys/codes", "F-SYS-031", cancel=nav.path_of("SYS-030")) %}
+  <input type="hidden" name="id" value="{{ edit.id }}">
+  {{ f.input("group_code", "코드 그룹", edit.group_code, readonly=true) }}
+  {{ f.input("code", "코드 값", edit.code, readonly=true) }}
+  {{ f.input("code_name", "코드 이름", edit.code_name, required=true) }}
+  {{ f.input("sort_no", "표시 순서", edit.sort_no, type="number") }}
+  {{ f.input("note", "비고", edit.note) }}
+  {{ f.use_select(edit.use_yn) }}
+{% endcall %}
+{% else %}
+{% call f.form_panel("공통코드 등록", "/sys/codes", "F-SYS-031") %}
+  {{ f.select("group_code", "코드 그룹", g_opts, form.group, required=true) }}
+  {{ f.input("code", "코드 값", required=true) }}
+  {{ f.input("code_name", "코드 이름", required=true) }}
+  {{ f.input("sort_no", "표시 순서", type="number") }}
+  {{ f.input("note", "비고") }}
+{% endcall %}
+{% endif %}
+
+<section class="panel panel--grid">
+  {% if rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>코드 그룹</th><th>코드 값</th><th>코드 이름</th><th class="num">순서</th><th>비고</th><th>사용</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.group_code }}</td><td><code>{{ r.code }}</code></td><td>{{ r.code_name }}</td><td class="num">{{ r.sort_no }}</td>
+      <td>{{ r.note | txt }}</td><td>{{ f.use_chip(r.use_yn) }}</td>
+      <td>{{ f.edit_link("F-SYS-031", "edit=" ~ r.id) }}
+          {{ f.del_btn("/sys/codes", "F-SYS-031", hidden={"id": r.id, "action": "delete"}) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

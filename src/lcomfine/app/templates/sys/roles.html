@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">메뉴 × 역할 처리(W)·조회(R) · 권한 매트릭스 보기의 W·R이 기본값이다 · 칸 값 W · R · 없음 · 저장하면 다음 요청부터 반영된다 ·
+    <strong>시드를 다시 돌리면 매트릭스(<code>contracts/permission-matrix.md</code>)로 되돌아간다.</strong>
+    전산 관리자는 전 화면 R 이상이고 이 화면은 W 다(잃으면 아무도 권한을 고칠 수 없다).</p>
+  <div class="kpis">
+    {{ ui.kpi("권한 칸", counts["전체"] | num) }}{{ ui.kpi("W 칸", counts.W | num) }}{{ ui.kpi("R 칸", counts.R | num) }}
+    {{ ui.kpi("기본값과 다른 칸", changed | num, "permission-matrix.md 대비") }}
+  </div>
+</section>
+
+<form method="post" action="/sys/roles">
+<section class="panel">
+  <h2>역할 목록</h2>
+  <div class="grid-wrap"><table class="grid plain">
+    <thead><tr><th>코드</th><th>역할 이름</th><th class="num">정상 사용자</th></tr></thead>
+    <tbody>
+    {% for r in roles %}
+    <tr><td><code>{{ r.code }}</code></td>
+      <td>{% if fn_allowed.get("F-SYS-021") %}<input name="role_name:{{ r.code }}" value="{{ r.name }}" aria-label="{{ r.code }} 역할 이름">{% else %}{{ r.name }}{% endif %}</td>
+      <td class="num">{{ users_per_role.get(r.code, 0) | num }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel panel--grid">
+  <div class="grid-wrap grid-wrap--tall"><table class="grid grid--matrix plain">
+    <thead><tr><th>화면</th>{% for r in roles %}<th class="c" title="{{ r.name }}">{{ r.code }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for m in matrix %}
+    <tr>
+      <th scope="row"><code>{{ m.screen.screen_id }}</code> {{ m.screen.name }}</th>
+      {% for c in m.cells %}
+      <td class="c"{% if c.changed %} title="기본값 {{ c.default or '없음' }}"{% endif %}>
+        {% if fn_allowed.get("F-SYS-021") %}
+        <select name="cell:{{ c.role }}:{{ m.screen.screen_id }}" aria-label="{{ m.screen.screen_id }} {{ c.role }}">
+          <option value=""{% if not c.level %} selected{% endif %}>·</option>
+          <option value="R"{% if c.level == "R" %} selected{% endif %}>R</option>
+          <option value="W"{% if c.level == "W" %} selected{% endif %}>W</option>
+        </select>{% if c.changed %} <b aria-label="기본값과 다름">*</b>{% endif %}
+        {% else %}{{ c.level or "·" }}{% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% if fn_allowed.get("F-SYS-021") %}
+<div class="actions"><button type="submit" class="btn btn-primary" data-confirm="권한을 저장할까요? 다음 요청부터 반영됩니다.">저장</button></div>
+{% endif %}
+</form>
+{% endblock %}
