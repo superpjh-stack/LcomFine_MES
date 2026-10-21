@@ -15,7 +15,7 @@
 | 권한 | **260 칸**(W 64 · R 196) / 536(= 8 × 67). 칸이 없으면 메뉴 숨김 · 403. 전산 관리자는 전 화면 R 이상 | ia.json + overrides |
 | 채널 | **1**(Web). 반응형 1280 · 390 가로 스크롤 0 | 스펙 §3.1 |
 | 업무 흐름 | **7단계** 수주 → 작업지시 → 자재 불출 → 생산·검사 → 제품 입고 → 출하 → 수금 | ia.json `flow` |
-| 알림 | **9종**(D-511) — 쓰기 트랜잭션 안에서 부서 단위로 | ia.json HOME `batch` · D-505 |
+| 알림 | **9종**(D-511 · 구성 D-523) — 쓰기 트랜잭션 안에서 부서 단위로 | ia.json HOME `batch` · D-523 |
 | 바깥 접점 | ERP 수금현황 엑셀 업로드(열 구성 D-516) · 문서관리 시스템 SSO(D-517) · OpenAI(데이터 질의만 · D-504) | 정본 · D-504 |
 | 범위 밖 | 설비 실시간 수집 · 비전 검사 · 매출전표/세금계산서/발주/근태/품의/원가 · 문서 저장 · AI 해설 리포트 · POP/모바일/현황판 채널 | 스펙 §10 |
 | 완료 기준 | **출하 1건에서 원자재 LOT 까지 거슬러 올라갈 수 있어야 한다**(G-07) · 의뢰 → 출하 1건을 화면 조작만으로(G-06) | 스펙 §4.2 · §7 |
@@ -77,7 +77,7 @@ EOF
 | G-01 | 정본(ia.json + overrides) ↔ `nav.py` | `make check-trace` | 묶음 8 · 대메뉴 17 · 화면 67 · 흐름 7 의 **순서 · 이름 · 화면 유형이 글자 단위로 일치**. RPT 이름 「대시보드」 · RPT-090~120 없음(D-505) |
 | G-02 | 기능 목록 ↔ 라우트 ↔ 테스트 표식 | `make check-trace` | `function-list.md` 줄마다 API 열의 메서드 · 경로가 라우트에 글자 그대로 있고, `@pytest.mark.fn("F-…")` 테스트가 1건 이상. 고아(계약 없는 라우트 · 라우트 없는 계약 · 표식 없는 기능) **0** |
 | G-03 | 화면 응답 | `make check-routes` | 화면 67 + 공통(`/login` · `/error`) + 참고 `/ia` 전부 HTTP 200(권한 있는 부서로) · placeholder **0** · 칸 없는 부서 403 |
-| G-04 | 스키마 계약 ↔ 실제 DB | `make check-schema` | 스펙 §4.1 표의 **테이블 이름 집합** = `contracts/db-schema.md` = 실제 DB(수가 아니라 이름 — D-503 판정) · 컬럼 · 뷰(`v_work_order_status` · `v_dq_*`) 일치 |
+| G-04 | 스키마 계약 ↔ 실제 DB | `make check-schema` | 스펙 §4.1 표의 **테이블 이름 집합** = `contracts/db-schema.md` = 실제 DB(수가 아니라 이름 — D-521) · 컬럼 · 뷰(`v_work_order_status` · `v_dq_*`) 일치 |
 
 ### 2.2 흐름
 
@@ -89,7 +89,7 @@ EOF
 | G-08 | 정방향 추적 | `make check-data` | 원자재 LOT → 불출 → 지시 → 제품 입고 → 출하까지(`trace.forward`). 독립 SQL 과 같은 집합 |
 | G-09 | 차단 규칙 | `make check-data` | 검사대기 · 불합격(보류) LOT 의 불출 422 · 그 LOT 가 걸린 출하 확정 422 · 중지 품목은 입고 · 출하 지시에서 못 고름 |
 | G-10 | 가용 재계산 | `make check-data` | 모든 LOT 에서 가용 = 현재고 − 출하 지시 할당. 화면 값 = 독립 재계산 |
-| G-11 | 알림 9종 | `make check-data` (+ `tests/test_arch_notify.py`) | D-511 의 9종이 각 트리거에서 **수신 부서마다 1행** 생기고, 같은 키 재발생은 무시, 한 사람이 처리하면 부서 전체 「처리됨」 · 연 화면에서 처리하면 닫힘 |
+| G-11 | 알림 9종 | `make check-data` (+ `tests/test_arch_notify.py`) | D-511 의 9종(구성 D-523)이 각 트리거에서 **수신 부서마다 1행** 생기고, 같은 키 재발생은 무시(D-522), 한 사람이 처리하면 부서 전체 「처리됨」 · 연 화면에서 처리하면 닫힘 |
 
 ### 2.3 수금
 
@@ -174,7 +174,7 @@ W1 핵심 흐름 → W2 수금 → W3 대시보드 → W4 문서 SSO      (멈�
 | **개발3** 출하·수금·분석 | SHP 출하(3) · PRP 생산 보고서(3) · COL 수금리포트(7, W2) · RPT 대시보드(9, W3) | **22** | `stats.py` · `erp_upload.py` · `dashboard.py` · `ai.py` · `dataquery.py` |
 
 합계 **25 + 20 + 22 = 67**. 각 개발자는 자기 모듈의 `src/lcomfine/app/routers/<module>.py` · `src/lcomfine/app/templates/<module>/` · `src/lcomfine/db/seed_devN.py` · `tests/test_devN_*.py` 와 위 공용 모듈을 소유한다.
-아키텍트 소유: `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `Makefile`). 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다.
+아키텍트 소유: `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`). 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다.
 
 - 화면 간 흐름(계약): WO-010 생산의뢰(의뢰번호 = 수주 키) → WO-020 생산지시 → MAT-010 원자재 입고(입고 LOT 자동 채번 · 검사대기) → QC-010 입고검사(합격 → 가용) → MAT-020 불출(가용 LOT 만) → PRD-010 생산일보 · INS-010 검사일보 → MAT-030 제품 입고(일보 완료 수량 기본값 · 제품 LOT) → QC-020 제품검사 판정 → SHP-010 출하 지시(가용 안에서 LOT 할당) → SHP-020 출하 확정 → COL-010 ERP 수금 업로드 → LOT-020 역추적.
 - 공용 함수 · 시그니처는 **먼저 정한 사람이 `progress-devN.md` §1 에 공표**하고 나머지가 그대로 쓴다. 시그니처 원본은 `contracts/interfaces.md`.
@@ -250,7 +250,7 @@ FAIL 중 가장 앞선 웨이브의 항목 하나를 골라 §5 프롬프트로 
 2. QA 리포트 3종이 있고 **치명 결함 0**
 3. **연속 2회전 동안 `progress.md` 에 새 실측 변화가 없음**
 
-남은 것이 전부 `차단` 뿐이어도 멈춘다. 멈출 때 `progress.md` 맨 위에 최종 보고를 쓴다 — 게이트 판정표, 사람이 정해야 할 D-목록(D-516~D-520 · 정해지면 무엇이 바뀌는지 한 줄씩), 실 LOT 검증 절차, VPS 재배포 절차.
+남은 것이 전부 `차단` 뿐이어도 멈춘다. 멈출 때 `progress.md` 맨 위에 최종 보고를 쓴다 — 게이트 판정표, 사람이 정해야 할 D-목록(D-516~D-520 · 채번 형식 D-509 · 정해지면 무엇이 바뀌는지 한 줄씩), 실 LOT 검증 절차, VPS 재배포 절차.
 
 ### 4.5 중단 · 재개
 
@@ -267,6 +267,7 @@ FAIL 중 가장 앞선 웨이브의 항목 하나를 골라 §5 프롬프트로 
 > 이 시스템의 본체는 **생산의뢰 → 지시 → 불출 → 생산·검사 → 제품 입고 → 판정 → 출하 → ERP 수금 흐름과 LOT 추적**이다. 추적은 `trace.py` 가 읽기만 하는 조회다.
 > **계약만 보고 만든다** — 컬럼 · 경로 · 함수 시그니처는 `contracts/` 가 출처다. 계약에 없는 것을 혼자 정하지 않는다. 모자라면 `decisions.md` 에 `가설` 로 올리고(본인 번호 대역) 아키텍트에게 계약 수정을 요청한 뒤 쓴다.
 > **쓰기 엔드포인트에는 `rbac.require_fn("F-…")`**, 화면 GET 에는 `rbac.require_screen("…")`. 쓰기 성공은 `http.saved(request, msg)` 직후 `audit.log_change(...)`. 오류는 422(입력 · 사람이 읽는 문장) · 404(없음) · 501 `http.undecided("D-nn")`(미확정) — 입력 오류를 500 으로 내지 않는다.
+> **범위 밖 금지** — 설비 실시간 수집 · 비전 검사 · AI 해설 리포트 · POP/모바일/현황판 은 메뉴 · 엔드포인트 · 테이블 어디에도 만들지 않는다.
 > **지어내지 않는다** — 데이터가 없으면 `미수집`, 정해지지 않았으면 `미확정 (D-nn)`, 시드는 `(예시)` 를 붙인다. **조용한 실패 금지** — `try/except` 로 하드코딩 결과를 끼워넣지 않는다.
 > 테스트는 기능마다 하나 이상, `@pytest.mark.fn("F-…")` 표식. **소유 파일만 고친다**(아래 목록). 보고 전에 `uv run pytest tests/test_devN_*.py` (QA 는 자기 `tests/test_qaN_*`)를 돌리고 실측값과 명령을 [본인 진행 파일]에 적는다.
 > 환경: PostgreSQL 17 (unix socket `/tmp`) DB `lcomfine_db` · 포트 8020 · `uv` / Python 3.12 · 명령은 `uv run …` · 환경변수 접두 `LCOMFINE_` · 비밀 값은 `.env` 에만, 문서 · 코드에 적지 않는다. 이 폴더 밖은 읽기만 하고, push · 배포 · 외부 전송은 하지 않는다.

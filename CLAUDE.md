@@ -57,7 +57,7 @@
 - 권한: 화면 `rbac.require_screen("WO-010")`(R 이상) · 기능 `rbac.require_fn("F-WO-011")`(쓰기면 W). **쓰기 엔드포인트에 `require_fn` 이 빠지면 R 부서의 쓰기가 통과한다.** 권한 표는 DB 데이터(`sys_permission`) — 부서·칸을 코드에 박지 않는다.
 - 세션: 사용자의 상태·부서는 쿠키가 아니라 **요청마다 DB 에서** 읽는다(`rbac.current_user`). 비활성·로그아웃한 세션은 다음 요청부터 401(SSO 토큰도 발급 안 됨).
 - DB: `conn.q / q1 / x / tx`. 함께 성공해야 하는 것은 `tx()` 하나에.
-- 한 곳 규칙: 번호는 `numbering.next(kind, cur)` 뿐 · 알림은 `notify.emit(cur, event, *, link, dedupe_key, text)` 뿐(**쓰기 트랜잭션 안에서** · 수신 부서마다 1행 · D-511) · LOT 추적은 `trace` 뿐(읽기만) · 집계 SQL 은 `dashboard` · `stats` 뿐 · AI 호출은 `ai` 뿐(호출마다 `sys_ai_call_log`) · 질의 검증은 `dataquery` 뿐 · SSO 토큰은 `sso` 뿐.
+- 한 곳 규칙: 번호는 `numbering.next(kind, cur)` 뿐 · 알림은 `notify.emit(cur, event, *, link, dedupe_key, text)` 뿐(**쓰기 트랜잭션 안에서** · 수신 부서마다 1행 · D-511 · D-522) · LOT 추적은 `trace` 뿐(읽기만) · 집계 SQL 은 `dashboard` · `stats` 뿐 · AI 호출은 `ai` 뿐(호출마다 `sys_ai_call_log`) · 질의 검증은 `dataquery` 뿐 · SSO 토큰은 `sso` 뿐.
 - 오류: `http.validation_error`(422) · `http.not_found`(404) · `http.undecided("D-nn")`(501). 쓰기 성공은 `http.saved(request, msg)`, 그 직후 `audit.log_change(...)`. 입력값 오류는 500 이 아니다 — DB 가 담을 수 없는 값도 422 이고, 사람이 읽을 문장은 라우터가 먼저 검사해서 준다.
 - 렌더: `templating.render(request, tpl, ctx, screen_id=...)` — 메뉴 · 계약 패널 · 조회 로그 자동. 채널 분기 없음(반응형 1280 · 390 가로 스크롤 0). 공용 매크로 `templates/home/_macros.html`. 대시보드 차트는 인라인 SVG + 표, 색은 CSS 토큰. `static/app.js` 는 폼 보조(확인 대화 · 포커스)만 — 템플릿에 스크립트를 넣지 않는다.
 - 테스트: 기능마다 하나 이상, `@pytest.mark.fn("F-WO-011")` 표식.

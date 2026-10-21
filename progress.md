@@ -14,7 +14,7 @@ Phase 0 끝 = G-01 · G-04 PASS, G-02 는 계약 존재, G-03 은 placeholder 67
 |---|---|---|
 | 정본 추출 | `contracts/ia.json` · `contracts/ia-overrides.json`(D-505) 커밋됨 | `git log --oneline -- contracts/ia.json` |
 | 기대값 | 묶음 8 · 대메뉴 17 · 화면 67 · 흐름 7 · 권한 260(W 64 · R 196) | `goal.md` §2.0 명령 (`design_doc.effective()`) |
-| 문서 체계 | `goal.md` · `CLAUDE.md` · `decisions.md`(D-501~D-520) · `progress.md` 새로 · 옛 대장 `decisions-v1.md` · `progress-v1.md` · 옛 설계도 `docs/archive/` | `git log -1 --stat` |
+| 문서 체계 | `goal.md` · `CLAUDE.md` · `decisions.md`(D-501~D-523) · `progress.md` 새로 · 옛 대장 `decisions-v1.md` · `progress-v1.md` · 옛 설계도 `docs/archive/` | `git log -1 --stat` |
 | 계약 7종 | 미검증 | `ls contracts/` |
 | 스키마 | 미검증 | `make check-schema` (G-04) |
 | 시드 | 미검증 | `make db-seed` ×2 · 행 수 diff (G-21) |
