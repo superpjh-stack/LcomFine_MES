@@ -124,7 +124,7 @@
 | F-QC-023 | QC | QC-020 | 제품검사 조회 | 조회 | - | R 이상 | `GET /qc/product` | 개발2 | 제품 LOT 목록 · 연결: MAT-030 · SHP-020 |
 | F-QC-031 | QC | QC-030 | 검사 이력 조회 | 조회 | - | R 이상 | `GET /qc/history` | 개발2 | 기간·품목·판정 조건 · 재판정 건은 이전 판정을 함께 보여 준다 |
 | F-INV-011 | INV | INV-010 | LOT별 재고 조회 | 조회 | - | R 이상 | `GET /inv/stock` | 개발2 | 품목·창고·LOT 조건 · 상태 필터(가용·검사 대기·보류) · 가용 수량 = 현재고 − 출하 지시 할당량 — 상태 칩 4: 검사대기 · 가용 · 보류 · 할당(D-510) |
-| F-INV-021 | INV | INV-020 | 재고 이동 등록 | 등록 | stock_move, lot_stock | 생산부·전산 관리자 | `POST /inv/moves` | 개발2 | 출발·도착 위치 · LOT·수량 · LOT를 나눠 옮기면 원 LOT 번호에 분할 순번을 붙인다 — 분할 순번 `-01`(D-509) · 이동 수량이 가용 수량을 넘으면 422 · 누락 422 · 없는 ID 404 |
+| F-INV-021 | INV | INV-020 | 재고 이동 등록 | 등록 | stock_move, lot_stock, product_lot, material_lot | 생산부·전산 관리자 | `POST /inv/moves` | 개발2 | 출발·도착 위치 · LOT·수량 · LOT를 나눠 옮기면 원 LOT 번호에 분할 순번을 붙인다 — 분할 순번 `-01`(D-509) · 분할 LOT 는 새 LOT 행(`parent_lot_id` = 원 LOT · 번호 `-01` 순번 · D-509) · 이동 수량이 가용 수량을 넘으면 422 · 누락 422 · 없는 ID 404 |
 | F-INV-022 | INV | INV-020 | 재고 이동 수정 | 수정 | stock_move, lot_stock | 생산부·전산 관리자 | `POST /inv/moves/{id}` | 개발2 | 출발·도착 위치 · LOT·수량 · 누락 422 · 없는 ID 404 |
 | F-INV-023 | INV | INV-020 | 재고 이동 조회 | 조회 | - | R 이상 | `GET /inv/moves` | 개발2 | 이동 목록 · LOT·위치로 검색 |
 | F-INV-031 | INV | INV-030 | 재고 조정 등록 | 등록 | stock_adjust, lot_stock | 생산부·전산 관리자 | `POST /inv/adjustments` | 개발2 | 실사 수량 · 차이 사유 · 차이 사유는 필수 — 사유가 없으면 422 · 수정 없음(정본 「조정 이력은 수정·삭제하지 않는다」) · 누락 422 · 없는 ID 404 |

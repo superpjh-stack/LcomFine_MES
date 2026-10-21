@@ -105,6 +105,7 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | 모든 쓰기 | `notification` | `notify.emit` 한 곳 · 쓰기 트랜잭션 안 | 스펙 §4.3 · D-511 |
 | F-MAT-011 F-MAT-012 F-MAT-031 F-MAT-032 | `lot_stock` | 입고 LOT 의 재고 행 — 검사대기로 넣고 고친다 | D-510 · function-list F-MAT-011 · F-MAT-031 |
 | F-MAT-021 F-MAT-022 | `lot_stock` `stock_move` | 불출 수량만큼 `qty` 를 줄이고 `stock_move` 한 행(불출 · 불출 취소) | function-list F-MAT-021 |
+| F-INV-021 | `product_lot` `material_lot` | 분할 LOT 의 새 LOT 행 — `parent_lot_id` = 원 LOT · 번호 원 번호 + `-01` 순번 | D-509 · function-list F-INV-021 |
 | F-DOC-011 | `sys_access_log` | SSO 진입 로그(구분 SSO) | D-514 · G-18 |
 | F-RPT-132 | `sys_ai_call_log` | AI 호출 로그 | D-513 |
 
@@ -134,7 +135,7 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | INS-010 | 검사일보 | INS | F-INS-011 F-INS-012 | `inspection_daily` |
 | QC-010 | 입고검사 | QC | F-QC-011 F-QC-012 | `incoming_inspection` `lot_stock` |
 | QC-020 | 제품검사 판정 | QC | F-QC-021 F-QC-022 | `product_inspection` `lot_stock` `notification` |
-| INV-020 | 재고 이동 | INV | F-INV-021 F-INV-022 | `stock_move` `lot_stock` |
+| INV-020 | 재고 이동 | INV | F-INV-021 F-INV-022 | `stock_move` `lot_stock` `product_lot` `material_lot` |
 | INV-030 | 재고 조정·실사 | INV | F-INV-031 | `stock_adjust` `lot_stock` |
 | SHP-010 | 출하 지시 | SHP | F-SHP-011 F-SHP-012 | `shipment_order` `shipment_line` `lot_stock` `notification` |
 | SHP-020 | 출하 확정 | SHP | F-SHP-021 F-SHP-023 | `shipment_order` `lot_stock` `stock_move` `notification` `shipment_adjust` |

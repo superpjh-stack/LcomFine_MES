@@ -146,8 +146,8 @@
 
 ## D-513 데이터 질의 — 허용 뷰와 부서 제한 · 상태: 가설
 - RPT-130 은 질문 → SQL(`ai`) → 검증 → 실행 → `data_query_log`. 검증은 `app/dataquery.py` 한 곳: **SELECT 한 문장 · 허용 뷰 `v_dq_*` 만 · 부서별 뷰 제한 · 읽기 전용 DB 역할 · `statement_timeout` · 행 수 상한**. 어긋나면 실행하지 않고 422 로 이유를 보인다(G-16).
-- 허용 뷰는 업무 영역별 `v_dq_<영역>`(예: `v_dq_orders` · `v_dq_production` · `v_dq_quality` · `v_dq_stock` · `v_dq_shipment` · `v_dq_collection`). 정확한 목록과 열은 `contracts/db-schema.md`.
-- 수금 뷰(`v_dq_collection`)는 영업부(SL) · 회계부(AC) · 전산 관리자(ADM) · 경영진(EX)만 — 정본 「영업·경리·관리자·경영진」. 권한 표가 아니라 `dataquery` 의 뷰 허용 목록에 부서 조건으로 둔다. 화면 자체(RPT-130)의 권한 칸은 정본 그대로.
+- 허용 뷰는 8: `v_dq_orders` · `v_dq_work_orders` · `v_dq_stock` · `v_dq_shipments` · `v_dq_quality` · `v_dq_production_daily` · `v_dq_collections` · `v_dq_receivables` (`schema.sql`). 열은 `contracts/db-schema.md` §5.
+- 수금 뷰 `v_dq_collections` · `v_dq_receivables` 는 영업부(SL) · 회계부(AC) · 전산 관리자(ADM) · 경영진(EX)만 — 정본 「영업·경리·관리자·경영진」. 권한 표가 아니라 `dataquery` 의 뷰 허용 목록에 부서 조건으로 둔다. 화면 자체(RPT-130)의 권한 칸은 정본 그대로.
 - 모든 질의(거부 포함)는 `data_query_log`, 모든 AI 호출은 `sys_ai_call_log`. 데이터 질의는 그 둘 말고 어떤 테이블에도 쓰지 않는다.
 - 질의 실행(F-RPT-132)은 쓰기 기능이지만 정본이 RPT-130 에 R 만 주므로 화면 R 이상이 실행한다(`R 이상(권한 예외)`).
 
