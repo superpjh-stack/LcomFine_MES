@@ -80,6 +80,25 @@ def cleanup(prefix: str) -> None:
         cur.execute("delete from sys_user where login_id like %s", (like,))
 
 
+def make_user(prefix: str, role_code: str, tag: str = "U") -> tuple[str, str, int]:
+    """테스트 계정 — 비밀번호는 실행할 때마다 난수(어디에도 적지 않는다). 반환 (login_id, password, user_id)."""
+    import secrets
+
+    from lcomfine.app import auth
+    login_id, pw = f"{prefix}{tag}", secrets.token_urlsafe(12)
+    uid = conn.q1("insert into sys_user (login_id, user_name, password_hash, role_code, created_by) "
+                  "values (%s, %s, %s, %s, 'test') returning user_id",
+                  (login_id, f"{prefix} 사용자 (예시)", auth.hash_password(pw), role_code))["user_id"]
+    return login_id, pw, uid
+
+
+def login(login_id: str, password: str) -> TestClient:
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.post("/login", data={"login_id": login_id, "password": password}, follow_redirects=False)
+    assert r.status_code == 303, f"{login_id} 로그인 {r.status_code}"
+    return c
+
+
 def test_helpers_make_and_cleanup():
     p = uniq("h")
     it = make_item(p)

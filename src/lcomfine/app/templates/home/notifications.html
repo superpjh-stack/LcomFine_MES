@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }} <small class="muted">{{ user.role_name }}</small></h1>
+  <p class="muted">앞 단계 부서가 일을 끝내면 다음 부서에 자동으로 알린다 · 알림은 부서 단위로 가고, 한 사람이 처리하면 같은 부서의 다른 사람에게는
+    "처리됨"으로 바뀐다 · 알림을 눌러 연 화면에서 처리하면 알림이 닫힌다 · <a href="{{ nav.path_of('HOME-030') }}">알림 설정</a></p>
+</section>
+
+<section class="panel">
+  <h2>안 읽음 <small class="muted">{{ unread_rows | length }}건</small></h2>
+  {% if unread_rows %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>발생</th><th>알림</th><th>바로가기</th><th></th></tr></thead>
+    <tbody>
+    {% for n in unread_rows %}
+    <tr>
+      <td>{{ n.created_at | dt }}</td><td>{{ n.message }}</td>
+      <td>{% if n.link %}<a href="{{ n.link }}">{{ n.link }}</a>{% else %}-{% endif %}</td>
+      <td>{% if fn_allowed.get("F-HOME-022") %}
+        <form method="post" action="/home/notifications/{{ n.id }}/handle" class="inline"><button type="submit" class="btn btn-sm">처리</button></form>
+      {% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel">
+  <h2>처리됨 <small class="muted">최근 50</small></h2>
+  {% if done %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>발생</th><th>알림</th><th>처리</th><th>처리자</th></tr></thead>
+    <tbody>
+    {% for n in done %}
+    <tr class="dim"><td>{{ n.created_at | dt }}</td><td>{{ n.message }}</td><td>{{ n.handled_at | dt }}</td><td>{{ n.handled_by }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}

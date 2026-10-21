@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }} <small class="muted">{{ user.role_name }}</small></h1>
+  <p class="muted">로그인한 사람의 부서에 맞는 대기 건만 모아 보여 준다 · 카드를 누르면 해당 처리 화면이 조건이 걸린 채 열린다 ·
+    할 일은 저장하지 않고 화면을 열 때 질의로 센다.</p>
+</section>
+
+{% for g in groups %}
+<section class="panel" data-dept="{{ g.dept }}">
+  <h2>{{ g.dept }}</h2>
+  <div class="kpis">
+    {% for c in g.cards %}
+    <div class="kpi" data-card="{{ c.title }}">
+      <span class="kpi__label">{% if c.href %}<a href="{{ c.href }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}</span>
+      <strong class="kpi__value num">{{ c.count | num if c.count is not none else "미수집" }}</strong>
+      <span class="kpi__note">{{ c.screen.name }} <code>{{ c.screen.screen_id }}</code>{% if c.note %} · {{ c.note }}{% endif %}{% if not c.href %} · 이 부서는 열 수 없는 화면{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<section class="panel">
+  <h2>납기 임박·지연 <small class="muted">D-7 이내 · 미출하</small>{% if can_due %} <a class="btn btn-sm" href="{{ nav.path_of('TRK-020') }}">납기 현황</a>{% endif %}</h2>
+  {% if due %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">D-day</th><th class="num">의뢰 수량</th><th class="num">출하</th><th>상태</th></tr></thead>
+    <tbody>
+    {% for r in due %}
+    <tr>
+      <td>{% if can_trk %}<a href="{{ nav.path_of('TRK-010') }}?request={{ r.request_no }}"><code>{{ r.request_no }}</code></a>{% else %}<code>{{ r.request_no }}</code>{% endif %}</td>
+      <td>{{ r.customer_name }}</td><td><code>{{ r.item_code }}</code> {{ r.item_name }}</td><td>{{ r.due_date | dt }}</td>
+      <td class="num">{% if r.d_day < 0 %}<span class="chip chip--bad">지연 {{ -r.d_day }}일</span>{% else %}D-{{ r.d_day }}{% endif %}</td>
+      <td class="num">{{ r.qty | num(3) }}</td><td class="num">{{ r.shipped_qty | num(3) }}</td><td>{{ ui.chip(r.status) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+
+<section class="panel">
+  <h2>오늘 처리한 건 <small class="muted">{{ user.login_id }} · 변경 로그</small></h2>
+  {% if today %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>시각</th><th>화면</th><th>기능</th><th>대상</th><th>내용</th></tr></thead>
+    <tbody>
+    {% for t in today %}
+    <tr><td>{{ t.changed_at | dt("%H:%M") }}</td><td>{{ t.screen_name }}</td><td><code>{{ t.function_id }}</code></td><td><code>{{ t.target }}</code></td><td>{{ t.detail | txt }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endblock %}
