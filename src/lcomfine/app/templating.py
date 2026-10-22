@@ -98,7 +98,10 @@ def screen_context(request: Request, screen_id: str | None) -> dict[str, Any]:
         "system_name": nav.SYSTEM_NAME,
         "now": _fmt_now(),
         "user": user,
-        "bundles": rbac.visible_menu(user),
+        "bundles": (bundles := rbac.visible_menu(user)),
+        # 상단 바 「대시보드」 · 대시보드 탭 — 볼 수 있는 RPT 화면만(권한 칸) · 첫 화면은 경영 요약(RPT-080)이 있으면 그것
+        "dash_screens": (dash := [s for node in bundles for m in node["menus"] if m.code == "RPT" for s in m.screens]),
+        "dash_home": next((s for s in dash if s.screen_id == "RPT-080"), dash[0] if dash else None),
         "flow": flow_steps(user, screen_id) if user else [],
         # TODO: notify 에 count(*) 전용 `unread_count(user)` 가 생기면 그것으로 (notify.py 는 아키텍트 소관)
         "unread": len(notify.unread(user)) if user else 0,

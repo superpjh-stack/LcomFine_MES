@@ -21,6 +21,12 @@
 <header class="hdr">
   <button type="button" class="btn btn-ghost hdr__menu" data-menu-toggle aria-controls="side-menu" aria-expanded="false">메뉴</button>
   <a class="brand" href="/">{{ system_name }}</a>
+  {% if dash_home %}
+  <nav class="topnav" aria-label="주 메뉴">
+    <a href="/"{% if screen_id == 'HOME-010' %} aria-current="page"{% endif %}>내 할 일</a>
+    <a href="{{ dash_home.path }}"{% if screen and screen.menu_code == 'RPT' %} aria-current="page"{% endif %}>대시보드</a>
+  </nav>
+  {% endif %}
   {% if screen and not screen.common %}
   <span class="crumb">{{ screen.menu }} <span aria-hidden="true">›</span> <strong>{{ screen.name }}</strong> <code>{{ screen.screen_id }}</code></span>
   {% elif page_title %}
@@ -83,6 +89,11 @@
   </nav>
 
   <main class="main" id="main">
+    {% if screen and screen.menu_code == 'RPT' and dash_screens | length > 1 %}
+    <nav class="dash-tabs" aria-label="대시보드">
+      {% for s in dash_screens %}<a href="{{ s.path }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}>{{ s.name | replace(" 리포트", "") }}</a>{% endfor %}
+    </nav>
+    {% endif %}
     {% block body %}
     <section class="panel">
       <form class="search" method="get" id="screen-search" role="search">

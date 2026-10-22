@@ -500,3 +500,16 @@ rect.viz-t-ok, rect.viz-t-warn, rect.viz-t-bad, rect.viz-t-muted { stroke: none;
 .chain > li { flex: 1 1 140px; min-width: 0; }
 .chain > .chain__arrow { flex: 0 0 auto; align-self: center; color: var(--muted); }
 .chain .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 상단 바 주 메뉴 — 내 할 일 · 대시보드 (사용자 요청 · 좌측 메뉴의 정본 순서는 그대로) */
+.topnav { display: flex; align-items: stretch; gap: 2px; align-self: stretch; margin-left: 8px; }
+.topnav a { display: inline-flex; align-items: center; padding: 0 12px; font-weight: 600; font-size: 14px; color: var(--ink);
+  border-bottom: 3px solid transparent; white-space: nowrap; }
+.topnav a:hover { text-decoration: none; color: var(--brand); background: var(--hover); }
+.topnav a[aria-current="page"] { color: var(--brand); border-bottom-color: var(--brand); }
+/* 대시보드 사이를 오가는 탭 */
+.dash-tabs { display: flex; gap: 4px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.dash-tabs a { flex: none; padding: 8px 12px; font-size: 14px; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.dash-tabs a:hover { text-decoration: none; color: var(--ink); }
+.dash-tabs a[aria-current="page"] { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+@media (max-width: 720px) { .crumb { display: none; } .topnav a { padding: 0 8px; font-size: 13px; } }
