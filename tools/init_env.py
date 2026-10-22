@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENV = ROOT / ".env"
 EXAMPLE = ROOT / ".env.example"
 #: 난수로 채우는 비밀. `LCOMFINE_OPENAI_API_KEY` 는 비밀이지만 난수로 만들 수 없으므로 여기 없다(빈 줄로 둔다)
-SECRETS = ("LCOMFINE_SESSION_SECRET", "LCOMFINE_SEED_PASSWORD", "LCOMFINE_DB_PASSWORD", "LCOMFINE_SSO_SECRET")
+SECRETS = ("LCOMFINE_SESSION_SECRET", "LCOMFINE_SEED_PASSWORD", "LCOMFINE_DB_PASSWORD", "LCOMFINE_APP_DB_PASSWORD", "LCOMFINE_SSO_SECRET")
 
 
 def _key(line: str) -> str | None:

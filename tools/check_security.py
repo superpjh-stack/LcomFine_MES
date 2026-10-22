@@ -5,7 +5,10 @@
   · G-16 데이터 질의 검증 · G-17 키 없음 (W3): fake AI 를 `ai.set_client` 로 주입해 우회 SQL 50여 건을 보내고(422 · 실행 0 · 로그 1행), 키 없음은
     프로세스 안(`ai._config` 비움)과 하위 프로세스(`LCOMFINE_OPENAI_API_KEY=` 빈 값 · settings 실제 경로) 둘로 잰다. **실제 OpenAI 는 절대 부르지 않는다** —
     `no_real_ai()` 가 `urllib.request.urlopen` 을 막아 두고, 막힌 호출이 있으면 그 자체가 FAIL 로 보인다. 키 값은 어디에도 찍지 않는다.
-  · G-18 SSO 는 W4 범위 — 아직 기능이 없으므로 FAIL 「W4」 로 찍는다(게이트를 낮추지 않는다).
+  · G-18 SSO (W4): `sso.issue` · `sso.consume` 직접(재사용 · 만료 now 주입 · 변조 · 다른 비밀 · 형식 · 동시 2 스레드 · 비활성 · 매핑) +
+    `POST /doc/go` 화면 경로(토큰 = hidden 1곳 · 주소/헤더/JSON/DB/로그 0 · 미확정 (D-517) 422 · SSO 로그 · SYS-040) + 하위 프로세스 uvicorn 서버 로그.
+    주소 · 비밀은 `sso_env()` 가 잠깐 가짜 값(`https://doc.example.invalid/sso` · 난수)으로 바꾸고 되돌린다 — 외부로 아무것도 보내지 않는다.
+  · X-11 앱 DB 역할(D-524 · DEF-QA3-003): 한 트랜잭션 안에서 `roles.apply` → `set local role` 로 잰 뒤 되돌린다(클러스터에 역할 0).
   · G-19 권한 403 전수 · G-20 세션 상태 · G-21 비밀 · G-22 변경 감사 로그 를 실제 요청으로 잰다.
   · G-24 는 compose 문법 · Dockerfile 정적 검사만(컨테이너는 띄우지 않는다 — gate.py 가 G-24 를 따로 판정한다).
   · `X-nn` 행은 조용한 실패 사냥(DB 끊김 · 이상한 입력)이다 — 게이트 번호가 아니라 gate.py 는 읽지 않지만 FAIL 이면 종료코드에 센다.
@@ -181,6 +184,9 @@ class Lab:
                         (like,))
             # W3 — 임시 계정의 데이터 질의 · AI 호출 로그는 sys_user FK 라 계정을 지우기 전에 같이 지운다(내 시험 질의만 · 다른 사용자 행은 그대로).
             # sys_change_log · sys_access_log(login_id 글자) 는 W1 과 같이 남긴다.
+            # W4 — 임시 계정의 SSO 토큰 · 문서관리 매핑(sys_user FK). SSO 접근 로그(sys_access_log)는 남긴다.
+            cur.execute("delete from sso_token where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
+            cur.execute("delete from doc_account_map where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
             cur.execute("delete from data_query_log where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
             cur.execute("delete from sys_ai_call_log where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
             cur.execute("delete from sys_user where login_id ilike %s", (like,))
@@ -944,7 +950,7 @@ def e2e(port: int = 8020) -> int:
         print("E2E  거래처가 없다 — 시드를 먼저 돌린다")
         return 1
     server = subprocess.Popen([sys.executable, "-c", _E2E_SERVER, str(port)],
-                              cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src"), LCOMFINE_OPENAI_API_KEY=""),
+                              cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src"), LCOMFINE_OPENAI_API_KEY="", LCOMFINE_DOC_SSO_URL=""),
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{port}"
     results, fails = [], 0
@@ -961,7 +967,7 @@ def e2e(port: int = 8020) -> int:
         pw = get_settings().seed_password or ""
         plan = ([("admin", p) for p in E2E_PATHS] + [("sl", "/wo/requests"), ("sh", "/shp/orders"), ("pr", "/lot/backward")]
                 + [("ac", p) for p in E2E_W2_AC] + [("sl", f"/trk/customers?customer={cust['id']}")]
-                + [("ex", p) for p in E2E_W3_EX])
+                + [("ex", p) for p in E2E_W3_EX] + list(E2E_W4))
         with sync_playwright() as play:
             browser = play.chromium.launch()
             for width in E2E_WIDTHS:
@@ -1000,6 +1006,8 @@ def e2e(port: int = 8020) -> int:
                             page.fill("input[name=question]", E2E_QUESTION)
                             page.locator("form.search button[type=submit]").click()
                             page.wait_for_load_state("networkidle")
+                        elif (account, path) in E2E_W4_WANT:                                   # W4 DOC — 화면 글자만 본다(SSO 진입은 누르지 않는다)
+                            want_text = E2E_W4_WANT[(account, path)]
                         sw, iw = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
                         clean = path.split("?")[0]
                         name = f"{account}{clean.replace('/', '_') if clean != '/' else '_home'}{'-' + action if action else ''}-{width}.png"
@@ -1318,6 +1326,10 @@ def _check_col_upload_abuse(lab: Lab, conn, load_workbook) -> list[Result]:
         ("헤더만", xlsx_bytes(hdrs, [])), ("열 이름 중복", xlsx_bytes(hdrs + [hdrs[0]], [good[0] + ["x"]])),
         ("1행(열 이름) 비어 있음", xlsx_bytes([None] * len(hdrs), good)), ("__row_no 열", xlsx_bytes(hdrs + ["__row_no"], [good[0] + ["1"]])),
         ("매핑된 열이 파일에 없음", xlsx_bytes([f"q3없는열{i}" for i in range(len(hdrs))], good)),
+        # W4 에 더함(DEF-QA3-009) — openpyxl 이 쓸 수 없는 시트 XML: 날 NUL · 닫는 태그 없음 · XML 아님 (read_only 는 행을 읽을 때 ParseError)
+        ("날 NUL 이 든 시트 XML", _xlsx_patch(xlsx_bytes(hdrs, good), f"{p}M".encode(), f"{p}\x00M".encode())),
+        ("깨진 시트 XML(닫는 태그 없음)", _xlsx_patch(xlsx_bytes(hdrs, good), b"</sheetData>", b"")),
+        ("시트 XML 이 XML 아님", _xlsx_patch(xlsx_bytes(hdrs, good), b"<sheetData>", b"<sheetData><<<")),
     ]
     bad, statuses = [], []
     for label, data in files:
@@ -2197,13 +2209,1081 @@ def check_rpt_static() -> list[Result]:
                 f"dataquery.py · ai.py 의 insert 대상 {sorted(writes)}", hits + ([] if ok_tx else tx))]
 
 
+# ── W4 문서 SSO (DOC) · DB 역할 (D-524) ─────────────────────────────────
+# 문서관리 시스템은 없다 — 자동 POST 폼은 렌더만 보고 검증은 `sso.consume`(문서관리 쪽 규칙의 재현)으로 한다. 외부로 보내지 않는다.
+# 주소 · 비밀은 `sso_env()` 안에서만 가짜 값(주소 `.invalid` · 비밀 난수)으로 바꾸고 끝에 원래 값으로 되돌린다 — 값은 어디에도 찍지 않는다.
+SSO_FAKE_URL = "https://doc.example.invalid/sso"
+SSO_ENV = ("LCOMFINE_DOC_SSO_URL", "LCOMFINE_SSO_SECRET")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")
+
+
+@contextmanager
+def sso_env(*, url: bool = True, secret: bool = True):
+    """SSO 주소 · 비밀을 잠깐 바꾼다(url/secret False = 빈 값 → 미설정). yield = 가짜 비밀(또는 ""). 끝에 되돌리고 settings 캐시를 비운다."""
+    from lcomfine.app import settings as st
+
+    saved = {k: os.environ.get(k) for k in SSO_ENV}
+    fake = secrets.token_urlsafe(32) if secret else ""
+    os.environ["LCOMFINE_DOC_SSO_URL"] = SSO_FAKE_URL if url else ""
+    os.environ["LCOMFINE_SSO_SECRET"] = fake
+    st.reset_cache()
+    try:
+        yield fake
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        st.reset_cache()
+
+
+def _sso_user(lab: Lab, tag: str, role: str = "PR", *, mapped: bool = True, active: bool = True) -> tuple[str, str, int, str]:
+    from lcomfine.db import conn
+
+    lid, pw, uid = lab.make_user(role, tag)
+    acc = f"{lab.prefix}{tag}-acc"
+    if mapped:
+        conn.x("insert into doc_account_map (user_id, account_id, active, created_by) values (%s, %s, %s, 'qa3')", (uid, acc, active))
+    return lid, pw, uid, acc
+
+
+def _issue(lid: str, *, now=None) -> tuple[str, str]:
+    from lcomfine.app import rbac, sso
+    from lcomfine.db import conn
+
+    with conn.tx() as cur:
+        return sso.issue(cur, rbac.load_user(lid), now=now)
+
+
+def _consume(token, *, now=None) -> dict:
+    from lcomfine.app import sso
+    from lcomfine.db import conn
+
+    with conn.tx() as cur:
+        return sso.consume(cur, token, now=now)
+
+
+def _refused(fn, *exc_types) -> str | None:
+    """fn() 이 exc_types 중 하나를 올리면 그 사유, 통과하면 None, 다른 예외면 'X:<종류>'."""
+    try:
+        fn()
+    except exc_types as e:  # noqa: PERF203
+        return getattr(e, "reason", str(e))
+    except Exception as e:  # noqa: BLE001 — 사유 없는 다른 예외는 그 자체가 어긋남
+        return f"X:{type(e).__name__}"
+    return None
+
+
+def _tokens_of(uid: int) -> int:
+    from lcomfine.db import conn
+
+    return conn.q1("select count(*) as n from sso_token where user_id = %s", (uid,))["n"]
+
+
+def _max_access_id() -> int:
+    from lcomfine.db import conn
+
+    return conn.q1("select coalesce(max(log_id), 0) as m from sys_access_log")["m"]
+
+
+def _sso_logs(lid: str, since: int = 0) -> list[dict]:
+    from lcomfine.db import conn
+
+    return conn.q("select log_id, login_id, role_code, logged_at, method, path, screen_id, function_id, target, result, detail "
+                  "from sys_access_log where log_type = 'SSO' and login_id = %s and log_id > %s order by log_id", (lid, since))
+
+
+def _hidden_tokens(html: str) -> list[str]:
+    return re.findall(r'<input type="hidden" name="token" value="([^"]*)">', html)
+
+
+def _b64(d: dict) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(json.dumps(d, separators=(",", ":")).encode()).rstrip(b"=").decode()
+
+
+def _sign_with(key: str, body: str) -> str:
+    import base64
+    import hashlib
+    import hmac
+
+    return base64.urlsafe_b64encode(hmac.new(key.encode(), body.encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+
+
+def _token_in_db(needles: list[str]) -> list[str]:
+    """public 의 모든 표에서 행 글자(row::text)에 needle 이 든 표 — 토큰 평문 · 서명이 DB 어디에도 없는지."""
+    from lcomfine.db import conn
+
+    tables = [r["table_name"] for r in conn.q("select table_name from information_schema.tables "
+                                                "where table_schema = 'public' and table_type = 'BASE TABLE' order by 1")]
+    hits = []
+    with conn.tx() as cur:
+        for t in tables:
+            for nd in needles:
+                cur.execute(f'select count(*) as n from "{t}" x where position(%s in x::text) > 0', (nd,))
+                if cur.fetchone()["n"]:
+                    hits.append(f"{t}({len(nd)}자)")
+    return hits
+
+
+def check_sso_token(lab: Lab) -> list[Result]:
+    """G-18 토큰 규칙 — `sso.issue` · `sso.consume` 를 직접 부른다(가짜 주소 · 가짜 비밀). 발급 → 1회 사용 · 재사용 · 만료(now 주입) ·
+    서명/본문 변조 · 다른 비밀 · 형식 깨짐 · 발급 기록 없는 서명 토큰 · 동시 consume 2 스레드 · 발급 뒤 매핑 사용 중지/계정 변경 · 비밀 없음."""
+    import threading
+    from datetime import UTC, datetime, timedelta
+
+    from lcomfine.app import sso
+    from lcomfine.db import conn
+
+    out: list[Result] = []
+    with sso_env() as key:
+        lid, pw, uid, acc = _sso_user(lab, "sw1")
+        # 1. 발급 → consume 1회 · 재사용 거부 · sso_token 행에 토큰 글자 없음
+        bad = []
+        token, jti = _issue(lid)
+        row = conn.q1("select jti::text as jti, user_id, account_id, issued_at, expires_at, used_at from sso_token where jti = %s", (jti,))
+        if row is None or row["used_at"] is not None or (row["expires_at"] - row["issued_at"]).total_seconds() != sso.TTL_SECONDS:
+            bad.append(f"발급 행 {row}")
+        got = _consume(token)
+        if (got.get("account_id"), got.get("user_id"), got.get("login_id"), got.get("jti")) != (acc, uid, lid, jti):
+            bad.append(f"consume 값 {got}")
+        again = _refused(lambda: _consume(token), sso.Invalid)
+        if again != "이미 사용한 토큰입니다":
+            bad.append(f"재사용 → {again!r} (이미 사용한 토큰 기대)")
+        used = conn.q1("select used_at from sso_token where jti = %s", (jti,))["used_at"]
+        out.append(res("G-18", "발급 → consume 1회 · 재사용 거부", not bad and used is not None,
+                       f"sso_token 1행(유효 {sso.TTL_SECONDS}초 · used_at 채워짐 {used is not None}) · 1회째 통과(계정 · 사용자 일치) · 2회째 「{again}」", bad))
+        # 2. 만료 — now 주입: +59초 통과 · +60초 · +61초 거부(거부는 토큰을 태우지 않는다)
+        bad = []
+        t0 = datetime.now(UTC).replace(microsecond=0)
+        tk61, j61 = _issue(lid, now=t0)
+        r61 = _refused(lambda: _consume(tk61, now=t0 + timedelta(seconds=61)), sso.Invalid)
+        r60 = _refused(lambda: _consume(tk61, now=t0 + timedelta(seconds=60)), sso.Invalid)
+        burnt = conn.q1("select used_at from sso_token where jti = %s", (j61,))["used_at"]
+        tk59, _ = _issue(lid, now=t0)
+        r59 = _refused(lambda: _consume(tk59, now=t0 + timedelta(seconds=59)), sso.Invalid)
+        if r61 != "만료된 토큰입니다" or r60 != "만료된 토큰입니다":
+            bad.append(f"+61초 {r61!r} · +60초 {r60!r} (만료 기대)")
+        if r59 is not None:
+            bad.append(f"+59초 {r59!r} (통과 기대)")
+        if burnt is not None:
+            bad.append("만료 거부가 토큰을 사용 처리했다")
+        # 실제 시계: DB 의 만료를 과거로 돌린 토큰(서명은 맞다) — now 없이도 거부
+        tkp, jp = _issue(lid, now=t0 - timedelta(seconds=120))
+        rp = _refused(lambda: _consume(tkp), sso.Invalid)
+        if rp != "만료된 토큰입니다":
+            bad.append(f"120초 전 발급 · now 없음 {rp!r}")
+        out.append(res("G-18", "만료(60초 · now 주입 61초) 거부", not bad,
+                       f"+59초 통과 · +60초 「{r60}」 · +61초 「{r61}」 · 120초 전 발급(지금 시계) 「{rp}」 · 거부한 토큰 used_at 그대로", bad))
+        # 3. 변조 · 다른 비밀 · 형식 깨짐 — 전부 sso.Invalid(다른 예외 0) · 원 토큰은 태워지지 않는다
+        base, jb = _issue(lid)
+        body, sig = base.split(".")
+        payload = json.loads(__import__("base64").urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        other_acc = dict(payload, sub=f"{lab.prefix}other-acc")
+        long_ttl = dict(payload, exp=payload["iat"] + 3600)
+        forged_jti = dict(payload, jti=str(uuid.uuid4()))
+        flip = sig[:-1] + ("A" if sig[-1] != "A" else "B")
+        cases = [
+            ("서명 끝 글자 변조", f"{body}.{flip}", "서명이 맞지 않습니다"),
+            ("서명 빈 칸", f"{body}.", "토큰 형식이 아닙니다"),
+            ("본문 변조(계정 ID 바꿈 · 옛 서명)", f"{_b64(other_acc)}.{sig}", "서명이 맞지 않습니다"),
+            ("본문 변조(만료 1시간 · 옛 서명)", f"{_b64(long_ttl)}.{sig}", "서명이 맞지 않습니다"),
+            ("다른 비밀로 서명(같은 본문)", f"{body}.{_sign_with(secrets.token_urlsafe(32), body)}", "서명이 맞지 않습니다"),
+            ("다른 비밀로 서명(위조 본문)", f"{_b64(other_acc)}.{_sign_with('q3-other-' + secrets.token_hex(8), _b64(other_acc))}", "서명이 맞지 않습니다"),
+            ("맞는 비밀 · 유효 1시간 본문", f"{_b64(long_ttl)}.{_sign_with(key, _b64(long_ttl))}", "토큰 형식이 아닙니다"),
+            ("맞는 비밀 · 발급 기록 없는 jti", f"{_b64(forged_jti)}.{_sign_with(key, _b64(forged_jti))}", "발급 기록이 없는 토큰입니다"),
+            ("맞는 비밀 · 다른 계정 ID(같은 jti)", f"{_b64(other_acc)}.{_sign_with(key, _b64(other_acc))}", None),
+            ("alg none 꼴(점 하나 · 서명 없음)", body, "토큰 형식이 아닙니다"),
+            ("점 3개(JWT 꼴)", f"eyJhbGciOiJub25lIn0.{body}.{sig}", "토큰 형식이 아닙니다"),
+            ("빈 글자", "", "토큰 형식이 아닙니다"),
+            ("한글", "토큰.서명", "토큰 형식이 아닙니다"),
+            ("NUL", f"{body}\x00.{sig}", "토큰 형식이 아닙니다"),
+            ("공백 덧붙임", f" {base} ", "토큰 형식이 아닙니다"),
+            ("= 패딩", f"{body}==.{sig}", "토큰 형식이 아닙니다"),
+            ("3000자", "a" * 1500 + "." + "b" * 1500, "토큰 형식이 아닙니다"),
+            ("본문 JSON 아님(서명 맞음)", f"{_b64({'x': 1})[:-2]}QQ.{_sign_with(key, _b64({'x': 1})[:-2] + 'QQ')}", "토큰 형식이 아닙니다"),
+            ("숫자 아닌 글자 타입", None, "토큰 형식이 아닙니다"),
+            ("bytes", base.encode(), "토큰 형식이 아닙니다"),
+        ]
+        bad = []
+        for label, tk, want in cases:
+            got = _refused(lambda tk=tk: _consume(tk), sso.Invalid)
+            if want is None:            # 다른 계정 ID 로 서명을 맞춰도 그 jti 의 발급 행 계정과 달라 사용 처리되지 않아야 한다
+                if got is None or got.startswith("X:"):
+                    bad.append(f"{label} → {got!r} (거부 기대)")
+            elif got != want:
+                bad.append(f"{label} → {got!r} ({want!r} 기대)")
+        still = conn.q1("select used_at from sso_token where jti = %s", (jb,))["used_at"]
+        ok_base = _refused(lambda: _consume(base), sso.Invalid) is None
+        out.append(res("G-18", "서명 변조 · 본문 변조 · 다른 비밀 · 형식 깨짐 거부", not bad and still is None and ok_base,
+                       f"사례 {len(cases)} 전부 sso.Invalid(다른 예외 0) · 거부 뒤 원 토큰 used_at 그대로 {still is None} · 원 토큰 그 뒤 1회 통과 {ok_base}", bad))
+        # 4. 동시 consume — 2 스레드 × 5 회, 매번 하나만 통과
+        bad = []
+        for i in range(5):
+            tk, _ = _issue(lid)
+            gate_ = threading.Barrier(2)
+            got_: list = []
+
+            def worker(tk=tk, gate_=gate_, got_=got_):
+                gate_.wait()
+                got_.append(_refused(lambda: _consume(tk), sso.Invalid))
+
+            ths = [threading.Thread(target=worker) for _ in range(2)]
+            for t in ths:
+                t.start()
+            for t in ths:
+                t.join(30)
+            if sorted(map(str, got_)) != ["None", "이미 사용한 토큰입니다"]:
+                bad.append(f"{i + 1}회 {got_}")
+        out.append(res("G-18", "동시 consume(스레드 2) 하나만", not bad, f"5회 × 2 스레드 — 매번 통과 1 · 「이미 사용한 토큰입니다」 1 · 어긋남 {len(bad)}", bad))
+        # 5. 발급 뒤 매핑 사용 중지 · 계정 ID 변경 → 미사용 토큰 consume 거부
+        bad = []
+        tka, _ = _issue(lid)
+        conn.x("update doc_account_map set active = false where user_id = %s", (uid,))
+        ra = _refused(lambda: _consume(tka), sso.Invalid)
+        ia = _refused(lambda: _issue(lid), sso.NotMapped)
+        conn.x("update doc_account_map set active = true where user_id = %s", (uid,))
+        tkb, _ = _issue(lid)
+        conn.x("update doc_account_map set account_id = %s where user_id = %s", (acc + "-2", uid))
+        rb = _refused(lambda: _consume(tkb), sso.Invalid)
+        conn.x("update doc_account_map set account_id = %s where user_id = %s", (acc, uid))
+        if ra != "문서관리 계정 매핑이 사용 중지되었습니다":
+            bad.append(f"사용 중지 뒤 consume {ra!r}")
+        if ia != "문서관리 계정 매핑이 사용 중지되었습니다":
+            bad.append(f"사용 중지 뒤 issue {ia!r}")
+        if rb != "발급 뒤 문서관리 계정 매핑이 바뀌었습니다":
+            bad.append(f"계정 ID 변경 뒤 consume {rb!r}")
+        out.append(res("G-18", "발급 뒤 매핑 사용 중지 · 계정 변경 → 미사용 토큰 거부", not bad,
+                       f"사용 중지 → consume 「{ra}」 · issue 「{ia}」 / 계정 ID 변경 → consume 「{rb}」", bad))
+    # 6. 비밀 없음 — 발급도 검증도 하지 않는다(서명 없는 토큰을 만들지 않는다)
+    with sso_env() as key:
+        tk_live, _ = _issue(lid)
+    with sso_env(secret=False):
+        ri = _refused(lambda: _issue(lid), sso.NotConfigured)
+        rc = _refused(lambda: _consume(tk_live), sso.NotConfigured)
+        conf = sso.configured()
+    n_before = _tokens_of(uid)
+    ok = ri is not None and not ri.startswith("X:") and rc is not None and not rc.startswith("X:") and not conf
+    out.append(res("G-18", "비밀 없음 → 발급 · 검증 안 함(NotConfigured)", ok,
+                   f"issue 「{ri}」 · consume 「{rc}」 · configured() {conf} · 토큰 행 {n_before}(늘지 않음)"))
+    return out
+
+
+def check_sso_http(lab: Lab) -> list[Result]:
+    """G-18 화면 경로 — DOC-010 `POST /doc/go`(F-DOC-011) · `GET /doc/go`(F-DOC-012). 토큰이 hidden 1곳 말고 어디에도 없다 ·
+    GET 은 발급하지 않는다 · 비활성(SYS-010) 직후 발급 거부 · 미매핑/사용 중지 매핑 422 · 주소/비밀 없음 422 미확정 (D-517) · SSO 로그 · SYS-040."""
+    import base64
+    import logging
+
+    from lcomfine.app import sso
+    from lcomfine.db import conn
+
+    out: list[Result] = []
+    HTML, JSN = {"accept": "text/html"}, {"accept": "application/json"}
+    adm = lab.client("ADM")
+    calls: list[tuple[str, bool, str | None]] = []       # (login_id, 성공 기대, jti) — SSO 로그 대조용
+    t_start = conn.q1("select now() as t")["t"]
+    a0 = _max_access_id()
+    # 서버 로그(프로세스 안) — 모든 logger 의 기록을 잡아 토큰 글자를 찾는다
+    records: list[str] = []
+
+    class _Grab(logging.Handler):
+        def emit(self, rec):
+            try:
+                records.append(f"{rec.name} {rec.getMessage()}")
+            except Exception:  # noqa: BLE001 — 형식이 깨진 기록도 원문으로 남겨 검색한다
+                records.append(f"{rec.name} {rec.msg!r} {rec.args!r}")
+
+    grab, root = _Grab(level=logging.DEBUG), logging.getLogger()
+    old_level = root.level
+    root.addHandler(grab)
+    root.setLevel(logging.DEBUG)
+    try:
+        with sso_env():
+            lid, pw, uid, acc = _sso_user(lab, "swweb", role="SL")
+            c = login(lid, pw)
+            # 1. 브라우저 POST → 200 같은 화면 · 자동 POST 폼 · hidden 1곳
+            r = c.post("/doc/go", headers=HTML, follow_redirects=False)
+            hid = _hidden_tokens(r.text)
+            token = hid[0] if len(hid) == 1 else ""
+            calls.append((lid, True, None))
+            bad = []
+            if r.status_code != 200 or len(hid) != 1:
+                bad.append(f"POST(html) {r.status_code} · hidden 토큰 {len(hid)}")
+            form = re.search(r"<form[^>]*data-auto-submit[^>]*>", r.text)
+            ftxt = form.group(0) if form else ""
+            if not (form and 'method="post"' in ftxt and f'action="{SSO_FAKE_URL}"' in ftxt):
+                bad.append(f"자동 POST 폼 {ftxt!r}")
+            if token:
+                sig = token.split(".")[1]
+                body_cnt, sig_cnt = r.text.count(token), r.text.count(sig)
+                hdrs = " ".join(f"{k}: {v}" for k, v in r.headers.items())
+                if body_cnt != 1 or sig_cnt != 1:
+                    bad.append(f"본문 안 토큰 {body_cnt}회 · 서명 {sig_cnt}회 (1 기대)")
+                if token in hdrs or sig in hdrs:
+                    bad.append("응답 헤더(Location · Set-Cookie 등)에 토큰")
+                if token in str(r.url) or "token=" in str(r.url):
+                    bad.append(f"주소에 토큰 {r.url}")
+                ck = " ".join(f"{k}={v}" for k, v in c.cookies.items())
+                decoded = ""
+                for v in c.cookies.values():
+                    try:
+                        decoded += base64.urlsafe_b64decode(v.split(".")[0] + "==").decode("utf-8", "replace")
+                    except Exception:  # noqa: BLE001 — 쿠키 꼴이 달라도 원문 검색은 한다
+                        pass
+                if sig in ck or sig in decoded or token in decoded:
+                    bad.append("세션 쿠키에 토큰")
+                if "no-store" not in r.headers.get("cache-control", ""):
+                    bad.append(f"Cache-Control {r.headers.get('cache-control')!r} (no-store 기대)")
+                if r.headers.get("referrer-policy") not in ("same-origin", "no-referrer", "strict-origin"):
+                    bad.append(f"Referrer-Policy {r.headers.get('referrer-policy')!r}")
+            # JSON 응답 — 토큰 없음(jti 만)
+            rj = c.post("/doc/go", headers=JSN)
+            calls.append((lid, True, None))
+            jbody = rj.text
+            if rj.status_code != 200 or "token" in rj.json() or _TOKEN_RE.search(jbody):
+                bad.append(f"JSON {rj.status_code} — 토큰 꼴 글자 {bool(_TOKEN_RE.search(jbody))} · 키 {sorted(rj.json())}")
+            jj = rj.json().get("jti")
+            jrow = conn.q1("select user_id, used_at from sso_token where jti::text = %s", (jj,)) if jj else None
+            if not jrow or jrow["user_id"] != uid:
+                bad.append(f"JSON jti 의 발급 행 {jrow}")
+            calls[-1] = (lid, True, jj)
+            # 토큰은 문서관리 쪽 규칙(consume)으로 1회 통과
+            if token:
+                got = _refused(lambda: _consume(token), sso.Invalid)
+                if got is not None:
+                    bad.append(f"폼 토큰 consume {got!r}")
+            # DB · 로그 어디에도 토큰 평문 · 서명 없음
+            if token:
+                hits = _token_in_db([token, token.split(".")[1]])
+                if hits:
+                    bad.append(f"DB 에 토큰 글자 {hits}")
+                logs_txt = " ".join(records)
+                if token in logs_txt or token.split(".")[1] in logs_txt:
+                    bad.append("서버 로그(logging)에 토큰")
+                acc_rows = conn.q("select x::text as t from sys_access_log x where log_id > %s", (a0,))
+                chg_rows = conn.q("select x::text as t from sys_change_log x where login_id = %s", (lid,))
+                if any(token.split(".")[1] in a["t"] for a in acc_rows + chg_rows):
+                    bad.append("접근 · 변경 로그에 서명")
+            n_tables = conn.q1("select count(*) as n from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'")["n"]
+            out.append(res("G-18", "토큰 평문 = HTML hidden 1곳뿐", not bad and bool(token),
+                           f"POST(html) 200 · 자동 POST 폼(method post · action 가짜 주소 · data-auto-submit) · 본문 안 토큰 1회 · 헤더 · 주소 · 세션 쿠키 0 · "
+                           f"JSON 200 키 {sorted(rj.json()) if rj.status_code == 200 else '-'}(토큰 꼴 0) · DB 표 {n_tables} 전수 · 접근/변경 로그 · "
+                           f"logging {len(records)}건 — 토큰 · 서명 0 · Cache-Control no-store · Referrer-Policy {r.headers.get('referrer-policy')}", bad))
+            # 2. 주소창 — GET 은 발급하지 않는다 · 쿼리의 token 은 무시 · 바로가기 폼은 method post
+            bad = []
+            before = _tokens_of(uid)
+            g1 = c.get("/doc/go", headers=HTML)
+            g2 = c.get("/doc/go", params={"token": "q3-" + secrets.token_hex(8)}, headers=HTML)
+            g3 = c.get("/doc/go", headers=JSN)
+            after = _tokens_of(uid)
+            if after != before:
+                bad.append(f"GET 이 토큰을 발급했다 {before} → {after}")
+            for name, g in (("GET", g1), ("GET ?token", g2)):
+                if g.status_code != 200 or _hidden_tokens(g.text) or (g is g2 and "q3-" in g.text):
+                    bad.append(f"{name} {g.status_code} · hidden {len(_hidden_tokens(g.text))}")
+            fm = re.search(r'<form method="post" action="/doc/go"[^>]*>', g1.text)
+            if not fm:
+                bad.append("DOC-010 바로가기 폼이 method post 가 아니다")
+            app_js = (ROOT / "src/lcomfine/app/static/app.js").read_text(encoding="utf-8")
+            js_ok = "form[data-auto-submit]" in app_js and ".submit()" in app_js and not re.search(r"location\s*=|window\.open\(|\.href\s*=", app_js)
+            if not js_ok:
+                bad.append("app.js 자동 제출이 form.submit() 이 아니다(주소 이동 · window.open)")
+            gp = r.headers.get("location")
+            out.append(res("G-18", "토큰이 주소창에 없다(GET 발급 0 · POST 폼)", not bad,
+                           f"GET /doc/go ×3(쿼리 token 포함) 발급 {after - before} · hidden 0 · 바로가기 폼 method post · 발급 응답 Location {gp!r} · "
+                           f"app.js `form[data-auto-submit]` → form.submit() (주소 이동 0) · JSON GET {g3.status_code}", bad))
+            # 3. 비활성 — SYS-010(F-SYS-013) 직후 발급 거부 · 이미 받은 미사용 토큰 거부 · 잠금도
+            bad = []
+            dl, dpw, duid, _ = _sso_user(lab, "swdeac", role="SL")
+            dc = login(dl, dpw)
+            rr = dc.post("/doc/go", headers=HTML)
+            calls.append((dl, True, None))
+            held = (_hidden_tokens(rr.text) or [""])[0]
+            n0 = _tokens_of(duid)
+            dz = adm.post(f"/sys/users/{duid}/delete")
+            p1 = dc.post("/doc/go", headers=JSN).status_code             # 세션 401 — 로그 없음(로그인 전 단계)
+            g1d = dc.get("/doc/go").status_code
+            relog = new_client().post("/login", data={"login_id": dl, "password": dpw}, follow_redirects=False).status_code
+            iss = _refused(lambda: _issue(dl), sso.NotMapped)
+            con = _refused(lambda: _consume(held), sso.Invalid) if held else "토큰 없음"
+            n1 = _tokens_of(duid)
+            st = conn.q1("select status from sys_user where user_id = %s", (duid,))["status"]
+            if dz.status_code != 200 or st != "중지":
+                bad.append(f"비활성 {dz.status_code} · 상태 {st}")
+            if (p1, g1d) != (401, 401) or relog == 303:
+                bad.append(f"비활성 뒤 POST {p1} · GET {g1d} · 다시 로그인 {relog}")
+            if not iss or not iss.startswith("비활성 사용자"):
+                bad.append(f"issue {iss!r}")
+            if not con or not con.startswith("비활성 사용자"):
+                bad.append(f"이미 받은 토큰 consume {con!r}")
+            if n1 != n0:
+                bad.append(f"비활성 뒤 토큰 행 {n0} → {n1}")
+            # 잠금(SYS-012)
+            kl, kpw, kuid, _ = _sso_user(lab, "swlock", role="SL")
+            tk_lock, _ = _issue(kl)
+            ru = adm.post(f"/sys/users/{kuid}", data={"login_id": kl, "user_name": "QA3 임시 잠금 (예시)", "role_code": "SL", "status": "잠금"})
+            il = _refused(lambda: _issue(kl), sso.NotMapped)
+            cl = _refused(lambda: _consume(tk_lock), sso.Invalid)
+            if ru.status_code != 200 or not (il or "").startswith("비활성") or not (cl or "").startswith("비활성"):
+                bad.append(f"잠금 {ru.status_code} · issue {il!r} · consume {cl!r}")
+            out.append(res("G-18", "비활성(SYS-010 직후) 발급 거부 · 받은 미사용 토큰 거부", not bad,
+                           f"F-SYS-013 {dz.status_code}(상태 {st}) → 그 세션 POST /doc/go {p1} · GET {g1d} · 다시 로그인 {relog} · "
+                           f"sso.issue 「{iss}」 · 이미 받은 토큰 「{con}」 · 토큰 행 {n0} → {n1} / 잠금(SYS-012) issue 「{il}」 · consume 「{cl}」", bad))
+            # 4. 미매핑 · 사용 중지 매핑 → 422 「관리자에게 계정 연결을 요청하세요」 · 발급 0
+            bad = []
+            meas = []
+            for tag, kw in (("swnomap", {"mapped": False}), ("swoffmap", {"active": False})):
+                ul, upw, uuid_, _ = _sso_user(lab, tag, role="SL", **kw)
+                uc = login(ul, upw)
+                pj = uc.post("/doc/go", headers=JSN)
+                calls.append((ul, False, None))
+                ph = uc.post("/doc/go", headers=HTML, follow_redirects=False)
+                calls.append((ul, False, None))
+                gh = uc.get("/doc/go", headers=HTML)
+                msg = pj.json().get("message", "") if pj.headers.get("content-type", "").startswith("application/json") else ""
+                fields = pj.json().get("fields", []) if msg else []
+                n = _tokens_of(uuid_)
+                meas.append(f"{tag}: JSON {pj.status_code} 「{msg[:60]}」 · html {ph.status_code} · 토큰 {n} · GET 안내 {sso.REQUEST_MAPPING in gh.text}")
+                if pj.status_code != 422 or sso.REQUEST_MAPPING not in msg or not any(f.get("name") == "계정 매핑" for f in fields):
+                    bad.append(f"{tag} JSON {pj.status_code} {msg!r}")
+                if ph.status_code >= 500 or _hidden_tokens(ph.text) or (ph.status_code == 200 and sso.REQUEST_MAPPING not in ph.text):
+                    bad.append(f"{tag} html {ph.status_code}")
+                if n or sso.REQUEST_MAPPING not in gh.text or 'action="/doc/go"' in gh.text:
+                    bad.append(f"{tag} 토큰 {n} · GET 안내 {sso.REQUEST_MAPPING in gh.text} · 진입 폼 {'action=\"/doc/go\"' in gh.text}")
+            out.append(res("G-18", "미매핑 · 사용 중지 매핑 → 422 「관리자에게 계정 연결을 요청하세요」 · 발급 0", not bad, " / ".join(meas), bad))
+        # 5. 주소 없음 / 비밀 없음 / 둘 다 없음 → 422 미확정 (D-517) · 발급 0 · GET 안내
+        bad, meas = [], []
+        for label, kw in (("주소 없음", {"url": False}), ("비밀 없음", {"secret": False}), ("둘 다 없음", {"url": False, "secret": False})):
+            with sso_env(**kw):
+                ul, upw, uuid_, _ = _sso_user(lab, "swcfg" + str(len(meas)), role="SL")
+                uc = login(ul, upw)
+                pj = uc.post("/doc/go", headers=JSN)
+                calls.append((ul, False, None))
+                ph = uc.post("/doc/go", headers=HTML, follow_redirects=False)
+                calls.append((ul, False, None))
+                gh = uc.get("/doc/go", headers=HTML)
+                msg = pj.json().get("message", "") if pj.status_code == 422 else pj.text[:80]
+                n = _tokens_of(uuid_)
+                meas.append(f"{label}: JSON {pj.status_code} 「{msg[:70]}」 · html {ph.status_code}"
+                            f"{' → ' + ph.headers.get('location', '') if ph.status_code == 303 else ''} · 토큰 {n} · GET 「미확정 (D-517)」 {'미확정 (D-517)' in gh.text}")
+                if pj.status_code != 422 or "미확정 (D-517)" not in msg or "토큰을 발급하지 않았습니다" not in msg:
+                    bad.append(f"{label} JSON {pj.status_code} {msg!r}")
+                if ph.status_code >= 500 or _hidden_tokens(ph.text):
+                    bad.append(f"{label} html {ph.status_code}")
+                if n or "미확정 (D-517)" not in gh.text or _hidden_tokens(gh.text) or 'action="/doc/go"' in gh.text:
+                    bad.append(f"{label} 토큰 {n} · GET 안내")
+        out.append(res("G-18", "주소 없음 · 비밀 없음 → 422 「미확정 (D-517)」 · 발급 0", not bad, " / ".join(meas), bad))
+        # 6. 지금 설정(.env 그대로 — 주소 없음) 의 화면
+        g_now = lab.client("SL").get("/doc/go", headers=HTML)
+        p_now = lab.client("SL").post("/doc/go", headers=JSN)
+        calls.append((lab.users["SL"][0], False, None))
+        now_ok = g_now.status_code == 200 and "미확정 (D-517)" in g_now.text and p_now.status_code == 422 and "미확정 (D-517)" in p_now.json().get("message", "")
+        out.append(res("G-18", "지금 설정(.env · 주소 없음) → 화면 「미확정 (D-517)」", now_ok,
+                       f"주소 설정 {bool(get_settings().doc_sso_url)} · GET /doc/go {g_now.status_code} 「미확정 (D-517)」 {'미확정 (D-517)' in g_now.text} · "
+                       f"POST {p_now.status_code} 「{p_now.json().get('message', '')[:60] if p_now.status_code == 422 else ''}」"))
+        # 7. SSO 로그 — 호출마다 1행(사용자 · 시각 · 성공/실패 · 사유) · 성공은 target sso_token:<jti> · 실패도
+        bad = []
+        by_user: dict[str, list] = {}
+        for l_, okx, j in calls:
+            by_user.setdefault(l_, []).append((okx, j))
+        n_ok = n_fail = 0
+        for l_, want in by_user.items():
+            rows = _sso_logs(l_, a0)
+            if len(rows) != len(want):
+                bad.append(f"{l_[-6:]} 호출 {len(want)} · 로그 {len(rows)}")
+                continue
+            for (okx, j), rw in zip(want, rows):
+                good = (rw["result"] == ("성공" if okx else "실패") and rw["login_id"] == l_ and rw["logged_at"] is not None
+                        and rw["logged_at"] >= t_start and rw["screen_id"] == "DOC-010" and rw["function_id"] == "F-DOC-011"
+                        and rw["path"] == "/doc/go" and rw["method"] == "POST" and (rw["detail"] or "")
+                        and ((rw["target"] or "").startswith("sso_token:") if okx else rw["target"] is None)
+                        and (j is None or rw["target"] == f"sso_token:{j}"))
+                n_ok += okx
+                n_fail += not okx
+                if not good:
+                    bad.append(f"{l_[-6:]} 로그 {dict((k, rw[k]) for k in ('result', 'target', 'detail'))}")
+        out.append(res("G-18", "SSO 로그 — 호출마다 sys_access_log 1행(사용자 · 시각 · 성공/실패)", not bad,
+                       f"POST /doc/go {len(calls)}회(성공 {n_ok} · 실패 {n_fail}) = SSO 로그 {n_ok + n_fail}행 · login_id · logged_at · result · detail(사유) · "
+                       f"성공 target sso_token:<jti>(JSON jti 일치) · 세션 401(비활성 뒤)은 로그인 전 단계라 SSO 로그 0", bad))
+        # 8. SYS-040 SSO 탭
+        page = adm.get("/sys/logs", params={"tab": "sso", "login": lid}, headers=HTML)
+        page_f = adm.get("/sys/logs", params={"tab": "sso", "login": lab.users["SL"][0]}, headers=HTML)
+        seen_ok = page.status_code == 200 and lid in page.text and "성공" in page.text and (jj or "?") in page.text
+        seen_fail = page_f.status_code == 200 and "실패" in page_f.text and "미확정 (D-517)" in page_f.text
+        out.append(res("G-18", "SYS-040 SSO 탭에 보인다(성공 · 실패)", seen_ok and seen_fail,
+                       f"ADM GET /sys/logs?tab=sso&login=<성공 사용자> {page.status_code} · 사용자 · 성공 · jti 보임 {seen_ok} / "
+                       f"<실패 사용자> {page_f.status_code} · 실패 · 사유 「미확정 (D-517)」 보임 {seen_fail}"))
+    finally:
+        root.removeHandler(grab)
+        root.setLevel(old_level)
+    return out
+
+
+_SSO_SERVER = r"""
+import logging, sys, urllib.request
+def _blocked(*a, **k):
+    raise RuntimeError("QA3 — 바깥 호출 차단")
+urllib.request.urlopen = _blocked
+logging.basicConfig(level=logging.DEBUG, stream=sys.stderr, format="%(levelname)s %(name)s %(message)s")
+import uvicorn
+uvicorn.run("lcomfine.app.main:app", host="127.0.0.1", port=int(sys.argv[1]), log_level="debug", access_log=True)
+"""
+
+
+def check_sso_server_log(lab: Lab, port: int = 8037) -> Result:
+    """G-18 서버 로그 — 앱을 하위 프로세스 uvicorn(로그 debug · access log 켬 · 가짜 주소 · 가짜 비밀 · 바깥 호출 차단)으로 띄워
+    실제 HTTP 로 발급받고, 그 프로세스의 stdout/stderr 전체에 토큰 · 서명 글자가 없는지 본다. 로그 파일은 임시 폴더 · 끝에 지운다."""
+    import tempfile
+    import urllib.request
+
+    import httpx
+
+    lid, pw, uid, _ = _sso_user(lab, "swsrv", role="SL")
+    tmp = Path(tempfile.mkdtemp(prefix="qa3-sso-"))
+    logf = tmp / "server.log"
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), LCOMFINE_OPENAI_API_KEY="", LCOMFINE_DOC_SSO_URL=SSO_FAKE_URL,
+               **{SSO_ENV[1]: secrets.token_urlsafe(32)})          # 가짜 비밀(실행마다 난수) — 키 이름을 글자로 붙여 쓰지 않는다(G-21 스캔)
+    with open(logf, "wb") as fh:
+        server = subprocess.Popen([sys.executable, "-c", _SSO_SERVER, str(port)], cwd=ROOT, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    base = f"http://127.0.0.1:{port}"
+    token, status, lines = "", None, 0
+    try:
+        for _ in range(60):
+            try:
+                if urllib.request.urlopen(base + "/health", timeout=2).status == 200:
+                    break
+            except Exception:  # noqa: BLE001 — 기동 대기
+                time.sleep(0.5)
+        else:
+            return res("G-18", "서버 로그(uvicorn debug · access)에 토큰 없음", False, "하위 프로세스 앱이 뜨지 않았다")
+        with httpx.Client(base_url=base, follow_redirects=False, timeout=10) as hc:
+            r = hc.post("/login", data={"login_id": lid, "password": pw})
+            if r.status_code != 303:
+                return res("G-18", "서버 로그(uvicorn debug · access)에 토큰 없음", False, f"로그인 {r.status_code}")
+            r = hc.post("/doc/go", headers={"accept": "text/html"})
+            status = r.status_code
+            hid = _hidden_tokens(r.text)
+            token = hid[0] if len(hid) == 1 else ""
+            hc.post("/doc/go", headers={"accept": "application/json"})
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    text = logf.read_text(encoding="utf-8", errors="replace")
+    lines = text.count("\n")
+    access_seen = "POST /doc/go" in text
+    leak = bool(token) and (token in text or token.split(".")[1] in text)
+    for f in tmp.iterdir():
+        f.unlink()
+    tmp.rmdir()
+    ok = status == 200 and bool(token) and access_seen and not leak
+    return res("G-18", "서버 로그(uvicorn debug · access)에 토큰 없음", ok,
+               f"하위 프로세스 uvicorn(log debug · access log) · POST /doc/go(html) {status} · hidden 토큰 {'1' if token else '0'} · "
+               f"서버 로그 {lines}줄(access 줄 「POST /doc/go」 {access_seen}) — 토큰 · 서명 글자 {'있음' if leak else '0'} · 로그 파일은 지웠다")
+
+
+def _xlsx_doc(rows: list[list], headers=("사번", "문서관리 계정 ID"), *, text_formulas: bool = True) -> bytes:
+    return xlsx_bytes(list(headers), rows, text_formulas=text_formulas)
+
+
+def _xlsx_patch(data: bytes, old: bytes, new: bytes, member: str = "xl/worksheets/sheet1.xml") -> bytes:
+    """xlsx 안의 XML 글자를 바꾼다 — openpyxl 이 쓸 수 없는 날 NUL · 깨진 XML 을 만든다."""
+    zin, buf = zipfile.ZipFile(io.BytesIO(data)), io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zout:
+        for it in zin.infolist():
+            b = zin.read(it.filename)
+            if it.filename == member:
+                b = b.replace(old, new)
+            zout.writestr(it, b)
+    return buf.getvalue()
+
+
+def check_doc_map(lab: Lab) -> list[Result]:
+    """G-18 DOC-020 — 1:1 깨짐 422 · 엑셀 일괄(이상 파일 · 수식 셀 · NUL · 오류 행 하나면 전체 거부) · 저장 글자 이스케이프."""
+    from lcomfine.db import conn
+
+    out: list[Result] = []
+    adm = lab.client("ADM")
+    adm_lid = lab.users["ADM"][0]
+    p = lab.prefix
+    users = [lab.make_user("SL", f"dwm{i}") for i in range(6)]          # (login_id, pw, user_id)
+
+    def my_maps() -> int:
+        return conn.q1("select count(*) as n from doc_account_map m join sys_user u on u.user_id = m.user_id where u.login_id like %s",
+                       (p + "dwm%",))["n"]
+
+    # 1. 1:1
+    bad = []
+    a, b_ = users[0], users[1]
+    r1 = adm.post("/doc/account-map", data={"user_id": str(a[2]), "account_id": f"{p}acc-a"})
+    since = _max_change_id()
+    cases = [
+        ("같은 사용자에 두 번째 계정", {"user_id": str(a[2]), "account_id": f"{p}acc-a2"}, "MES 사용자"),
+        ("다른 사용자에 같은 계정", {"user_id": str(b_[2]), "account_id": f"{p}acc-a"}, "문서관리 계정 ID"),
+    ]
+    got_ = []
+    for label, body, field_ in cases:
+        r = adm.post("/doc/account-map", data=body)
+        got_.append(f"{label} {r.status_code}")
+        if r.status_code != 422 or not any(f.get("name") == field_ for f in r.json().get("fields", [])):
+            bad.append(f"{label} {r.status_code} {r.text[:120]}")
+    mid_a = r1.json().get("id") if r1.status_code == 200 else None
+    # 사용 중지 매핑도 자리를 차지한다
+    adm.post(f"/doc/account-map/{mid_a}", data={"account_id": f"{p}acc-a", "use_yn": "N"})
+    r = adm.post("/doc/account-map", data={"user_id": str(b_[2]), "account_id": f"{p}acc-a"})
+    got_.append(f"사용 중지 매핑의 계정 {r.status_code}")
+    if r.status_code != 422:
+        bad.append(f"사용 중지 매핑의 계정 ID 재사용 {r.status_code}")
+    r2 = adm.post("/doc/account-map", data={"user_id": str(b_[2]), "account_id": f"{p}acc-b"})
+    mid_b = r2.json().get("id") if r2.status_code == 200 else None
+    r = adm.post(f"/doc/account-map/{mid_b}", data={"account_id": f"{p}acc-a", "use_yn": "Y"})
+    got_.append(f"수정으로 남의 계정 {r.status_code}")
+    if r.status_code != 422:
+        bad.append(f"수정으로 남의 계정 ID {r.status_code}")
+    r = adm.post(f"/doc/account-map/{mid_b}", data={"user_id": str(a[2]), "account_id": f"{p}acc-b", "use_yn": "Y"})
+    got_.append(f"수정으로 사용자 바꿈 {r.status_code}")
+    if r.status_code != 422:
+        bad.append(f"수정으로 MES 사용자 바꿈 {r.status_code}")
+    rows_ = conn.q("select u.login_id, m.account_id, m.active from doc_account_map m join sys_user u on u.user_id = m.user_id "
+                   "where u.login_id like %s order by 1", (p + "dwm%",))
+    if [(x["account_id"], x["active"]) for x in rows_] != [(f"{p}acc-a", False), (f"{p}acc-b", True)]:
+        bad.append(f"매핑 행 {rows_}")
+    if len(_changes_since(since, adm_lid)) != 2:      # 성공한 쓰기 = 사용 중지(022) 1 + 등록(021) 1
+        bad.append(f"변경 로그 {len(_changes_since(since, adm_lid))}행 (2 기대 — 성공한 쓰기만)")
+    out.append(res("G-18", "DOC-020 1:1 깨짐 → 422(항목 이름) · 사용 중지 매핑도 자리 차지", r1.status_code == 200 and not bad,
+                   f"등록 {r1.status_code} · " + " · ".join(got_) + f" · 행 {len(rows_)} 그대로 · 변경 로그 = 성공 2만", bad))
+    # 2. 엑셀 — 이상 파일
+    good_rows = [[users[2][0], f"{p}x-2"], [users[3][0], f"{p}x-3"]]
+    good = _xlsx_doc(good_rows)
+    big = b"PK" + b"\x00" * (5 * 1024 * 1024)
+    files = [
+        ("0 바이트", b""), ("텍스트(csv)", "사번,문서관리 계정 ID\nsl,x\n".encode()), ("HTML", b"<html><script>alert(1)</script></html>"),
+        ("zip(엑셀 아님)", _zip_not_xlsx()), ("PNG 머리", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64), ("5MB 초과", big),
+        ("헤더 없음(열 이름 다름)", _xlsx_doc(good_rows, headers=("login", "account"))), ("헤더만", _xlsx_doc([])),
+        ("날 NUL 이 든 시트 XML", _xlsx_patch(good, f"{p}x-2".encode(), f"{p}x\x00-2".encode())),
+        ("깨진 시트 XML(닫는 태그 없음)", _xlsx_patch(good, b"</sheetData>", b"")),
+        ("시트 XML 이 XML 아님", _xlsx_patch(good, b"<sheetData>", b"<sheetData><<<")),
+        ("5001행", _xlsx_doc([[f"{p}n{i}", f"{p}n{i}"] for i in range(5001)])),
+    ]
+    bad, meas = [], []
+    before = my_maps()
+    for label, data in files:
+        since = _max_change_id()
+        r = adm.post("/doc/account-map", files={"file": (f"{p} {label} (예시).xlsx", data, XLSX_MIME)})
+        meas.append(f"{label} {r.status_code}")
+        if r.status_code != 422:
+            bad.append(f"{label} {r.status_code} (422 기대){' — 500!' if r.status_code >= 500 else ''}")
+        elif not r.json().get("fields"):
+            bad.append(f"{label} 422 인데 fields 없음")
+        if _changes_since(since, adm_lid):
+            bad.append(f"{label} 변경 로그 생김")
+    if my_maps() != before:
+        bad.append(f"이상 파일 뒤 매핑 {before} → {my_maps()}")
+    out.append(res("X-12", "DOC-020 엑셀 — 이상 파일 → 422(500 0) · 등록 0", not bad,
+                   f"파일 {len(files)} — " + " · ".join(meas), bad))
+    # 3. 셀 내용 — 수식 셀 · NUL 표기 · 오류 행 하나 → 전체 거부(행마다 사유)
+    bad, meas = [], []
+    mixed = [
+        ("수식 셀(=1+1 · 캐시 값 없음)", _xlsx_doc([[users[2][0], f"{p}y-2"], [users[3][0], "=1+1"]], text_formulas=False), "3행"),
+        ("_x0000_ 표기(엑셀의 NUL 꼴)", _xlsx_doc([[users[2][0], f"{p}y-2"], [users[3][0], f"{p}a_x0000_b"]]), None),
+        ("없는 사번 1행 + 정상 2행", _xlsx_doc([[users[2][0], f"{p}y-2"], [users[3][0], f"{p}y-3"], [f"{p}nobody", f"{p}y-9"]]), "4행"),
+        ("파일 안 사번 중복", _xlsx_doc([[users[2][0], f"{p}y-2"], [users[2][0], f"{p}y-3"]]), "3행"),
+        ("DB 매핑과 1:1 깨짐(남의 계정)", _xlsx_doc([[users[2][0], f"{p}acc-b"]]), "2행"),
+        ("201자 계정 ID", _xlsx_doc([[users[2][0], "가" * 201]]), "2행"),
+        ("빈 칸", _xlsx_doc([[users[2][0], f"{p}y-2"], [users[3][0], None]]), "3행"),
+    ]
+    for label, data, row_name in mixed:
+        before = my_maps()
+        since = _max_change_id()
+        r = adm.post("/doc/account-map", files={"file": (f"{p} (예시).xlsx", data, XLSX_MIME)})
+        after = my_maps()
+        if row_name is None:          # `_x0000_` 은 openpyxl 이 글자 그대로 읽는다 — 저장되면 그 글자 그대로(NUL 아님)
+            stored = conn.q("select account_id from doc_account_map where account_id like %s", (f"{p}%a_x0000_b",))
+            meas.append(f"{label} {r.status_code} · 저장 {[s_['account_id'][-9:] for s_ in stored]}")
+            if r.status_code >= 500 or any("\x00" in s_["account_id"] for s_ in stored):
+                bad.append(f"{label} {r.status_code}")
+            if r.status_code == 200:
+                conn.x("delete from doc_account_map where user_id = any(%s)", ([users[2][2], users[3][2]],))
+            continue
+        names = [f.get("name") for f in (r.json().get("fields", []) if r.status_code == 422 else [])]
+        meas.append(f"{label} {r.status_code} {names}")
+        if r.status_code != 422 or row_name not in names or after != before or _changes_since(since, adm_lid):
+            bad.append(f"{label} {r.status_code} · fields {names} · 매핑 {before} → {after}")
+    # 정상 파일 2행 → 200 · 2건 · 변경 로그 1행 · 저장 글자(= · <script>) 는 값으로 · 화면 이스케이프
+    evil = "<script>alert(1)</script>"
+    since = _max_change_id()
+    r = adm.post("/doc/account-map", files={"file": (f"{p} 정상 (예시).xlsx",
+                                                     _xlsx_doc([[users[4][0], f"{p}{evil}"], [users[5][0], '=HYPERLINK("http://evil.example/q3","x")']]),
+                                                     XLSX_MIME)})
+    chg = _changes_since(since, adm_lid)
+    pg = adm.get("/doc/account-map", params={"q": p + "dwm"}, headers={"accept": "text/html"})
+    stored = conn.q("select account_id from doc_account_map where user_id = any(%s) order by account_id", ([users[4][2], users[5][2]],))
+    esc_ok = pg.status_code == 200 and evil not in pg.text and "&lt;script&gt;alert(1)&lt;/script&gt;" in pg.text
+    if r.status_code != 200 or r.json().get("count") != 2 or len(chg) != 1 or chg[0]["function_id"] != "F-DOC-021" or len(stored) != 2 or not esc_ok:
+        bad.append(f"정상 파일 {r.status_code} {r.text[:100]} · 변경 로그 {len(chg)} · 저장 {len(stored)} · 이스케이프 {esc_ok}")
+    out.append(res("X-12", "DOC-020 엑셀 — 수식 셀 · 오류 행 하나 → 전체 거부(행마다 사유) · 정상 2행 등록 · 이스케이프", not bad,
+                   " · ".join(meas) + f" / 정상 2행 {r.status_code}(count {r.json().get('count') if r.status_code == 200 else '-'}) · 변경 로그 {len(chg)}행 · "
+                   f"`<script>` · `=HYPERLINK` 계정 ID 는 글자로 저장 · DOC-020 화면 이스케이프 {esc_ok}", bad))
+    return out
+
+
+def check_doc_access(lab: Lab) -> list[Result]:
+    """G-19 DOC 2 화면 × 8 · 쓰기 F-DOC-011(권한 예외) · 021~023(ADM 만) × 8 / G-20 비활성 · 로그아웃 401 / G-22 쓰기 성공마다 1행 · 422 0행."""
+    from lcomfine.app import contracts, rbac
+    from lcomfine.db import conn
+
+    out: list[Result] = []
+    cells = {(sid, rc): lv for sid, rc, lv in contracts.permission_cells()}
+    bad, counts = [], {"200": 0, "403": 0}
+    for r in rbac.roles():
+        c = lab.client(r.code)
+        for sid, path in (("DOC-010", "/doc/go"), ("DOC-020", "/doc/account-map")):
+            want = 200 if cells.get((sid, r.code)) else 403
+            got = c.get(path).status_code
+            counts[str(want)] += 1
+            if got != want:
+                bad.append(f"{sid}×{r.code} {got} ({want} 기대)")
+        html = c.get("/", headers={"accept": "text/html"}).text
+        if not cells.get(("DOC-020", r.code)) and 'href="/doc/account-map"' in html:
+            bad.append(f"메뉴 {r.code}: 칸 없는 DOC-020 링크")
+    lv = {r.code: (cells.get(("DOC-010", r.code)) or "-") + "/" + (cells.get(("DOC-020", r.code)) or "-") for r in rbac.roles()}
+    out.append(res("G-19", "DOC 2 화면 × 부서 8 (200/403 · 메뉴)", not bad,
+                   f"200 기대 {counts['200']} · 403 기대 {counts['403']} · 칸(DOC-010/020) {lv} · 어긋남 {len(bad)}", bad))
+    # 쓰기 4 × 부서 8 (빈 본문) — 칸 없으면 403 · F-DOC-011 은 칸이 있으면 통과(지금 .env = 주소 없음 → 422) · 021~023 은 W(ADM)만
+    bad, meas = [], []
+    for fid, path in (("F-DOC-011", "/doc/go"), ("F-DOC-021", "/doc/account-map"), ("F-DOC-022", "/doc/account-map/0"),
+                      ("F-DOC-023", "/doc/account-map/0/delete")):
+        f = contracts.function(fid)
+        got_by = {}
+        for r in rbac.roles():
+            since = _max_change_id()
+            got = lab.client(r.code).post(path, data={}).status_code
+            got_by[r.code] = got
+            expect_403 = (rbac.level(r.code, f.screen_id) is None) if f.permission_exception else (r.code not in f.roles_w)
+            if expect_403 and got != 403:
+                bad.append(f"{fid}×{r.code} {got} (403 기대)")
+            if not expect_403 and (got in (401, 403) or got >= 500):
+                bad.append(f"{fid}×{r.code} {got} (통과 기대)")
+            if _changes_since(since, lab.users[r.code][0]):
+                bad.append(f"{fid}×{r.code} 실패 쓰기에 변경 로그")
+        meas.append(f"{fid} " + " ".join(f"{k}{v}" for k, v in got_by.items()))
+    out.append(res("G-19", "DOC 쓰기 4 × 부서 8 (F-DOC-011 권한 예외 · 021~023 ADM 만)", not bad, " / ".join(meas), bad))
+    # G-20 — 비활성 · 로그아웃 → DOC GET · POST 401
+    bad = []
+    adm = lab.client("ADM")
+    sl, slpw, sluid = lab.make_user("SL", "dw20a")
+    c = login(sl, slpw)
+    a = (c.get("/doc/go").status_code, c.post("/doc/go").status_code)
+    z = adm.post(f"/sys/users/{sluid}/delete").status_code
+    b = (c.get("/doc/go").status_code, c.post("/doc/go").status_code)
+    ad, adpw, _ = lab.make_user("ADM", "dw20b")
+    c2 = login(ad, adpw)
+    a2 = (c2.get("/doc/account-map").status_code, c2.post("/doc/account-map", data={}).status_code)
+    c2.post("/logout", follow_redirects=False)
+    b2 = (c2.get("/doc/account-map").status_code, c2.post("/doc/account-map", data={}).status_code,
+          c2.post("/doc/account-map/0/delete").status_code, c2.post("/doc/go").status_code)
+    if a[0] != 200 or z != 200 or b != (401, 401):
+        bad.append(f"비활성 전 {a} · 비활성 {z} · 뒤 {b}")
+    if a2 != (200, 422) or b2 != (401, 401, 401, 401):
+        bad.append(f"로그아웃 전 {a2} · 뒤 {b2}")
+    out.append(res("G-20", "DOC 비활성 · 로그아웃 → 401", not bad,
+                   f"SL 비활성 전 GET/POST /doc/go {a} · F-SYS-013 {z} → {b} / ADM 로그아웃 전 DOC-020 GET · 빈 POST {a2} → 뒤 GET · 021 · 023 · 011 {b2}", bad))
+    # G-22 — 쓰기 성공마다 변경 로그 1행 · 422 → 0행 · DOC 화면 조회 → 접근 로그
+    bad, meas = [], []
+    adm_lid = lab.users["ADM"][0]
+    u1 = lab.make_user("SL", "dw22a")
+    u2 = lab.make_user("SL", "dw22b")
+    p = lab.prefix
+    since = _max_change_id()
+    r0 = adm.post("/doc/account-map", data={"user_id": str(u1[2]), "account_id": f"{p}d22-a"})
+    rows0 = _changes_since(since, adm_lid)
+    meas.append(f"F-DOC-021 {r0.status_code}→{len(rows0)}행")
+    if r0.status_code != 200 or len(rows0) != 1 or rows0[0]["function_id"] != "F-DOC-021":
+        bad.append(f"F-DOC-021 {r0.status_code} · 변경 로그 {len(rows0)}행 (1 기대)")
+    mid = r0.json().get("id") if r0.status_code == 200 else 0
+    seq = [
+        ("F-DOC-022", f"/doc/account-map/{mid}", {"account_id": f"{p}d22-a2", "use_yn": "Y"}, 200),
+        ("F-DOC-022", f"/doc/account-map/{mid}", {"account_id": "", "use_yn": "Y"}, 422),
+        ("F-DOC-022", f"/doc/account-map/{mid}", {"account_id": "a\x00b", "use_yn": "Y"}, 422),
+        ("F-DOC-022", "/doc/account-map/999999999999", {"account_id": "x", "use_yn": "Y"}, 404),
+        ("F-DOC-021", "/doc/account-map", {"user_id": "abc", "account_id": "x"}, 422),
+        ("F-DOC-021", "/doc/account-map", {"user_id": "99999999999999999999", "account_id": "x"}, 422),
+        ("F-DOC-021", "/doc/account-map", {"user_id": str(u2[2]), "account_id": "가" * 201}, 422),
+        ("F-DOC-023", f"/doc/account-map/{mid}/delete", {}, 200),
+        ("F-DOC-023", f"/doc/account-map/{mid}/delete", {}, 404),
+        ("F-DOC-023", "/doc/account-map/abc/delete", {}, 404),
+    ]
+    for fid, path, body, want in seq:
+        since = _max_change_id()
+        r = adm.post(path, data=body)
+        rows = _changes_since(since, adm_lid)
+        n_want = 1 if want == 200 else 0
+        meas.append(f"{fid} {r.status_code}→{len(rows)}행")
+        if r.status_code != want or len(rows) != n_want or (rows and rows[0]["function_id"] != fid):
+            bad.append(f"{fid} {path[-12:]} {r.status_code} ({want} 기대) · 변경 로그 {len(rows)}행 ({n_want} 기대)")
+    # F-DOC-011 성공 1 · 거부(미매핑) 0
+    with sso_env():
+        conn.x("insert into doc_account_map (user_id, account_id, created_by) values (%s, %s, 'qa3')", (u2[2], f"{p}d22-b"))
+        c3 = login(u2[0], u2[1])
+        since = _max_change_id()
+        r = c3.post("/doc/go")
+        rows = _changes_since(since, u2[0])
+        meas.append(f"F-DOC-011 {r.status_code}→{len(rows)}행")
+        if r.status_code != 200 or len(rows) != 1 or rows[0]["function_id"] != "F-DOC-011" or rows[0]["target"] != f"sso_token:{r.json().get('jti')}":
+            bad.append(f"F-DOC-011 성공 {r.status_code} · 변경 로그 {rows}")
+        conn.x("update doc_account_map set active = false where user_id = %s", (u2[2],))
+        since = _max_change_id()
+        r = c3.post("/doc/go")
+        rows = _changes_since(since, u2[0])
+        meas.append(f"F-DOC-011(사용 중지) {r.status_code}→{len(rows)}행")
+        if r.status_code != 422 or rows:
+            bad.append(f"F-DOC-011 거부 {r.status_code} · 변경 로그 {len(rows)}행")
+    # 화면 조회 로그
+    lid = lab.users["ADM"][0]
+    for path, sid in (("/doc/go", "DOC-010"), ("/doc/account-map", "DOC-020")):
+        b0 = conn.q1("select count(*) as n from sys_access_log where login_id = %s and log_type = '조회' and screen_id = %s", (lid, sid))["n"]
+        st = adm.get(path).status_code
+        b1 = conn.q1("select count(*) as n from sys_access_log where login_id = %s and log_type = '조회' and screen_id = %s", (lid, sid))["n"]
+        meas.append(f"GET {sid} {st} 조회 로그 +{b1 - b0}")
+        if st != 200 or b1 - b0 != 1:
+            bad.append(f"GET {sid} {st} · 조회 로그 +{b1 - b0}")
+    out.append(res("G-22", "DOC 쓰기 성공 → 변경 로그 1행 · 422/404 → 0행 · 조회 로그", not bad, " · ".join(meas), bad))
+    return out
+
+
+# ── D-524 · DEF-QA3-003 — 앱 DB 역할 재검증 (한 트랜잭션 · 되돌림) ─────────────
+class _RoleRollback(Exception):
+    pass
+
+
+def check_db_role() -> list[Result]:
+    """`roles.apply` 로 역할을 만들고 `set local role` 로 그 역할이 되어 잰다 — 끝에 트랜잭션을 되돌려 클러스터에 역할 0.
+    불변 이력 · 감사 로그 6 표 UPDATE/DELETE/TRUNCATE 거부 · session_replication_role 거부 · DDL 거부 · 카탈로그 비밀 · 서버 파일 거부 ·
+    업무 쓰기(bigserial 시퀀스) · v_dq_* 읽기 · 데이터 질의 읽기 전용 실행이 그 역할로 돈다."""
+    import psycopg
+
+    from lcomfine.app import dataquery
+    from lcomfine.db import conn, roles
+
+    role = "lcomfine_app_q3" + secrets.token_hex(3)
+    meas: dict = {}
+    bad: list[str] = []
+
+    def denied(cur, stmt, params=(), *, errs=(psycopg.errors.InsufficientPrivilege,)) -> bool:
+        cur.execute("savepoint q3")
+        try:
+            cur.execute(stmt, params)
+        except errs:
+            cur.execute("rollback to savepoint q3")
+            return True
+        except psycopg.Error as e:
+            cur.execute("rollback to savepoint q3")
+            bad.append(f"{stmt[:50]} → {type(e).__name__}(권한 거부 아님)")
+            return False
+        cur.execute("rollback to savepoint q3")
+        return False
+
+    def allowed(cur, stmt, params=()):
+        cur.execute("savepoint q3")
+        try:
+            cur.execute(stmt, params)
+            rows = cur.fetchall() if cur.description else []
+            cur.execute("release savepoint q3")
+            return rows
+        except psycopg.Error as e:
+            cur.execute("rollback to savepoint q3")
+            bad.append(f"허용 기대 {stmt[:60]} → {type(e).__name__}: {str(e)[:80]}")
+            return None
+
+    try:
+        with conn.tx() as cur:
+            out = roles.apply(cur, role, secrets.token_urlsafe(18))
+            cur.execute("select rolsuper, rolcreatedb, rolcreaterole, rolbypassrls, rolreplication, rolinherit, rolcanlogin from pg_roles where rolname = %s", (role,))
+            meas["attrs"] = dict(cur.fetchone())
+            cur.execute("select count(*) as n from pg_auth_members m join pg_roles r on r.oid = m.member where r.rolname = %s", (role,))
+            meas["member_of"] = cur.fetchone()["n"]
+            cur.execute("select count(*) as n from pg_tables where schemaname = 'public' and tableowner = %s", (role,))
+            meas["owns"] = cur.fetchone()["n"]
+            meas["tables"] = out["tables"]
+            cur.execute("select table_name from information_schema.views where table_schema = 'public' and table_name like 'v_dq_%%' order by 1")
+            dq_views = [r["table_name"] for r in cur.fetchall()]
+            cur.execute(f'set local role "{role}"')
+            cur.execute("select current_user as u, (select rolsuper from pg_roles where rolname = current_user) as su")
+            meas["whoami"] = dict(cur.fetchone())
+            # 불변 이력 · 감사 로그 6 표
+            cols = {}
+            for t in roles.APPEND_ONLY:
+                cur.execute("select column_name from information_schema.columns where table_schema = 'public' and table_name = %s "
+                            "and is_generated = 'NEVER' and is_identity = 'NO' order by ordinal_position limit 1 offset 1", (t,))
+                cols[t] = cur.fetchone()["column_name"]
+            ap = {}
+            for t in roles.APPEND_ONLY:
+                ap[t] = (denied(cur, f'update "{t}" set "{cols[t]}" = "{cols[t]}"'),       # where 없이 — 권한 검사가 먼저
+                         denied(cur, f'delete from "{t}"'),
+                         denied(cur, f'truncate "{t}"'),
+                         denied(cur, f'select 1 from "{t}" for update limit 1'))
+            meas["append_only"] = ap
+            # 이 역할이 넣은 로그 행도 지우지 못한다 (INSERT 는 된다)
+            ins = allowed(cur, "insert into sys_access_log (log_type, login_id, result, detail) values ('조회', %s, '성공', 'QA3 D-524 (예시)') returning log_id", (role,))
+            meas["log_insert"] = bool(ins)
+            if ins:
+                meas["log_delete_own"] = denied(cur, "delete from sys_access_log where log_id = %s", (ins[0]["log_id"],))
+            # 트리거 끄기 · DDL · 권한 올리기 · 카탈로그 비밀 · 서버 파일
+            deny = {
+                "session_replication_role=replica": denied(cur, "set local session_replication_role = replica"),
+                "alter table … disable trigger": denied(cur, "alter table stock_adjust disable trigger all"),
+                "create table": denied(cur, "create table q3_role_probe (id int)"),
+                "drop table": denied(cur, "drop table stock_adjust"),
+                "alter table add column": denied(cur, "alter table customer add column q3x int"),
+                "create function": denied(cur, "create function q3f() returns int language sql as 'select 1'"),
+                "create schema": denied(cur, "create schema q3s"),
+                # `set role 소유자` · `set session authorization` 은 이 방법으로 잴 수 없다 — 검사는 세션 사용자(로컬 superuser)의 자격을 보기 때문.
+                # 실 로그인(lcomfine_app 으로 접속)에서만 의미가 있다 → D-525 실기동 때 잰다(보고서 §9).
+                "set_config(session_replication_role)": denied(cur, "select set_config('session_replication_role', 'replica', true)"),
+                "select pg_authid": denied(cur, "select rolpassword from pg_authid limit 1"),
+                "pg_read_file": denied(cur, "select pg_read_file('postgresql.conf')"),
+                "copy … to 파일": denied(cur, "copy (select 1) to '/tmp/q3_role_probe.txt'"),
+                "copy … from program": denied(cur, "copy customer from program 'true'"),
+                "lo_import": denied(cur, "select lo_import('/etc/hosts')"),
+                "create database": denied(cur, "create database q3_role_probe_db", errs=(psycopg.errors.InsufficientPrivilege, psycopg.errors.ActiveSqlTransaction)),
+            }
+            # GRANT 는 오류 없이 경고만 낸다(가진 권한이 없으면 「no privileges were granted」) — 실제로 권한이 늘었는지를 본다
+            cur.execute(f'grant update, delete on sys_change_log to "{role}"')
+            cur.execute("select has_table_privilege(%s, 'sys_change_log', 'UPDATE') or has_table_privilege(%s, 'sys_change_log', 'DELETE') as g",
+                        (role, role))
+            deny["grant (자기에게) — 권한 늘지 않음"] = cur.fetchone()["g"] is False
+            meas["deny"] = deny
+            # 업무 쓰기 — 시퀀스(bigserial) · update · delete
+            p = "q3role" + secrets.token_hex(3)
+            ins = allowed(cur, "insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id", (p, f"{p} (예시)"))
+            cid = ins[0]["id"] if ins else None
+            upd = allowed(cur, "update customer set customer_name = %s where id = %s returning id", (f"{p} 수정 (예시)", cid)) if cid else None
+            dl = allowed(cur, "delete from customer where id = %s returning id", (cid,)) if cid else None
+            seq = allowed(cur, "select count(*) as n from information_schema.usage_privileges where grantee = %s and object_type = 'SEQUENCE'", (role,))
+            meas["business"] = {"insert": bool(ins), "update": bool(upd), "delete": bool(dl), "seq_grants": seq[0]["n"] if seq else None}
+            # 채번 표(sys_number_seq)는 갱신이 필요하다
+            meas["number_seq_update"] = allowed(cur, "update sys_number_seq set last_value = last_value where false") is not None
+            # v_dq_* 읽기
+            reads = {}
+            for v in dq_views:
+                r_ = allowed(cur, f'select count(*) as n from "{v}"')
+                reads[v] = r_[0]["n"] if r_ else None
+            meas["v_dq"] = reads
+            # 데이터 질의 실행 계층 — 검증 통과 SQL 을 읽기 전용 · statement_timeout 으로 이 역할이 돌린다(_run_readonly 와 같은 설정)
+            sql_ok = "select request_no, qty from v_dq_orders limit 5"
+            sql_ok = dataquery.validate_sql(sql_ok, dataquery.allowed_views("EX"))      # 검증을 통과한 SQL 만 돌린다
+            cur.execute(f"set local statement_timeout = {int(dataquery.STATEMENT_TIMEOUT_MS)}")
+            cur.execute("set local transaction_read_only = on")
+            ro = allowed(cur, sql_ok)
+            ro_write = denied(cur, "insert into customer (customer_code, customer_name) values ('q3ro', 'q3ro')", errs=(psycopg.errors.ReadOnlySqlTransaction,))
+            cur.execute("show transaction_read_only")
+            meas["dq"] = {"rows": None if ro is None else len(ro), "read_only_write_refused": ro_write, "ro": cur.fetchone()["transaction_read_only"],
+                          "timeout_ms": int(dataquery.STATEMENT_TIMEOUT_MS)}
+            raise _RoleRollback
+    except _RoleRollback:
+        pass
+    left = conn.q1("select count(*) as n from pg_roles where rolname like 'lcomfine_app_q3%%'")["n"]
+    a = meas.get("attrs", {})
+    out_rows: list[Result] = []
+    ok_attrs = a and not any(a[k] for k in ("rolsuper", "rolcreatedb", "rolcreaterole", "rolbypassrls", "rolreplication")) and a["rolcanlogin"] \
+        and meas.get("member_of") == 0 and meas.get("owns") == 0 and meas.get("whoami", {}).get("su") is False
+    out_rows.append(res("X-11", "D-524 앱 역할 속성 — superuser · 소유자 · 역할 상속 아님", bool(ok_attrs),
+                        f"roles.apply 표 {meas.get('tables')} · 속성 {a} · 소속 역할 {meas.get('member_of')} · 소유 표 {meas.get('owns')} · set local role 뒤 superuser {meas.get('whoami', {}).get('su')}"))
+    ap = meas.get("append_only", {})
+    ap_bad = [f"{t} {v}" for t, v in ap.items() if not all(v)]
+    out_rows.append(res("X-11", "D-524 불변 이력 · 감사 로그 6 표 UPDATE/DELETE/TRUNCATE/FOR UPDATE 거부 · INSERT 만", len(ap) == 6 and not ap_bad
+                        and meas.get("log_insert") and meas.get("log_delete_own"),
+                        f"표 {len(ap)} × (update · delete · truncate · for update) 전부 InsufficientPrivilege {not ap_bad} · sys_access_log insert {meas.get('log_insert')} · "
+                        f"자기가 넣은 행 delete 거부 {meas.get('log_delete_own')}", ap_bad))
+    dn = meas.get("deny", {})
+    dn_bad = [k for k, v in dn.items() if not v]
+    out_rows.append(res("X-11", "D-524 트리거 끄기 · DDL · 권한 올리기 · 카탈로그 비밀 · 서버 파일 거부", bool(dn) and not dn_bad,
+                        f"{len(dn)} 시도 — " + " · ".join(f"{k} {'거부' if v else '통과!'}" for k, v in dn.items()), dn_bad))
+    bz, dq = meas.get("business", {}), meas.get("dq", {})
+    vd = meas.get("v_dq", {})
+    ok_b = bz.get("insert") and bz.get("update") and bz.get("delete") and (bz.get("seq_grants") or 0) > 0 and meas.get("number_seq_update") \
+        and vd and all(v is not None for v in vd.values()) and dq.get("rows") is not None and dq.get("read_only_write_refused") and dq.get("ro") == "on"
+    out_rows.append(res("X-11", "D-524 그 역할로 업무 쓰기 · 시퀀스 · v_dq_* 읽기 · 데이터 질의 읽기 전용 실행", bool(ok_b),
+                        f"customer insert(bigserial)/update/delete {bz.get('insert')}/{bz.get('update')}/{bz.get('delete')} · 시퀀스 권한 {bz.get('seq_grants')} · "
+                        f"sys_number_seq update {meas.get('number_seq_update')} · v_dq_* {len(vd)} 읽기 {vd} · 질의(읽기 전용 · timeout {dq.get('timeout_ms')}ms) 행 {dq.get('rows')} · "
+                        f"읽기 전용 중 쓰기 ReadOnlySqlTransaction {dq.get('read_only_write_refused')}"))
+    out_rows.append(res("X-11", "D-524 되돌림 → 클러스터에 시험 역할 0", left == 0 and not bad, f"남은 lcomfine_app_q3* 역할 {left}", bad))
+    return out_rows
+
+
+def check_db_role_static() -> list[Result]:
+    """앱 코드가 그 역할로 돌 수 있는가(정적) — 불변 6 표에 UPDATE/DELETE/TRUNCATE · 런타임 DDL · session_replication_role 이 없다.
+    compose 두 벌 — `app` = lcomfine_app · `seed` = 소유자(`docker compose config` 출력 · 비밀 값은 찍지 않는다)."""
+    from urllib.parse import urlparse
+
+    import yaml
+
+    from lcomfine.db import roles
+
+    out: list[Result] = []
+    hits = []
+    pat_ap = re.compile(r"\b(update\s+(%s)\b|delete\s+from\s+(%s)\b|truncate\s+(table\s+)?(%s)\b)" % (("|".join(roles.APPEND_ONLY),) * 3), re.I)
+    pat_ddl = re.compile(r"\b(create\s+(table|index|view|function|role|schema)\s+\w|alter\s+(table|role|system)\s+\w|drop\s+(table|view|role)\s+\w|session_replication_role|"
+                         r"grant\s+(select|insert|update|delete|all|usage)\b|revoke\s+(select|insert|update|delete|all|usage|create)\b)", re.I)
+    files = sorted((ROOT / "src/lcomfine/app").rglob("*.py"))
+    for f in files:
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            s_ = line.split("#", 1)[0]
+            if pat_ap.search(s_) or pat_ddl.search(s_):
+                hits.append(f"{f.relative_to(ROOT)}:{i}")
+    out.append(res("X-11", "정적: 앱 코드(src/lcomfine/app) — 불변 6 표 UPDATE/DELETE/TRUNCATE · 런타임 DDL · GRANT · replica 0", not hits,
+                   f"파일 {len(files)} · 걸린 줄 {len(hits)}", hits))
+    # compose 두 벌 — docker compose config (값은 메모리에서만 · 사용자 이름만 본다)
+    bad, meas = [], []
+    for rel in ("docker-compose.yml", "deploy/hostinger/docker-compose.yml"):
+        cmd = ["docker", "compose", "-f", rel, "--project-directory", str(ROOT), "config", "--format", "json"]
+        try:
+            pr = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            bad.append(f"{rel}: docker compose 실행 실패 {type(exc).__name__}")
+            continue
+        if pr.returncode != 0:
+            # 오류 문장에는 값이 없다(변수 이름만) — 첫 줄만
+            bad.append(f"{rel}: config rc {pr.returncode} {pr.stderr.strip().splitlines()[-1][:120] if pr.stderr.strip() else ''}")
+            continue
+        cfg = json.loads(pr.stdout)
+        svc = cfg.get("services", {})
+        users = {}
+        for name in ("app", "seed"):
+            dsn_ = (svc.get(name, {}).get("environment") or {}).get("LCOMFINE_PG_DSN") or ""
+            users[name] = urlparse(dsn_).username
+        app_pw_env = "LCOMFINE_APP_DB_PASSWORD" in (svc.get("seed", {}).get("environment") or {})
+        app_has_owner = any(k == "LCOMFINE_DB_PASSWORD" for k in (svc.get("app", {}).get("environment") or {}))
+        db_user = (svc.get("db", {}).get("environment") or {}).get("POSTGRES_USER")
+        seed_cmd = " ".join(svc.get("seed", {}).get("command") or [])
+        meas.append(f"{rel}: app={users['app']} · seed={users['seed']} · db POSTGRES_USER={db_user} · seed 에 앱 비밀번호 변수 {app_pw_env} · "
+                    f"seed command docker_init {('docker_init.py' in seed_cmd)} · app 에 소유자 비밀번호 {app_has_owner}")
+        if users["app"] != "lcomfine_app" or users["seed"] != db_user or not app_pw_env or "docker_init.py" not in seed_cmd or app_has_owner:
+            bad.append(f"{rel}: app {users['app']} · seed {users['seed']} (소유자 {db_user})")
+        # 원문(YAML) 에서도 확인 — app 서비스의 DSN 사용자
+        raw = yaml.safe_load((ROOT / rel).read_text(encoding="utf-8"))
+        rdsn = ((raw.get("services", {}).get("app", {}).get("environment") or {}).get("LCOMFINE_PG_DSN") or "")
+        if "lcomfine_app:" not in rdsn:
+            bad.append(f"{rel}: 원문 app DSN 이 lcomfine_app 이 아니다")
+    di = (ROOT / "tools/docker_init.py").read_text(encoding="utf-8")
+    di_ok = "roles.apply(" in di and "LCOMFINE_APP_DB_PASSWORD" in di
+    if not di_ok:
+        bad.append("docker_init.py 가 roles.apply 를 부르지 않는다")
+    out.append(res("G-24", "compose 두 벌 — app = lcomfine_app · seed = 소유자 (D-524 · 정적)", not bad,
+                   " / ".join(meas) + f" · docker_init roles.apply {di_ok} · 실기동은 D-525", bad))
+    return out
+
+
+#: W4 E2E — 전산 관리자 DOC-020 · 영업부 DOC-010(지금 .env = 주소 없음 → `미확정 (D-517)` 화면)
+E2E_W4 = (("admin", "/doc/account-map"), ("sl", "/doc/go"))
+E2E_W4_WANT = {("admin", "/doc/account-map"): "미연결 사용자", ("sl", "/doc/go"): "미확정 (D-517)"}
+
+
 # ── 판정표 ──────────────────────────────────────────────────────────────
-def w4_rows() -> list[Result]:
-    return [Result("G-18", "SSO 토큰", FAIL, "W4 — DOC-010 SSO 미구현")]
-
-
 def run_all(run_seeds: bool = False) -> list[Result]:
-    rows: list[Result] = w4_rows()
+    rows: list[Result] = []
 
     def guard(gid: str, item: str, fn, *args):
         try:
@@ -2237,10 +3317,18 @@ def run_all(run_seeds: bool = False) -> list[Result]:
         rows += guard("G-17", "키 없음 · 호출 실패", check_ai_key_missing, lab)
         rows += guard("G-22", "RPT 변경 로그", check_rpt_change_log, lab)
         rows += guard("X-09", "대시보드 이스케이프", check_rpt_escape, lab)
+        # W4 문서 SSO (DOC) — 가짜 주소(.invalid) · 가짜 비밀 · 외부 전송 0
+        rows += guard("G-18", "SSO 토큰 규칙", check_sso_token, lab)
+        rows += guard("G-18", "SSO 화면 경로", check_sso_http, lab)
+        rows += guard("G-18", "SSO 서버 로그", check_sso_server_log, lab)
+        rows += guard("G-18", "DOC-020 계정 매핑", check_doc_map, lab)
+        rows += guard("G-19", "DOC 화면 · 쓰기 × 부서 8", check_doc_access, lab)
     rows += guard("X-08", "COL 정적", check_col_static)
     rows += guard("X-10", "RPT 정적", check_rpt_static)
     rows += guard("G-21", "seed_dev3 정적", check_seed_dev3_static)
     rows += guard("G-24", "docker", check_docker)
+    rows += guard("X-11", "DB 역할 (D-524)", check_db_role)
+    rows += guard("X-11", "DB 역할 정적 · compose", check_db_role_static)
     return rows
 
 

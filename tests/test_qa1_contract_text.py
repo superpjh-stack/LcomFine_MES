@@ -35,7 +35,7 @@ def test_loss_rate_screens_show_d519(admin):
 
 @pytest.mark.fn("F-STD-024", "F-STD-064", "F-SHP-022")
 def test_every_w1_screen_shows_its_contract_undecided(admin):
-    """범위 화면 65(W1 49 + COL 7 + RPT 9) 전부: 계약 문장 · 결정의 「미확정 (D-nn)」 이 그 화면 본문에 보인다 (STD-020 · STD-060 D-519 · SHP-020 D-515 ·
+    """범위 화면 67(W1 49 + COL 7 + RPT 9 + DOC 2) 전부: 계약 문장 · 결정의 「미확정 (D-nn)」 이 그 화면 본문에 보인다 (STD-020 · STD-060 D-519 · SHP-020 D-515 ·
     COL-010 · COL-050 · COL-060 D-516 · …). 조건부(TRK-030 D-516)는 test_qa1_col.py 가 조건을 만들어 본다."""
     missing = []
     checked = 0

@@ -1,7 +1,7 @@
 # 엘컴화인 MES — 앱 + PostgreSQL (decisions.md D-03: 운영 환경 미정 → 어디든 올릴 수 있게만. 실제 배포·물리 구성도는 범위 밖)
 #
-#   1) `.env` 에 비밀 세 개를 넣는다 (값은 저장소·문서에 적지 않는다 — `make setup` 이 난수로 채운다):
-#        LCOMFINE_DB_PASSWORD · LCOMFINE_SESSION_SECRET · LCOMFINE_SEED_PASSWORD
+#   1) `.env` 에 비밀을 넣는다 (값은 저장소·문서에 적지 않는다 — `make setup` 이 난수로 채운다):
+#        LCOMFINE_DB_PASSWORD(소유자 lcomfine) · LCOMFINE_APP_DB_PASSWORD(앱 역할 lcomfine_app) · LCOMFINE_SESSION_SECRET · LCOMFINE_SEED_PASSWORD · LCOMFINE_SSO_SECRET
 #   2) docker compose up -d --build
 #   3) http://<호스트>:${LCOMFINE_HOST_PORT:-8020}/health → 200
 #
@@ -11,15 +11,16 @@
 #   스키마를 호스트 bind-mount 로 넣지 않는다 — compose 파일만 받아 가는 배포 도구(Hostinger Docker Manager)에는 호스트에 저장소가 없다(D-31).
 #   그런 도구에는 `deploy/hostinger/docker-compose.yml`(미리 만든 이미지 ghcr.io 를 쓴다 — `.github/workflows/image.yml`)을 올린다.
 #   이미 있는 권한 칸·채번 형식은 건드리지 않는다. `(예시)` 행이 필요 없으면 command 에 `--common-only` 를 붙인다(그러면 채번 형식은 직접 넣는다 — D-05).
-# · 백업: docker compose exec app /app/.venv/bin/python tools/backup.py backup   (덤프는 볼륨 lcomfine-backups 에 쌓인다)
-#         docker compose exec app /app/.venv/bin/python tools/backup.py restore-check   (임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로)
+# · DB 역할(D-524): `app` 은 최소 권한 역할 lcomfine_app 으로 붙는다(superuser 아님 · 불변 이력 · 감사 로그 INSERT 만 · DDL 불가).
+#   스키마 · 시드 · 역할 생성 · 백업 · 복구 검사는 소유자 역할 lcomfine 으로 `seed` 이미지에서 돈다.
+# · 백업: docker compose run --rm seed /app/.venv/bin/python tools/backup.py backup   (덤프는 볼륨 lcomfine-backups 에 쌓인다)
+#         docker compose run --rm seed /app/.venv/bin/python tools/backup.py restore-check   (임시 DB 에 복구해 행 수 대조 — 운영 DB 는 그대로 · createdb 권한은 소유자에게만)
 #         docker compose cp app:/app/backups ./backups   (호스트로 꺼내기 — backups/ 는 gitignore)
 # 프로젝트 이름은 고정하지 않는다 — 올리는 쪽(폴더 이름 · hPanel 앱 이름 · `-p`)이 정한다. 고정하면 같은 호스트의 두 번째 배포와 이름이 겹친다 (D-31).
 
 x-app-env: &app-env
   LCOMFINE_ENV: ${LCOMFINE_ENV:-prod}
   LCOMFINE_PORT: "8020"
-  LCOMFINE_PG_DSN: postgresql://lcomfine:${LCOMFINE_DB_PASSWORD:?.env 에 LCOMFINE_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db
   LCOMFINE_SESSION_SECRET: ${LCOMFINE_SESSION_SECRET:?.env 에 LCOMFINE_SESSION_SECRET 를 넣는다 (비우면 재기동마다 로그인이 풀린다)}
   LCOMFINE_SEED_PASSWORD: ${LCOMFINE_SEED_PASSWORD:?.env 에 LCOMFINE_SEED_PASSWORD 를 넣는다 (기본 비밀번호는 없다 — G-19)}
   LCOMFINE_SESSION_IDLE_MINUTES: ${LCOMFINE_SESSION_IDLE_MINUTES:-}
@@ -50,7 +51,13 @@ services:
   seed:
     build: .
     restart: "no"
-    environment: *app-env
+    environment:
+      <<: *app-env
+      LCOMFINE_PG_DSN: postgresql://lcomfine:${LCOMFINE_DB_PASSWORD:?.env 에 LCOMFINE_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db      # 소유자 — 스키마 · 시드 · 역할 · 백업
+      LCOMFINE_APP_DB_ROLE: lcomfine_app
+      LCOMFINE_APP_DB_PASSWORD: ${LCOMFINE_APP_DB_PASSWORD:?.env 에 LCOMFINE_APP_DB_PASSWORD 를 넣는다 (make setup)}
+    volumes:
+      - lcomfine-backups:/app/backups
     depends_on:
       db:
         condition: service_healthy
@@ -59,7 +66,9 @@ services:
   app:
     build: .
     restart: unless-stopped
-    environment: *app-env
+    environment:
+      <<: *app-env
+      LCOMFINE_PG_DSN: postgresql://lcomfine_app:${LCOMFINE_APP_DB_PASSWORD:?.env 에 LCOMFINE_APP_DB_PASSWORD 를 넣는다 (make setup)}@db:5432/lcomfine_db   # 최소 권한 (D-524)
     depends_on:
       db:
         condition: service_healthy

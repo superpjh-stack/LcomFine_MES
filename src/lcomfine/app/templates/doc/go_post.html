@@ -1,0 +1,15 @@
+{# F-DOC-011 진입 — 토큰은 이 폼의 hidden 칸에만 싣는다(주소창 · 로그에 없음). 템플릿에 스크립트를 넣지 않는다:
+   자동 제출 보조가 static/app.js 에 생기면 `data-auto-submit` 으로 바로 넘어가고, 그 전에는 사람이 단추를 누른다. #}
+{% extends "base.html" %}
+{% block body %}
+<section class="panel" data-doc-go="issued">
+  <h1>문서관리 열기</h1>
+  <p>일회용 토큰을 발급했다 — 유효 {{ ttl }}초 · 한 번만 사용. 아래 단추를 누르면 문서관리 시스템으로 넘어간다.</p>
+  <form method="post" action="{{ action }}" data-auto-submit>
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="actions"><button type="submit" class="btn btn-primary">문서관리 열기</button></div>
+  </form>
+  <p class="muted">{{ ttl }}초가 지나거나 한 번 쓴 토큰은 문서관리 시스템이 거부한다 — 그때는
+    <a href="{{ nav.path_of('DOC-010') }}">문서관리 바로가기</a>에서 다시 연다.</p>
+</section>
+{% endblock %}

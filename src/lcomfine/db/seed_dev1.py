@@ -1,4 +1,4 @@
-"""개발1 시드 — 기준정보(품목 · 거래처 · 창고 · 위치) 최소 한 벌 + 공통코드 그룹 3 보장. 전부 `(예시)` · 멱등(코드로 upsert — 두 번 돌려도 행 수 같다).
+"""개발1 시드 — 기준정보(품목 · 거래처 · 창고 · 위치) 최소 한 벌 + 공통코드 그룹 3 보장 + 시드 계정 8 의 문서관리 계정 매핑(W4). 전부 `(예시)` · 멱등(코드로 upsert — 두 번 돌려도 행 수 같다).
 
 공통코드(SYS-030 · F-SYS-031 「설비 · 불량유형 · 수금수단 코드를 여기서 관리한다」)의 기본 행은 공통 시드 `seed.py` 의 `COMMON_CODES`(아키텍트) 가 넣는다.
 여기서는 **그룹마다 사용 중(`use_yn = 'Y'`) 코드가 하나는 있는지**만 보고, 비어 있는 그룹에만 `(예시)` 코드 하나를 더한다 —
@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from ..app.util.screen import example
-from . import conn
+from . import conn, seed
 
 BY = "seed_dev1"
 
@@ -27,6 +27,11 @@ WAREHOUSES: list[tuple[str, str, list[tuple[str, str]]]] = [
 CODE_GROUP_FALLBACK: dict[str, tuple[str, str]] = {
     "설비": ("EX-EQ", "설비"), "불량유형": ("EX-DF", "불량유형"), "수금수단": ("EX-PM", "수금수단"),
 }
+
+
+def doc_account(login_id: str) -> str:
+    """시드 계정의 (예시) 문서관리 계정 ID."""
+    return example(f"doc-{login_id}")
 
 
 def run() -> dict[str, int]:
@@ -59,8 +64,23 @@ def run() -> dict[str, int]:
                 added += cur.rowcount
         cur.execute("select count(distinct group_code) as n from sys_common_code where use_yn = 'Y'")
         groups = cur.fetchone()["n"]
+        # DOC-020 — 시드 계정 8 의 문서관리 계정 매핑 `doc-<login_id> (예시)` (계정 ID 는 받은 적이 없다 · D-517).
+        # 멱등: 그 사용자에게 매핑이 이미 있으면(관리자가 바꾼 것 포함) 건드리지 않는다.
+        doc_added = 0
+        for login_id, _name, _role in seed.USERS:
+            cur.execute("""insert into doc_account_map (user_id, account_id, created_by)
+                           select u.user_id, %s, %s from sys_user u
+                            where u.login_id = %s
+                              and not exists (select 1 from doc_account_map m where m.user_id = u.user_id)
+                              and not exists (select 1 from doc_account_map m where m.account_id = %s)""",
+                        (doc_account(login_id), BY, login_id, doc_account(login_id)))
+            doc_added += cur.rowcount
+        cur.execute("select count(*) as n from doc_account_map m join sys_user u on u.user_id = m.user_id "
+                    "where u.login_id = any(%s)", ([u[0] for u in seed.USERS],))
+        doc_maps = cur.fetchone()["n"]
     return {"item": len(ITEMS), "customer": len(CUSTOMERS), "warehouse": len(WAREHOUSES),
-            "location": sum(len(w[2]) for w in WAREHOUSES), "code_group": groups, "code_added": added}
+            "location": sum(len(w[2]) for w in WAREHOUSES), "code_group": groups, "code_added": added,
+            "doc_map": doc_maps, "doc_map_added": doc_added}
 
 
 def main() -> int:

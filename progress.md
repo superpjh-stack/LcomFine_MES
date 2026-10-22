@@ -3,14 +3,75 @@
 검증된 것만 적는다. 여기 없는 숫자는 화면에 지어내지 않는다. 형식: `| 항목 | 실측 | 검증 방법 |`.
 옛 판(설계도 기준 · 대메뉴 12)의 기록은 `progress-v1.md` 에 있다 — v2 의 실측이 아니다.
 
-## 지금 해야 할 것: W4 문서 SSO (개발1 → QA 3 → gate-full → 최종 보고)
+## 최종 보고 (2026-10-22) — 루프 종료: goal.md §4.4 충족
 
-W3 끝(아래 실측 · 커밋). 남은 FAIL 3 은 전부 W4 몫이다 — G-02(DOC 고아 6) · G-03(DOC placeholder 2) · G-18(SSO 토큰).
-다음 회전은 `goal.md` §3.1 **W4** — 개발1 을 §5 프롬프트로 기동한다: DOC-010 문서관리 바로가기 · DOC-020 문서관리 계정 매핑 · `app/sso.py`(`sso.issue` · `sso.consume` · `sso.NotMapped` — interfaces.md §9 · D-514 규격 · 서명 · 만료 · 1회 사용 · 비활성 · 미매핑 거부) · SSO 진입 로그(`sys_access_log` 구분 SSO · SYS-040 SSO 탭은 W3 에 이미 있다). 주소 `LCOMFINE_DOC_SSO_URL` 이 없으면 `미확정 (D-517)`.
-아키텍트 W4 몫: **D-524 앱 DB 역할 분리**(superuser 아님 · 불변 이력 INSERT 만 · 테스트 정리는 소유자 역할) · DEF-QA3-003 해소 · G-24 는 D-525(사람이 Docker 를 켜야 잰다).
-끝나면 QA 3 → `make gate-full` → §4.4 종료 조건 확인 → `progress.md` 맨 위에 최종 보고.
+W1 핵심 흐름 → W2 수금 → W3 대시보드 → W4 문서 SSO 를 모두 끝냈다. `make gate-full` 이 **PASS 23 · FAIL 0 · BLOCKED 1**(G-24 · D-525)이다.
+QA 리포트 3종에 **치명 결함 0** · 열린 결함 0 이다. 남은 것은 사람이 정하거나 켜야 하는 `차단` 뿐이다(§4.4 「남은 것이 전부 차단 뿐이어도 멈춘다」).
+완료 기준 「출하 1건에서 원자재 LOT 까지」는 화면(LOT-020) · `trace.backward` · QA2 독립 SQL 셋이 같은 사슬을 낸다(`outputs/qa2-흐름데이터.md` 맨 앞 · G-07).
 
-사람이 할 것: **D-525** Docker Desktop → `docker compose up -d --build` → `/health` 200 · **D-517** 문서관리 SSO 주소 · 방식 · 사번 동일 여부 · **D-526** · **D-516** · D-518~D-520.
+### 게이트 판정표 (`make gate-full` · 2026-10-22)
+
+| 게이트 | 판정 | 실측 |
+|---|---|---|
+| 빌드 전제 | PASS | pytest **449 passed · 0 failed** · /health 200 |
+| G-01 정본 ↔ nav | PASS | 묶음 8 · 대메뉴 17 · 화면 67 · 흐름 7 · RPT 「대시보드」 |
+| G-02 기능 ↔ 라우트 ↔ 표식 | PASS | 기능 **136/136** · 고아 0 · 오류 계약 사례 268 어긋남 0 · 5xx 0 |
+| G-03 화면 응답 | PASS | 칸 있는 260 → 200 · 칸 없는 276 → 403 · placeholder **0** |
+| G-04 스키마 | PASS | 테이블 48 · 뷰 9 |
+| G-05 쓰기 경계 | PASS | 라우터 · 공용 모듈 쓰기 ⊆ 계약 · TRK · LOT · PRP · RPT 쓰기 0 |
+| G-06 E2E 1건 | PASS | 의뢰 → 지시 → 입고 → 검사 → 불출 → 일보 → 제품 입고 → 판정 → 출하 지시 → 확정 (HTTP 만 · 부서 교대) |
+| G-07 · G-08 역 · 정추적 | PASS | 화면 = trace = 독립 SQL · 분할 LOT 포함 · 완료 기준 사슬 |
+| G-09 · G-10 차단 · 가용 | PASS | 검사대기 · 보류 LOT 불출/확정 422 · 가용 = 현재고 − 할당 · 동시 할당 초과 0 |
+| G-11 알림 9종 | PASS | 수신 부서 · dedupe · 처리 화면에서 닫힘 · 사실이 사라지면 해소 |
+| G-12 ~ G-14 수금 | PASS | 회차 교체 · 이전 회차 보존 · 오류 행 제외 · 미매핑 · 출하 대비 수금 = 독립 SQL |
+| G-15 대시보드 8 | PASS | 함수 = 독립 SQL = 화면 표 = SVG title |
+| G-16 · G-17 데이터 질의 · 키 없음 | PASS | 우회 54건 전부 422 + 로그 · 키 없음 문장 화면에 그대로 · 키 가림 |
+| G-18 SSO 토큰 | PASS | 서명 · 60초 만료 · 1회 사용 · 동시 사용 1 · 비활성 · 미매핑 거부 · 토큰 평문 hidden 1곳만 |
+| G-19 · G-20 권한 · 세션 | PASS | 쓰기 67 × 부서 8 전수 · 비활성 · 로그아웃 다음 요청 401 |
+| G-21 비밀 · 시드 멱등 | PASS | 비밀 값 0 · 시드 재실행 행 수 diff 0 |
+| G-22 변경 감사 로그 | PASS | 쓰기 성공마다 1행 · 실패 0행 |
+| G-23 백업 · 복구 | PASS | 테이블 48 전부 복구 · 행 110,128 일치 |
+| G-24 Docker · health | **BLOCKED (D-525)** | compose 두 벌 config 성립 · 앱은 최소 권한 역할(D-524) · 실기동은 Docker 데몬이 꺼져 있어 못 쟀다 |
+
+### 사람이 정할 것 — 정해지면 바뀌는 것
+
+| 결정 | 모르는 것 | 정해지면 바뀌는 것 |
+|---|---|---|
+| **D-525** Docker 실기동 | Docker Desktop 이 꺼져 있다 | 켜고 `docker compose up -d --build` → `curl -s localhost:8020/health` 200 이면 G-24 PASS(로컬 앱이 8020 을 쓰면 먼저 내리거나 `LCOMFINE_HOST_PORT` 변경) |
+| **D-509** 채번 7종 형식 | 현업 번호 규칙 | `sys_number_rule` 7행 데이터만(코드 변경 없음) |
+| **D-516** ERP 수금 엑셀 열 | 열 이름 · 매출액 · 잔액 열 유무 | `erp_upload.py` 필수 열 목록 · 시드 매핑 한 벌 — 그동안 COL-010 열 매핑 화면이 흡수 |
+| **D-517** 문서관리 SSO | 주소 · 방식(SAML/OIDC/서명 토큰) · 사번 동일 여부 | `.env` 에 `LCOMFINE_DOC_SSO_URL` 을 넣으면 DOC-010 이 바로 동작 · 방식이 SAML/OIDC 면 `sso.py` 한 곳 · 사번 동일이면 DOC-020 매핑 생략 |
+| **D-518** 알림 메일 · 메신저 | 서버 · 종류 | `notify` 에 발송 수단 · HOME-030 칸 저장 |
+| **D-519** 표준 · 예외제품 적용 · 로스율 산식 | FINE_MES 규칙 · 산식 | PRD-040 · INS-040 · RPT-020 · 030 의 `미확정 (D-519)` 자리에 수치 · STD-020 · 060 적용 |
+| **D-520** 병목 기준일 · 배치 시각 | RPT-070 기준일 · due-check 시각 | RPT-070 병목 칸 · 배치 스케줄 등록 |
+| **D-526** HOME-030 「개인 추가 알림」 | 정본 문장과 부서 단위 알림의 모순 | F-HOME-031 계약 한 행 · `notify.unread` 필터 |
+| 가설 확인 | D-501~D-526 의 `가설` · 개발 D-601~611 · D-701~704 · D-801~806 | 대장에 산식 · 형식이 적혀 있고, 바뀌면 한 곳(`stats` · `dashboard` · `numbering` 데이터)만 고친다 |
+
+### 실 LOT 검증 절차 (현업 데이터로 한 번 더)
+1. 실제 원자재 입고 1건을 MAT-010 에 넣는다(공급사 LOT 번호 그대로) → QC-010 입고검사 합격 → MAT-020 불출(실제 지시번호).
+2. PRD-010 · INS-010 일보 → MAT-030 제품 입고 → QC-020 판정 → SHP-010 출하 지시 → SHP-020 확정.
+3. LOT-020 에 그 출하 번호를 넣어 원자재 LOT · 공급사 LOT 이 현장 기록(입고 전표 · 라벨)과 같은지 본다. LOT-010 에 원자재 LOT 을 넣어 정방향도 본다.
+4. 같은 출하로 `uv run python tools/check_data.py` 의 G-07 독립 SQL 대조가 PASS 인지 확인한다(검사기는 자기 `QA2-` 세계를 만들고 지우므로 현업 행을 건드리지 않는다).
+
+### VPS 재배포 절차 (push · 배포는 사람이 한다 — 루프는 하지 않았다)
+1. 서버에서 `.env` 를 만든다(`make setup` 이 비밀 6개를 난수로 채운다: 세션 · 시드 비밀번호 · DB 소유자 · **앱 DB 역할(`LCOMFINE_APP_DB_PASSWORD` · D-524)** · SSO 비밀). OpenAI 키 · SSO 주소는 사람이 넣는다.
+2. `docker compose up -d --build` — `seed` 서비스가 빈 DB 면 스키마 → 시드 → 앱 역할 `lcomfine_app` 생성(superuser 아님 · 불변 이력 INSERT 만)을 하고 끝나며, `app` 은 그 역할로 붙는다. Hostinger 류는 `deploy/hostinger/docker-compose.yml`(같은 구조).
+3. `curl -s <호스트>:8020/health` 200 · 로그인 · `make gate` 상당의 확인은 로컬에서.
+4. 백업은 `docker compose run --rm seed /app/.venv/bin/python tools/backup.py backup` · 복구 검사는 같은 방식의 `restore-check`(createdb 는 소유자 역할에만 있다).
+5. 이미 데이터가 있는 DB 의 스키마 변경은 ALTER 이관으로 하고 `schema.sql` 과 맞춘다.
+
+## 2026-10-22 W4 문서 SSO 실측 (개발1 · 아키텍트 → QA 3 → 결함 수정 → gate-full)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| W4 화면 · 기능 | DOC-010 · DOC-020 · 기능 6 → 라우트 · 표식 **136/136** · placeholder **0** | `make check-trace` · `make check-routes` |
+| SSO (G-18) | 발급 → 1회 사용 · 재사용 거부 · +60초 만료 · 변조 20종 거부 · 동시 사용 하나만 · 비활성 즉시 거부(받은 토큰도) · 미매핑 「관리자에게 계정 연결을 요청하세요」 · 주소 · 비밀 없음 422 `미확정 (D-517)` · SSO 로그 호출마다 1행 · 토큰 평문 hidden 1곳만(헤더 · URL · 쿠키 · JSON · 48 표 · 서버 로그 0) | `make check-security` G-18 (검사 16) · `tests/test_qa3_doc.py` · `tests/test_dev1_doc.py` |
+| 메뉴 동작 | 좌측 메뉴 DOC-010 = 새 창(`target="_blank"`) → 준비됐으면 자동 POST(`app.js` `data-auto-submit`) → 문서관리 · 준비 안 됐으면 안내만 | `tests/test_qa1_doc.py` · DEF-QA1-010 |
+| 앱 DB 역할 (D-524) | `lcomfine_app` — superuser · 소유자 · DDL 아님 · 불변 이력 · 감사 로그 6 표 UPDATE/DELETE/TRUNCATE 거부 24/24 · 권한 상승 시도 15 거부 · compose 두 벌 `app` = 앱 역할 · `seed` = 소유자 | `tests/test_arch_roles.py` · `make check-security` X-11 · G-24 정적 |
+| QA 리포트 | 「W4」 절 3종 — QA1 결함 1 · QA2 0 · QA3 2(+ 003 해소) · 전부 해소 · 치명 0 · E2E 캡처 **54** | `outputs/qa{1,2,3}-*.md` · `outputs/e2e/` |
+| pytest | **449 passed · 0 failed** | `uv run pytest -q` |
+| 게이트 | **PASS 23 · FAIL 0 · BLOCKED 1**(G-24 D-525) · gate-full 종료코드 0 | `make gate-full` |
+| 커밋 | `W4 문서 SSO 끝 · 루프 종료: …` (이 커밋) | `git log --oneline -1` |
 
 ## 2026-10-22 W3 대시보드 실측 (개발3 · 개발1 → QA 3 → 결함 수정 → gate-full)
 

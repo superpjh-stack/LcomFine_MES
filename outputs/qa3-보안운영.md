@@ -8,13 +8,15 @@
 |---|---|---|---|---|
 | DEF-QA3-001 | **중대** | 아키텍트 (Dockerfile) | Dockerfile 이 지워진 `tools/sample_data.py` 를 COPY 한다. 그래서 이미지 빌드가 실패하고 G-24 는 통과할 수 없다 | **해소(실측)** — COPY 원본 7 전부 있음(§6) |
 | DEF-QA3-002 | 경미 | 개발1 (bas · wo · sys) | NUL 이 든 입력의 422 가 어느 항목인지 짚지 않는다(`fields=[{"name":"입력"}]`) | **해소(실측)** — 4 경로 모두 항목 이름을 짚음(§6) |
-| DEF-QA3-003 | 경미 | 아키텍트 (DB 역할) · 참고 개발2 · 개발3 (테스트 정리) | 앱이 superuser 로 DB 에 붙는다. 불변 이력 트리거를 `session_replication_role` 로 우회할 수 있고, 테스트 정리 코드가 이 우회에 기대고 있다 | **D-524 등재(가설) · W4** 에서 앱 역할 분리 — W1~W3 은 그대로. 열림 |
+| DEF-QA3-003 | 경미 | 아키텍트 (DB 역할) · 참고 개발2 · 개발3 (테스트 정리) | 앱이 superuser 로 DB 에 붙는다. 불변 이력 트리거를 `session_replication_role` 로 우회할 수 있고, 테스트 정리 코드가 이 우회에 기대고 있다 | **해소(정적 · 트랜잭션 실측) · 실기동은 D-525** 2026-10-22 W4 — `roles.apply` 역할로 불변 6 표 UPDATE/DELETE/TRUNCATE · replica · DDL 거부 실측(§9.3) |
 | DEF-QA3-004 | 경미 | 개발3 (`routers/col.py` `_xlsx`) | **W2** — COL-040 엑셀 내려받기가 저장된 `=…` 글자(DDE · HYPERLINK)를 수식 셀로 쓴다 → 여는 사람의 엑셀에서 실행될 수 있다(§7) | **해소(실측)** — `_xlsx_text_cell` 로 글자 셀 `data_type="s"` 고정 · X-07 PASS 수식 셀 0(§7.1) |
 | DEF-QA3-005 | 경미 | 개발3 (`dataquery.py` `ask` · F-RPT-132) | **W3** — AI 가 돌려준 SQL 에 NUL 이 들면 검증은 거부하지만 `data_query_log` 에 그 SQL 을 넣다가 DataError → 트랜잭션이 통째로 풀려 **질의 로그 0행 · AI 호출 로그 0행** · 422 가 「입력값을 확인해 주세요 / 입력」(사유 없음)(§8.1) | **해소(실측)** 2026-10-22 — `dataquery.NUL_GLYPH` 치환 · 54/54 거부 + 로그 1행 |
 | DEF-QA3-006 | 경미 | 개발3 (`ai.py` `complete` · `dataquery.py` `ask`) | **W3** — 실제 호출(`_openai`) 의 `CallFailed` 문장은 `sys_ai_call_log` 에만 키를 가리고(`_mask`) 그대로 다시 올라가 **`data_query_log.error` · 422 본문 · RPT-130 최근 질의에 키 글자가 실린다**(HTTP 오류 본문이 키를 되비추는 경우 · §8.1) | **해소(실측)** 2026-10-22 — `_mask` 가 키 · `Bearer …` · `sk-…` 을 가리고 가린 문장을 올림 · 세 곳 전부 가림 |
-| DEF-QA3-007 | 경미 | 개발3 (`tests/test_dev3_rpt.py:652`) | **W3 재검증에서 새로 드러남** — 개발3 의 가림 테스트가 가짜 글자 `sk-abcdefghijklmnop1234` 를 담아 **G-21 비밀 스캔(`gate.KEY_RE` · `sk-` 16자 이상)에 걸린다** → `check_security` G-21 FAIL · `make gate` G-21 FAIL. 비밀 값은 아니다(가짜 · 실제 키와 무관)(§8.1) | 열림 |
+| DEF-QA3-007 | 경미 | 개발3 (`tests/test_dev3_rpt.py:652`) | **W3 재검증에서 새로 드러남** — 개발3 의 가림 테스트가 가짜 글자 `sk-abcdefghijklmnop1234` 를 담아 **G-21 비밀 스캔(`gate.KEY_RE` · `sk-` 16자 이상)에 걸린다** → `check_security` G-21 FAIL · `make gate` G-21 FAIL. 비밀 값은 아니다(가짜 · 실제 키와 무관)(§8.1) | **해소(실측)** 2026-10-22 — 가짜 키 글자를 실행 때 합치는 꼴로 · W4 실측 G-21 키 패턴 줄 0(§9.4) |
+| DEF-QA3-008 | 경미 | 개발1 (`src/lcomfine/app/routers/doc.py` `_xlsx_rows` · F-DOC-021) | **W4** — DOC-020 엑셀 일괄 등록에 시트 XML 이 깨진 xlsx(날 NUL · 닫는 태그 없음 · XML 아님)를 올리면 **500** `internal_error`(「ParseError: …」) — 422 가 아니다. 등록 · 변경 로그는 0(§9.1) | 열림 |
+| DEF-QA3-009 | 경미 | 개발3 (`src/lcomfine/app/erp_upload.py` `_sheet` 96~104 · F-COL-011) | **W4 에 드러남(W2 기능)** — COL-010 ERP 업로드에 같은 파일 → preview · apply 둘 다 **500**. 회차 0행(§9.1) | 열림 |
 
-치명 0 · 중대 1 · 경미 2 (처음 보고). **재검증 뒤 남은 것: DEF-QA3-003 1건(경미 · D-524 · W4).** 표의 마지막 열은 2026-10-21 재검증(§6) 결과다. **W3(§8)에서 경미 2 추가(DEF-QA3-005 · 006) → 개발3 수정 뒤 둘 다 해소(실측) · 재검증에서 경미 1(DEF-QA3-007 · 스캔 패턴) 새로 열림.**
+치명 0 · 중대 1 · 경미 2 (처음 보고). **재검증 뒤 남은 것: DEF-QA3-003 1건(경미 · D-524 · W4).** 표의 마지막 열은 2026-10-21 재검증(§6) 결과다. **W3(§8)에서 경미 2 추가(DEF-QA3-005 · 006) → 개발3 수정 뒤 둘 다 해소(실측) · 재검증에서 경미 1(DEF-QA3-007 · 스캔 패턴) 새로 열림.** **W4(§9): DEF-QA3-003 해소(정적 · 트랜잭션 실측 · 실기동 D-525) · 경미 2 새로(DEF-QA3-008 · 009 — 깨진 시트 XML 500).**
 
 ### DEF-QA3-001 · 중대 · Dockerfile COPY 원본 없음 → `docker compose build` 실패
 - 재현(정적): `Dockerfile` 의 `COPY tools/backup.py tools/sample_data.py tools/docker_init.py ./tools/` 중 `ls tools/sample_data.py` → `No such file or directory`. 이 파일은 커밋 `2db6bd3`(Phase 0: 옛 도메인 삭제)에서 지워졌다. `.dockerignore` 에 걸린 것도 아니다. 파일이 아예 없다.
@@ -317,3 +319,107 @@ W1 · W2 와 같은 Playwright(chromium headless · 1280 · 390 · `full_page`).
 - `make gate-full` · 시드 멱등 실측 · Docker 실기동(D-525) — 오케스트레이터 몫.
 - 읽기 전용 **DB 역할** — D-524(W4). 지금은 트랜잭션 읽기 전용만 실측.
 - G-18 SSO — W4.
+
+## 9. W4 문서 SSO · DB 역할 (2026-10-22)
+
+검증만 했다. 앱 코드는 고치지 않았다. 고친 것은 내 소유 `tools/check_security.py`(G-18 고정 FAIL 「W4 미구현」 을 실검사로 · W4 검사 7 함수 · X-05 에 깨진 시트 XML 3 사례 · E2E 에 DOC 2 화면) · `tests/test_qa3_doc.py`(새 · 15) · `outputs/e2e/` · 이 보고서뿐이다.
+**외부로 보낸 것 0** — 문서관리 시스템은 없다. 주소 · 비밀은 `cs.sso_env()` 가 검사 동안만 가짜 값(주소 `https://doc.example.invalid/sso` · 비밀 = 실행마다 `secrets.token_urlsafe(32)`)으로 바꾸고 `settings.reset_cache()` 와 함께 끝에 원래 값으로 되돌린다. 자동 POST 폼은 렌더만 보고, 토큰 검증은 `sso.consume`(문서관리 쪽 규칙의 재현)으로 한다. `LCOMFINE_SSO_SECRET` · `LCOMFINE_DOC_SSO_URL` 의 실제 값은 어디에도 적지 않았다(로컬 `.env` 에 주소가 없다 — 실측 `doc_sso_url` 빈 값 · 비밀은 있음). Docker 는 켜지 않았다(D-525).
+계정은 W1 과 같이 임시 계정(접두 `q3…`)만 쓰고 끝에 지웠다 — 그 계정의 `sso_token` · `doc_account_map` 행도 `Lab.cleanup` 이 같이 지운다(sys_user FK). `sys_access_log` 의 SSO 행은 감사 로그라 남긴다(W1 과 같은 규칙). 정리 확인(`psql -h /tmp lcomfine_db`): `sys_user` `q3%` **0** · 그 계정의 `sso_token` **0** · `doc_account_map` `q3%` **0** · `customer` `q3%` **0** · `pg_roles` `lcomfine_app%` **0** · 시드 매핑 8 그대로. QA1 · QA2 가 같은 DB 에서 동시에 돌았다 — 계정 이름(`…sw*` · `…dw*`)이 W1 검사의 이름과 겹쳐 처음 한 번 `UniqueViolation`(내 검사기 결함 · 이름만 바꿈)이 났고, 그 뒤 실측은 아래 그대로다.
+
+### 9.1 결함
+| ID | 등급 | 담당 | 한 줄 | 상태 |
+|---|---|---|---|---|
+| DEF-QA3-008 | 경미 | 개발1 (`src/lcomfine/app/routers/doc.py` `_xlsx_rows` · F-DOC-021) | DOC-020 엑셀 일괄 등록 — 시트 XML 이 깨진 xlsx → **500** (422 가 아니다) | 열림 |
+| DEF-QA3-009 | 경미 | 개발3 (`src/lcomfine/app/erp_upload.py` 96~104 · F-COL-011) | COL-010 ERP 업로드 — 같은 파일 → preview · apply **500** | 열림 |
+| DEF-QA3-003 | 경미 | 아키텍트 (D-524) | 앱 DB 역할 분리 | **해소(정적 · 트랜잭션 실측) · 실기동은 D-525** (§9.3) |
+
+#### 2026-10-22 재검증 — 오케스트레이터 실측 (DEF-QA3-008 · 009)
+- 두 모듈 모두 시트를 읽는 반복 구간에서 `SyntaxError`(ElementTree `ParseError` · lxml 구문 오류의 상위) · `BadZipFile` · `EOFError` 를 받아 422 「엑셀 시트를 읽을 수 없습니다 — 파일이 깨졌습니다」 로 바꿨다(`routers/doc.py` `_xlsx_rows` · `erp_upload.py` `_sheet` · 작은 수정). 자체 422 오류는 그대로 지나간다.
+- DEF-QA3-008 · 009 **해소(실측)** — `tests/test_qa3_doc.py::test_x12_doc020_bulk_bad_files_are_422` · `tests/test_qa3_col.py::test_upload_rejects_non_xlsx_and_header_defects_without_500` PASS.
+- `uv run python tools/check_security.py` → **종료코드 0** · `uv run pytest -q tests/test_qa3_*.py` → **53 passed · 0 failed**.
+- 열린 것: 없음(G-24 실기동은 D-525 — 사람이 Docker 를 켜야 잰다).
+
+#### DEF-QA3-008 · 경미 · DOC-020 엑셀 — 깨진 시트 XML 이 500
+- 재현(검사기 X-12 「이상 파일」 · `tests/test_qa3_doc.py::test_x12_doc020_bulk_bad_files_are_422`): 임시 ADM 계정 · `POST /doc/account-map` `file=` 정상 xlsx(1행 `사번` · `문서관리 계정 ID`) 의 `xl/worksheets/sheet1.xml` 만 고친 파일 3 —
+  ① 셀 글자에 날 NUL 바이트(엑셀 밖에서 만든 파일 · openpyxl 로는 쓸 수 없다) ② `</sheetData>` 를 지움(닫는 태그 없음) ③ `<sheetData><<<`(XML 아님).
+- 실측: 셋 다 **500** `{"code":"internal_error","message":"예상하지 못한 오류","reason":"ParseError: not well-formed (invalid token): line 1, column 358"}`(② 는 `mismatched tag`). 서버 로그에 「미처리 예외 POST /doc/account-map」 · `xml.etree.ElementTree.ParseError`. 등록 0 · 변경 로그 0(쓰기 전 단계라 데이터는 안전하다). 같은 표의 다른 이상 파일 9(0 바이트 · csv · HTML · zip · PNG 머리 · 5MB 초과 · 열 이름 다름 · 헤더만 · 5001행)는 전부 422 + `fields`.
+- 원인: `load_workbook(read_only=True)` 는 시트 XML 을 열 때가 아니라 **행을 읽을 때**(`iter_rows` → `next(it)`) 파싱한다. `doc.py:173~175` 의 `except (BadZipFile, InvalidFileException, KeyError, OSError, ValueError)` 는 `load_workbook` 호출만 감싸고, 행 읽기(177~178 `iter_rows` · `next(it)`)는 `try … finally: wb.close()` 뿐이라 `ParseError`(`SyntaxError` 하위)가 그대로 올라간다.
+- 기대: api-contract §3 · CLAUDE.md 「입력값 오류는 500 이 아니다 — DB 가 담을 수 없는 값도 422」 · F-DOC-021 「누락 422」. 사람이 만든 파일엔 드물고 쓰기 전이라 **경미**.
+- 고치는 쪽 참고(QA 는 고치지 않는다): 행 읽기 구간에서도 `xml.etree.ElementTree.ParseError`(또는 `SyntaxError`)를 잡아 `bad("엑셀 파일", "엑셀(.xlsx) 파일이 아닙니다 [ParseError]")` 로. 고치면 X-12 첫 행과 위 테스트가 그대로 PASS 를 잰다.
+
+#### DEF-QA3-009 · 경미 · COL-010 ERP 업로드 — 깨진 시트 XML 이 500
+- 재현(검사기 X-05 에 W4 때 더한 3 사례 · `tests/test_qa3_col.py::test_upload_rejects_non_xlsx_and_header_defects_without_500`): 회계부 임시 계정 · 지금 열 매핑의 열 이름으로 만든 (예시) xlsx 의 시트 XML 을 위 ①②③ 처럼 고쳐 `POST /col/uploads`(action preview · apply).
+- 실측: **6/6 500** `internal_error` 「ParseError: …」 · `erp_upload_batch` 0행(쓰기 전). 다른 이상 파일 11 + 폼 3 은 그대로 422.
+- 원인: `erp_upload.py:96~97` 의 except 가 `load_workbook` 만 감싸고 `ws.iter_rows`(101~104)의 `ParseError` 는 잡지 않는다 — DEF-QA3-008 과 같은 꼴(같은 openpyxl read_only 성질). W2 의 내 검사 파일 목록에 이 사례가 없어 W2 에 못 잡았다.
+- 고치는 쪽 참고: 008 과 같다(행 읽기 구간에서 `ParseError` → 422 「엑셀(.xlsx) 파일이 아닙니다」).
+
+### 9.2 G-18 SSO 토큰 (`uv run python tools/check_security.py` · 2026-10-22)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| 발급 → consume 1회 · 재사용 거부 | PASS | `sso.issue` → `sso_token` 1행(만료 − 발급 = **60초** · used_at 빈 칸) → `sso.consume` 1회째 통과(계정 ID · user_id · login_id · jti 일치 · used_at 채워짐) → 2회째 **「이미 사용한 토큰입니다」** |
+| 만료(60초 · now 주입) | PASS | 발급 now=t0 → consume **+59초 통과** · **+60초 · +61초 「만료된 토큰입니다」** · 120초 전 발급한 토큰을 지금 시계로 → 만료 · 만료 거부는 토큰을 태우지 않는다(used_at 그대로) |
+| 서명 변조 · 본문 변조 · 다른 비밀 · 형식 깨짐 | PASS | **20 사례 전부 `sso.Invalid`(다른 예외 0)** — 서명 끝 글자 · 서명 빈 칸 · 본문 계정 ID 바꿈(옛 서명) · 본문 만료 1시간(옛 서명) · 다른 비밀로 서명(같은 본문 · 위조 본문) → 「서명이 맞지 않습니다」 / 맞는 비밀로 서명한 유효 1시간 본문 → 「토큰 형식이 아닙니다」(exp−iat ≠ 60) / 맞는 비밀 · 발급 기록 없는 jti → 「발급 기록이 없는 토큰입니다」 / 맞는 비밀 · 같은 jti · 다른 계정 ID → 거부 / 점 없음(alg none 꼴) · 점 3개(JWT 꼴) · 빈 글자 · 한글 · NUL · 앞뒤 공백 · `=` 패딩 · 3000자 · JSON 아닌 본문 · None · bytes → 「토큰 형식이 아닙니다」. 거부 뒤 원 토큰 used_at 그대로 · 그 뒤 1회 통과 |
+| 동시 consume(스레드 2) | PASS | `threading.Barrier(2)` 로 같은 토큰을 동시에 — **5회 × 2 스레드 매번 통과 1 · 「이미 사용한 토큰입니다」 1** |
+| 발급 뒤 매핑 사용 중지 · 계정 ID 변경 | PASS | 사용 중지 → 미사용 토큰 consume · 새 issue 둘 다 「문서관리 계정 매핑이 사용 중지되었습니다」 / 계정 ID 변경 → consume 「발급 뒤 문서관리 계정 매핑이 바뀌었습니다」 |
+| 비밀 없음 → 발급 · 검증 안 함 | PASS | `LCOMFINE_SSO_SECRET` 빈 값 → `issue` · `consume` 둘 다 `sso.NotConfigured`(「SSO 서명 비밀이 설정되지 않았습니다 — LCOMFINE_SSO_SECRET」) · `configured()` False · 서명 없는 토큰을 만들지 않는다 |
+| **토큰 평문 = HTML hidden 1곳뿐** | PASS | `POST /doc/go`(브라우저) **200 같은 화면** · `<form method="post" action="https://doc.example.invalid/sso" data-auto-submit>` 안 `<input type="hidden" name="token">` **1개** · 본문 안 토큰 글자 **1회** · 서명 조각도 1회 · 응답 헤더(Location · Set-Cookie 등) · 주소 · 세션 쿠키(원문 · base64 풀이) **0** · `Cache-Control: no-store` · `Referrer-Policy: same-origin` / JSON 200 키 `field · jti · message · method · ok · ttl_seconds` — 토큰 꼴 글자 0 · jti 의 발급 행 일치 / **DB public 표 48 전수**(`row::text`)에 토큰 · 서명 **0**(`sso_token` · `sys_access_log` · `sys_change_log` 포함) / 프로세스 안 logging(root DEBUG) 6건 0 / 폼 토큰은 consume 1회 통과(진짜 토큰) |
+| 서버 로그 | PASS | 앱을 **하위 프로세스 uvicorn**(log debug · access log 켬 · 가짜 주소 · 가짜 비밀 · urlopen 차단)으로 띄워 실제 HTTP 로 로그인 → `POST /doc/go`(html) 200 · hidden 1 → 서버 stdout/stderr **12줄**(access 줄 「POST /doc/go」 있음) 에 토큰 · 서명 **0**. 로그 파일은 임시 폴더 · 지웠다 |
+| 토큰이 주소창에 없다 | PASS | `GET /doc/go` ×3(브라우저 · `?token=` 붙임 · JSON) → **발급 0** · hidden 0 · 쿼리 글자 되비침 0 / DOC-010 바로가기 폼 `<form method="post" action="/doc/go" target="_blank" rel="noopener">` / 발급 응답 Location 없음 / `static/app.js` 자동 제출 = `form[data-auto-submit]` → `f.submit()`(POST 폼 그대로 · `location=` · `window.open(` · `.href=` 0) |
+| **비활성(SYS-010 직후)** | PASS | 매핑된 SL 임시 계정이 토큰을 받아 둔 뒤 ADM 이 `POST /sys/users/{id}/delete`(F-SYS-013) 200 → 상태 **중지** → 그 세션 `POST /doc/go` **401** · `GET` **401** · 다시 로그인 401 · `sso.issue`(옛 User 객체) 「비활성 사용자입니다 (상태 중지)」 · **이미 받은 미사용 토큰 consume 「비활성 사용자입니다 (상태 중지)」** · 토큰 행 1 → 1(새 발급 0) / 잠금(SYS-012 상태 잠금) — issue · consume 둘 다 「… (상태 잠금)」 |
+| 미매핑 · 사용 중지 매핑 | PASS | 매핑 없음 · 사용 중지 매핑 계정 각각 — JSON **422** 「**관리자에게 계정 연결을 요청하세요** — 문서관리 계정 매핑이 없습니다 / 사용 중지되었습니다」 · `fields` 이름 `계정 매핑` · 브라우저 POST 303(알림) · 토큰 **0** · `GET /doc/go` 에 같은 안내 · 진입 폼 없음 |
+| 주소 없음 · 비밀 없음 → `미확정 (D-517)` | PASS | 주소 없음 · 비밀 없음 · 둘 다 없음 각각 — JSON **422** 「문서관리 SSO 주소(LCOMFINE_DOC_SSO_URL) [· SSO 서명 비밀(LCOMFINE_SSO_SECRET)] **미확정 (D-517)** — 토큰을 발급하지 않았습니다」 · 브라우저 POST 303 → `/doc/go` · 토큰 **0** · GET 안내 「미확정 (D-517)」 · 진입 폼 없음 |
+| 지금 설정(.env 그대로) | PASS | 주소 설정 False → `GET /doc/go` 200 「문서관리 SSO 연결 정보 미확정 (D-517)」 · `POST` 422 같은 문장 — 실제 화면은 E2E §9.6 |
+| **SSO 로그 — 호출마다 1행** | PASS | 이 검사의 `POST /doc/go` **14회(성공 3 · 실패 11)** = `sys_access_log` 구분 SSO **14행** — 사용자마다 호출 순서대로 `login_id` · `logged_at`(검사 시작 뒤) · `result` 성공/실패 · `screen_id` DOC-010 · `function_id` F-DOC-011 · `method` POST · `path` /doc/go · `detail` 사유(「발급 거부 — …」 · 「… 미확정 (D-517) — 발급하지 않음」 · 「토큰 발급 · 유효 60초」) · 성공은 `target = sso_token:<jti>`(JSON jti 와 일치) · 실패는 target 없음. 세션 401(비활성 뒤)은 로그인 판정 단계라 SSO 행 없음(접근 판정 전) |
+| SYS-040 SSO 탭 | PASS | ADM `GET /sys/logs?tab=sso&login=<성공 사용자>` 200 — 사용자 · 성공 · jti 보임 / `<실패 사용자>` 200 — 실패 · 사유 「미확정 (D-517)」 보임 |
+| DOC-020 1:1 깨짐 422 | PASS | 등록 200 → 같은 사용자 두 번째 계정 **422**(`MES 사용자`) · 다른 사용자에 같은 계정 **422**(`문서관리 계정 ID`) · 사용 중지 매핑의 계정 ID 재사용 **422** · 수정으로 남의 계정 ID **422** · 수정으로 MES 사용자 바꿈 **422** · 행 2 그대로 · 변경 로그 = 성공 2(등록 · 사용 중지 수정)만 |
+
+### 9.3 DEF-QA3-003 / D-524 재검증 — 앱 DB 역할
+`uv run pytest -q tests/test_arch_roles.py` → **2 passed**. 내 방식으로 한 번 더(검사기 X-11 · `check_db_role` · 한 `conn.tx()` 안에서 `roles.apply(cur, "lcomfine_app_q3<난수>", <난수>)` → `set local role` → 재고 → 예외로 되돌림):
+| 행 | 판정 | 실측 |
+|---|---|---|
+| 역할 속성 | PASS | `roles.apply` 표 48 · `rolsuper · rolcreatedb · rolcreaterole · rolbypassrls · rolreplication · rolinherit` 전부 **f** · `rolcanlogin` t · 소속 역할 0 · 소유 표 0 · `set local role` 뒤 `current_user` 의 rolsuper **False** |
+| 불변 이력 · 감사 로그 6 표 | PASS | `stock_adjust` · `shipment_adjust` · `sys_change_log` · `sys_access_log` · `sys_ai_call_log` · `data_query_log` × (`update`(where 없이) · `delete` · `truncate` · `select … for update`) **24/24 `InsufficientPrivilege`** · `sys_access_log` insert 됨 · **자기가 방금 넣은 행 delete 도 거부** |
+| 트리거 끄기 · DDL · 권한 올리기 · 카탈로그 · 서버 파일 | PASS | 15 시도 전부 거부 — `set local session_replication_role = replica` · `select set_config('session_replication_role','replica',true)` · `alter table stock_adjust disable trigger all` · `create table` · `drop table stock_adjust` · `alter table customer add column` · `create function` · `create schema` · `select rolpassword from pg_authid` · `pg_read_file` · `copy … to '/tmp/…'` · `copy … from program` · `lo_import` · `create database` / `grant update, delete on sys_change_log to <자기>` 는 오류 없이 경고뿐이라 **실제 권한이 늘지 않았는지**(`has_table_privilege` false)로 판정 |
+| 그 역할로 업무 · 질의 | PASS | `customer` insert(bigserial 시퀀스) · update · delete 됨 · 시퀀스 USAGE 권한 43 · `sys_number_seq` update 됨(채번) · **`v_dq_*` 8 뷰 전부 읽힘** · 데이터 질의 실행 계층과 같은 설정(`statement_timeout` 5000ms · `transaction_read_only = on`)으로 `dataquery.validate_sql` 을 통과한 `select request_no, qty from v_dq_orders limit 5` 실행 됨 · 그 상태의 insert → `ReadOnlySqlTransaction` |
+| 되돌림 | PASS | 끝에 `pg_roles` 의 `lcomfine_app_q3*` **0** — 클러스터에 남은 역할 없음 |
+| 정적: 앱 코드가 그 역할로 돈다 | PASS | `src/lcomfine/app/**/*.py` 39 파일 — 불변 6 표 UPDATE/DELETE/TRUNCATE · 런타임 DDL · GRANT/REVOKE · `session_replication_role` **0줄**(첫 실행에서 `dataquery.py:62` 의 거부 낱말 목록이 걸려 패턴만 좁혔다 — 거짓 양성) |
+| compose 두 벌(G-24 정적) | PASS | `docker compose -f <파일> config --format json`(데몬 없이 됨 · 출력은 메모리에서 DSN 의 **사용자 이름만** 읽고 찍지 않았다) — `docker-compose.yml` · `deploy/hostinger/docker-compose.yml` 둘 다 **app = `lcomfine_app`** · **seed = `lcomfine`(= db `POSTGRES_USER` 소유자)** · seed 에 `LCOMFINE_APP_DB_PASSWORD` 변수 · seed command `tools/docker_init.py` · app 환경에 소유자 비밀번호 변수 없음 · 원문 YAML 의 app DSN 도 `lcomfine_app:` · `docker_init.py` 가 `roles.apply(… LCOMFINE_APP_DB_PASSWORD)` 를 부른다 |
+
+판정: **DEF-QA3-003 해소(정적 · 트랜잭션 실측) · 실기동은 D-525.** 이 방법으로 잴 수 없는 것: `set role <소유자>` · `set session authorization` 은 PostgreSQL 이 **세션 사용자**(로컬 superuser)의 자격으로 판정해 `set local role` 안에서는 통과한다 — 실제로 `lcomfine_app` 으로 로그인한 연결에서만 의미가 있어 D-525 실기동 때 잰다. 로컬 개발 · 테스트 정리는 그대로 소유자(superuser) 역할이다(D-524 문장대로).
+
+### 9.4 G-19 · G-20 · G-22 (DOC)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| G-19 DOC 2 화면 × 부서 8 | PASS | 칸(DOC-010/020) SL · PR · SH · DS · AC · ST · EX = R/- · ADM = R/W → 200 기대 **9** · 403 기대 **7** · 어긋남 0 · 칸 없는 부서 메뉴에 `/doc/account-map` 링크 0 |
+| G-19 DOC 쓰기 4 × 부서 8(빈 본문) | PASS | **F-DOC-011(권한 예외)**: 8 부서 모두 칸 R → 통과(지금 `.env` 주소 없음 → **422** 「미확정 (D-517)」 · 5xx 0) / **F-DOC-021 · 022 · 023**: SL~EX **403** · ADM 422 · 404 · 404 / 실패 쓰기의 변경 로그 0 |
+| G-19 전수(갱신) | PASS | 쓰기 라우트 `require_fn` POST **67** 빠짐 0 · 세션 없음 POST 67 · 화면 GET 67×2 → 401/303 · 쓰기 기능 **67 × 8 — 403 기대 387 · 통과 기대 149 · 어긋남 0** · 화면 67 + 하위 조회 2 × 8 = GET **552** 어긋남 0(W3 의 63/366/138 에서 DOC 4 기능만큼 늘었다) |
+| G-20 비활성 · 로그아웃 | PASS | SL 임시 계정 비활성 전 GET/POST `/doc/go` (200, 422) → F-SYS-013 200 → **(401, 401)** / ADM 임시 계정 로그아웃 전 DOC-020 GET · 빈 POST (200, 422) → 뒤 GET · F-DOC-021 · 023 · 011 **(401, 401, 401, 401)** |
+| G-22 쓰기 성공 → 변경 로그 1행 · 실패 0행 | PASS | F-DOC-021 200 → **1행** · F-DOC-022 200 → **1행** · 022 빈 계정 ID 422 · NUL 422 · 없는 ID 404 → **0행** · 021 `user_id=abc` · 20자리 숫자 · 201자 계정 ID 422 → **0행** · F-DOC-023 200 → **1행** · 다시 404 · `abc` 404 → **0행** · **F-DOC-011 200 → 1행(target `sso_token:<jti>` = JSON jti)** · 사용 중지 매핑 422 → **0행** · `GET` DOC-010 · DOC-020 조회 로그 각 **+1** |
+| G-21 비밀 스캔 | PASS | 추적 파일 283 · 비밀 값 0 · 키 패턴 줄 0 — DEF-QA3-007 해소 확인. (내 검사기 첫 실행에서 `LCOMFINE_SSO_SECRET=secrets…` 글자가 `ASSIGN_RE` 에 걸려 FAIL — 키 이름을 붙여 쓰지 않게 고쳤다 · 내 결함) |
+
+### 9.5 조용한 실패 사냥 (X-행)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| **X-12 DOC-020 엑셀 — 이상 파일** (새) | **FAIL (DEF-QA3-008)** | 파일 12 — 0 바이트 · csv · HTML · zip(엑셀 아님) · PNG 머리 · 5MB 초과 · 열 이름 다름 · 헤더만 · 5001행 **422 + fields** · **날 NUL 시트 XML · 닫는 태그 없음 · XML 아님 → 500** · 등록 0 · 변경 로그 0 |
+| **X-12 DOC-020 엑셀 — 셀 내용** (새) | PASS | 수식 셀 `=1+1`(캐시 값 없음 → 빈 칸으로 읽힘) **422 `3행` 「…계정 ID 가 비었습니다」** · 없는 사번 1 + 정상 2 → **422 `4행` · 정상 2행도 등록 0** · 파일 안 사번 중복 422 `3행` · DB 매핑과 1:1 깨짐 422 `2행` · 201자 422 · 빈 칸 422 — 전부 매핑 수 그대로 · 변경 로그 0 / `a_x0000_b`(엑셀의 NUL 표기)는 openpyxl 이 글자 그대로 읽어 **글자 그대로 저장**(NUL 아님) / 정상 2행(계정 ID `<script>alert(1)</script>` · 글자 셀 `=HYPERLINK(…)`) → 200 count 2 · 변경 로그 **1행** · 글자로 저장 · DOC-020 화면 `&lt;script&gt;` (원문 태그 0) |
+| X-05 COL 업로드 이상 파일 (사례 3 더함) | **FAIL (DEF-QA3-009)** | 파일 14 + 폼 3 — 앞의 11 + 폼 3 은 422 그대로 · **깨진 시트 XML 3 → 500** |
+| X-11 D-524 | PASS 6 | §9.3 |
+
+관찰(결함 아님 · 계약에 기준 없음): ① 맞는 비밀로 서명했지만 계정 ID 가 발급 행과 다른 토큰은 거부되지만 사유가 「만료된 토큰입니다」 로 나온다(`consume` 의 갱신 조건에 `account_id` 가 들어 있어 0행 → 만료로 분류) — 비밀이 있어야 만들 수 있는 토큰이라 영향 없음. ② 앱 역할은 DB 의 `TEMP` 권한(PostgreSQL 기본 PUBLIC)으로 임시 표를 만들 수 있다(실측 · 세션 안에서만 · 업무 표 무관). ③ `roles.apply` 는 `ALTER DEFAULT PRIVILEGES` 를 두지 않는다 — 이관(ALTER)으로 새 표가 생기면 `seed` 서비스(`docker_init.py`)가 다시 돌 때까지 앱 역할에 권한이 없다(compose `up` 마다 seed 가 돌아 지금 구성에선 맞춰진다). ④ 500 응답 본문 `reason` 에 `ParseError: … line 1, column 358` 이 실린다(내부 위치 · 비밀 아님).
+
+### 9.6 E2E 캡처 (`uv run --offline --with playwright python tools/check_security.py --e2e`)
+W1~W3 과 같은 Playwright(chromium headless · 1280 · 390 · `full_page`). 서버 = 키 빈 값 + **`LCOMFINE_DOC_SSO_URL=` 빈 값**(지금 `.env` 와 같은 상태를 못 박음) + urlopen 차단. **54/54 PASS**(W1 16 + W2 16 + W3 18 + **W4 4**) · rc 0 · status 200 · `scrollWidth ≤ innerWidth`(390 가로 스크롤 0) · 로그인 튕김 0. 새 캡처 4: `outputs/e2e/admin_doc_account-map-1280.png` · `-390.png`(전산 관리자 DOC-020 — 매핑 8건(시드 `doc-<id> (예시)`) · 미연결 사용자 표 · 사번 동일 방식 `미확정 (D-517)` · 엑셀 일괄 등록 폼 · 「미연결 사용자」 글자 확인) · `outputs/e2e/sl_doc_go-1280.png` · `-390.png`(영업부 DOC-010 — 「문서관리 SSO 연결 정보 **미확정 (D-517)**」 · 「다음 설정이 없어 토큰을 발급하지 않는다: 문서관리 SSO 주소(LCOMFINE_DOC_SSO_URL)」 · 진입 단추 없음 · 연계 방식 `미확정 (D-517)`). SSO 진입은 누르지 않았다(주소가 없어 422 · 외부 전송 0). `result.json` 54행 갱신 · 정리 — 남은 `q3e2e` 회차 0 · 매핑 0.
+
+### 9.7 명령 · 결과
+| 명령 | 결과 |
+|---|---|
+| `uv run python tools/check_security.py` | **종료코드 2** = FAIL 2(**X-05 = DEF-QA3-009** · **X-12 이상 파일 = DEF-QA3-008**) · PASS **98** · WARN 0 · 26초. 게이트 행 G-16 7 · G-17 5 · **G-18 16** · G-19 12 · G-20 12 · G-21 5 · G-22 11 · G-24 4 **전부 PASS** — G-18 은 W3 까지의 고정 FAIL 「W4 미구현」 을 실검사 16 행으로 바꿨다 |
+| `uv run pytest -q tests/test_qa3_*.py` | **51 passed · 2 failed** · 31.3초 — 실패 2 = `test_qa3_doc.py::test_x12_doc020_bulk_bad_files_are_422`(DEF-QA3-008) · `test_qa3_col.py::test_upload_rejects_non_xlsx_and_header_defects_without_500`(DEF-QA3-009). 새 `test_qa3_doc.py` 15(G-18 10 · G-19/20/22 1 · X-11 2 · X-12 2). 실패 상태로 둔다(게이트를 낮추지 않는다) |
+| `uv run pytest -q tests/test_arch_roles.py` | 2 passed |
+| `uv run --offline --with playwright python tools/check_security.py --e2e` | 54/54 PASS · rc 0 |
+| 정리 확인 `psql -h /tmp lcomfine_db` | `sys_user` `q3%` 0 · 그 계정 `sso_token` 0 · `doc_account_map` `q3%` 0 · `customer` `q3%` 0 · `pg_roles` `lcomfine_app%` 0 |
+
+### 9.8 하지 않은 것
+- 실제 문서관리 시스템 연계(SAML/OIDC/서명 토큰 방식 · 주소) — D-517 차단. 자동 POST 폼이 실제로 넘어가는 것은 브라우저에서 누르지 않았다(외부 전송 0).
+- `lcomfine_app` 으로 **실제 로그인한** 앱 기동 · `set role` 류 — D-525(Docker 데몬 꺼짐 · 사람이 켠다).
+- `make gate-full` · 시드 멱등 실측 — 오케스트레이터 몫.

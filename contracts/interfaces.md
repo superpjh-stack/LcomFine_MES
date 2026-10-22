@@ -209,9 +209,10 @@ dataquery.VIEWS · dataquery.allowed_views(role_code) -> set[str]   # 수금 뷰
 dataquery.recent(user) -> list[dict] · dataquery.MAX_ROWS · dataquery.QueryRejected
 
 # app.sso (개발1 · W4)
-sso.issue(cur, user) -> tuple[str, str]   # (token, jti) · 비활성 · 미매핑이면 sso.NotMapped
-sso.NotMapped
-sso.consume(cur, token) -> dict           # 서명 · 만료 · 1회 사용
+sso.issue(cur, user, *, now=None) -> tuple[str, str]   # (token, jti) · 상태 · 매핑을 DB 에서 다시 읽는다 · 비활성 · 미매핑 · 사용 중지 매핑이면 sso.NotMapped(사유) · 토큰 글자는 저장하지 않는다
+sso.consume(cur, token, *, now=None) -> dict           # 형식 · 서명(상수 시간) · 만료 · 1회 사용(update … where used_at is null returning) · 사용 뒤 상태 · 매핑 재확인 — 어긋나면 sso.Invalid(사유)
+sso.NotMapped · sso.Invalid · sso.NotConfigured        # NotConfigured = LCOMFINE_SSO_SECRET 또는 LCOMFINE_DOC_SSO_URL 없음 → 발급 · 검증 안 함(라우터 422 「미확정 (D-517)」)
+sso.refusal(cur, user_id) -> (사유 | None, 매핑 | None) · sso.TTL_SECONDS == 60   # D-610
 ```
 
 ## 10. 시드 · 테스트

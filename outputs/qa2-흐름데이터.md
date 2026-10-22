@@ -1,5 +1,7 @@
 # QA2 흐름 · 데이터 — W1 (2026-10-21)
 
+> **완료 기준(CLAUDE.md) 확인 — W4 2026-10-22**: E2E 출하 1건 `SHP-2610-0787` → 제품 LOT `PLOT-2610-0702`(제품 입고 95) → 생산지시 `WO-2610-0195` → 불출 라인 3 → 원자재 LOT `MLOT-2610-1502`(분할 `MLOT-2610-1502-01` 포함) · `MLOT-2610-1503` 까지 **LOT-020 화면 글자 = QA2 독립 사슬 SQL(고리 3) = `trace.backward` = 테스트의 한 칸씩 SQL** — 일치 · G-07 PASS (§9).
+
 검증만 했다. 코드는 고치지 않았다(고친 것은 QA2 소유 `tools/check_data.py` 와 `tests/test_qa2_*.py` 뿐). 흐름은 **HTTP 만**(TestClient · 시드 계정 sl · pr · sh · ds · admin 을 단계마다 바꿔 로그인)으로 만들었고, DB 는 확인(SELECT)과 끝의 정리에만 썼다. 만든 행은 접두 `QA2-<난수>` 로 구분해 끝에 지웠다 — 남은 행 0 (`select count(*) from item where item_code like 'QA2-%'` = 0 · 거래처 · 창고 · 의뢰 · 입고도 0). 시드 계정의 상태 · 부서는 바꾸지 않았다(같은 DB 를 쓰는 QA1 · QA3 의 세션을 끊지 않게). 채번 카운터(`sys_number_seq`)와 감사 행(`sys_change_log` · `sys_access_log`)은 계약상 남긴다.
 
 직전 세션(보고서 없이 끊김)의 실측과 이번 실측을 함께 적는다. 그 사이에 아키텍트가 `db-schema.md` §2.2 를 고치고(코드가 맞다), 개발3 이 F-SHP-012 를 Ruling 21 대로 고치고, 개발2 가 F-MAT-012 · 022 · 032 · F-INV-022 의 빈 본문 422 와 QC-010 · 020 의 `?status=` 필터를 더했다.
@@ -285,3 +287,57 @@ G-06 ~ G-14 는 W1 · W2 와 같이 PASS(같은 실행에서 다시 잼). 게이
 - RPT-060 미수 연령 series 는 거래처에 행이 하나라도 있으면 빈 구간을 **0** 으로 적는다([700, 0, 0, 0]) — 「그 구간 순액 0」 이라 값이고, D-805 「행이 없는 구간은 None」 은 일 · 월 구간 얘기라 결함으로 보지 않았다. 반면 90일 초과 거래처 KPI 는 `_n(0)` → 「미수집」 이다(0곳과 미수집이 같은 글자). 개발3 참고.
 - `loss_qty`(RPT-020) · `defect_qty`(030) · `adjust_diff`(040) KPI 는 모집단 행이 있으면 0 을 0 으로 적고(`_n` 아님), 그 밖 KPI 는 0 → 「미수집」. QA2 독립 재계산도 같은 규칙(값 0 ≠ 0건)으로 셌다.
 - 같은 DB 를 다른 QA 가 동시에 쓰는 동안 전 DB 집계(020 · 030 · 040 · RPT-080 의 040 절) 는 앞뒤 재읽기 3회로는 맞출 수 없었다(제품 입고 3 → 4 · 170 등 매 회 바뀜) — 스냅샷 트랜잭션으로 해결. `check_data` 의 기존 「조회 화면 GET 전후 diff 0」 도 QA3 의 데이터 질의(data_query_log · sys_ai_call_log 2 → 9)로 한 번 흔들려 로그 4 를 수에서 뺐다(업무 테이블 44 는 그대로 센다).
+
+## 9. W4 회귀 (2026-10-22)
+
+개발1 이 DOC-010 문서관리 바로가기(`POST /doc/go` · `app/sso.py`) · DOC-020 계정 매핑을 만들었고, 아키텍트가 D-524 `db/roles.py` · `tools/docker_init.py` · compose 를 바꿨다(마지막 웨이브). QA2 몫은 회귀다 — **G-05 에 DOC 를 넣고**, W1~W3 흐름 전체(E2E · 추적 · 차단 · 할당 · 알림 · 수금 · 대시보드)를 다시 돌리고, **완료 기준 사슬**을 화면 · 독립 SQL 로 한 번 더 확인했다. 앱 코드는 고치지 않았다(고친 것은 `tools/check_data.py` · `tests/test_qa2_static.py` · `tests/test_qa2_flow.py` · 이 보고서).
+
+### 9.1 결함
+
+새 결함 **0** (`DEF-QA2-006` 은 쓰지 않았다). W1~W3 결함 5 (001~005) 는 전부 해소 상태 그대로 — 이번 실행에서 같은 검사 행이 다시 PASS.
+
+### 9.2 게이트 판정 — W4 실측 (`uv run python tools/check_data.py --transcript` · 종료코드 **0** · 약 3.5초 · 세 번 연속 0 · `make check-data` 도 0)
+
+| 게이트 | 판정 | 실측 (번호는 그 실행 `QA2-642661493` 의 값) |
+|---|---|---|
+| **G-05 쓰기 경계** | **PASS** (9/9) | 기존 8 행 + **새 행 1** — ① **DOC 정적(기능 단위)**: `doc.py` · `sso.py` 를 `ast` 로 함수마다 읽어 같은 파일 안 호출 · `sso.issue/consume` · `audit.write_log/log_change` 를 따라간 쓰기 — `sso.py` 쓰기 함수 {issue: [sso_token], consume: [sso_token]} ⊆ {sso_token} · POST 4 = **F-DOC-011 `go` [sso_token, sys_access_log, sys_change_log] via sso.issue** / F-DOC-021 `account_map_create`(엑셀 `_bulk` 포함) [doc_account_map, sys_change_log] / F-DOC-022 · 023 [doc_account_map, sys_change_log] ⊆ 그 기능의 「쓰는 테이블」 ∪ 알림 · 로그 · 계약 밖 0 · F-DOC-011 이 실제로 sso_token + sys_access_log 둘 다 쓴다 True · db-schema §2.2 「F-DOC-011 → `sys_access_log`」 줄 True · GET 핸들러(go_page · account_map) 쓰기 0 · sso 쓰기 호출 0 · **해석 못한 동적 쓰기 0** · doc.py · sso.py 밖 app 모듈의 doc_account_map · sso_token 쓰기 **0** · sso 쓰기 함수를 부르는 다른 모듈 **0**(참고: 시드 `seed_dev1.py` → doc_account_map — 화면 아님). 기존 「라우터 정적 스캔」 은 라우터 **17**(DOC 포함) 위반 0 · 동적 0 ② **동적**: 「조회 화면 GET 전후 diff 0」 에 `GET /doc/go` · `/doc/account-map` 을 더해 admin **25 화면** 200 · 업무 테이블 diff 0(sso_token · doc_account_map 포함) |
+| G-06 E2E | PASS (3/3) | REQ-2610-0338 → WO-2610-0195 → MLOT-2610-1502/-01/1503 → PLOT-2610-0702 → SHP-2610-0787 확정 · 부서 sl · pr · sh · 요청 28 전부 기대 응답 · WO-040 뷰 95/110/60 |
+| G-07 역추적 | **PASS** (6/6) | 기존 5 행 + **완료 기준 사슬 1 행**(아래 9.3) |
+| G-08 ~ G-14 | PASS (3 · 7 · 9 · 13 · 4 · 5 · 4) | W1 · W2 와 같은 행 · 같은 판정 — 정방향 · 차단 7 · 가용/할당 9 · 알림 9종 + dedupe + HOME-020 + due-check · erp_upload_error · 수금 회차 교체 · 오류 행 보존 · COL-070 |
+| G-15 대시보드 8 수치 | PASS (11/11) | W3 와 같은 11 행(함수 = 독립 SQL = 화면 KPI · SVG `<title>` · 표 · 스냅샷 트랜잭션) |
+
+게이트 요약: `G-05 PASS · G-06 PASS · G-07 PASS · G-08 PASS · G-09 PASS · G-10 PASS · G-11 PASS · G-12 PASS · G-13 PASS · G-14 PASS · G-15 PASS — FAIL 행 0 → 종료코드 0`. 검사 행 **74**(G-05 9 · G-06~G-14 54 · G-15 11).
+
+DOC 정적 행이 실제로 잡는지 — 앱 사본(스크래치)에 결함을 하나씩 심어 `static_doc` 를 돌렸다(앱 원본은 그대로): ① `go` 에 `insert into work_order` ② GET `go_page` 에서 `sso.issue` ③ `wo.py` 에 `update sso_token` ④ `wo.py` 에서 `sso.issue` ⑤ `sso.issue` 가 `doc_account_map` 에 insert ⑥ doc.py 의 `delete from {tbl}`(동적) — **6 개 전부 FAIL**, 원본 PASS.
+
+### 9.3 완료 기준 사슬 — 출하 1건 → 원자재 LOT (CLAUDE.md)
+
+`Flow.completion_chain` — 독립 사슬 SQL(`indep_chain` · trace · 뷰를 거치지 않음 · 제품 · 원자재 LOT 은 `parent_lot_id` 를 원 LOT 까지 재귀) 한 행 = 한 고리 `shipment_order → shipment_line → product_lot(원) → product_receipt(취소 아님) → work_order → material_issue_line(불출 취소 아님) → material_lot(불출 LOT → 원 LOT)`. 그 고리의 모든 번호가 **출하실 `sh`** 로 연 LOT-020 `GET /lot/backward?shipment_no=SHP-2610-0787` 본문에 있고, `trace.backward` 의 origin · 불출 LOT 집합과 같다.
+
+| 원자재 LOT(원) | 불출 LOT | 생산지시 | 제품 LOT(입고) | 출하 |
+|---|---|---|---|---|
+| MLOT-2610-1502 | MLOT-2610-1502 | WO-2610-0195 | PLOT-2610-0702 | SHP-2610-0787 |
+| MLOT-2610-1502 | MLOT-2610-1502-01 (분할) | WO-2610-0195 | PLOT-2610-0702 | SHP-2610-0787 |
+| MLOT-2610-1503 | MLOT-2610-1503 | WO-2610-0195 | PLOT-2610-0702 | SHP-2610-0787 |
+
+화면에 빠진 글자 0 · origin 독립 {1502, 1503} = trace = 기대 {A1, A2} · 불출 LOT 독립 {1502, 1502-01, 1503} = trace. `tests/test_qa2_flow.py::test_completion_chain_shipment_to_material_lot` 이 고리를 **한 칸씩 따로 묻는 세 번째 SQL**(shipment_line → parent 루프 → product_receipt → work_order → material_issue_line → parent 루프)로 같은 집합을 다시 만든다.
+
+### 9.4 단계 기록 (W4 에서 더한 것 · `--transcript`)
+
+| # | 단계 | 계정 | 요청 | 응답 | DB 확인 |
+|---|---|---|---|---|---|
+| 30 | 완료 기준 — LOT-020 출하 → 원자재 LOT | sh | `GET /lot/backward?shipment_no=SHP-2610-0787` | 200 | 사슬 3 고리 · 화면에 빠진 글자 0 |
+| (조회 diff) | DOC-010 · DOC-020 GET | admin | `GET /doc/go` · `GET /doc/account-map` | 200 | 업무 테이블(sso_token · doc_account_map 포함) 전후 diff 0 |
+
+### 9.5 산출물 · 다시 돌리는 법 (W4)
+
+- `tools/check_data.py` — `static_doc`(+ `contract_fn_writes` · `_fn_info` · `_closure` · `DOC_TABLES`) 를 `static_scan` 끝에서 부른다 · `readonly_diff` 에 DOC GET 2 · `Flow.indep_chain` · `Flow.completion_chain`(추적 단계 안) · `MUST_MEASURE_W4 = {("G-07", "완료 기준 사슬")}`(행이 없으면 FAIL).
+- `tests/test_qa2_static.py` + `test_g05_doc_router_and_sso_write_within_contract`(표식 `F-DOC-011 · 021 · 022 · 023` · check_data 행 PASS 위에 계약 글자 · 파일 글자를 직접 읽는 두 번째 확인) · `tests/test_qa2_flow.py` + `test_completion_chain_shipment_to_material_lot`(표식 `F-LOT-021 · F-SHP-021`) · 조회 diff 테스트에 `F-DOC-012 · F-DOC-024` 표식.
+- `uv run pytest -q tests/test_qa2_*.py` → **45 passed in 5.9s**(W1 21 + W2 10 + W3 12 + W4 2). `uv run python tools/check_data.py` → 종료코드 **0**. 남은 행: `item` · `customer` · `warehouse` 의 `QA2-%` 0 · 정리 노트 「정리 완료 — 남은 행 0」.
+
+### 9.6 관찰 (결함으로 올리지 않음)
+
+- `sso.consume`(1회 사용 처리 · `update sso_token set used_at`)는 앱 안에서 부르는 곳이 없다 — 문서관리 시스템 쪽 검증을 MES 안에 재현한 함수(독스트링 · D-610)라 테스트만 부른다. 쓰기 경계상 DOC 테이블(sso_token)이라 위반 아님.
+- DOC-010 GET `go_page` 가 `conn.tx()`(쓰기 트랜잭션) 안에서 `sso.refusal`(SELECT 만)을 부른다 — 쓰기 0 (정적 · 동적 둘 다 확인). 읽기만이면 `conn.q` 로도 되지만 결함 아님.
+- D-524 이후에도 로컬 DB 에는 `lcomfine_app` 역할이 없고(`roles.apply` 는 `docker_init` 만 부른다) QA2 는 로컬 개발 역할로 잰다(D-524 「W1~W3 은 로컬 개발 역할 그대로」). QA2 정리(`Flow.cleanup`)는 `session_replication_role` 우회를 쓰지 않고, 불변 이력(`stock_adjust` · `shipment_adjust`)이 있으면 지우지 않고 「정리 보류」 로 남긴다 — 지우는 표는 전부 업무 표(앱 역할에 DELETE 가 있는 표)라 앱 역할로 돌려도 정리 경로가 막히지 않는다(실행은 안 해 봄 · 미검증).
+- 다른 QA 가 DOC 를 동시에 시험하면 `sso_token` 이 늘 수 있어 조회 diff 가 흔들릴 수 있다 — 기존 「바깥 변화면 3회까지 다시 잰다」 로 이번 실행은 diff 0.

@@ -282,3 +282,92 @@ QA1 세계에 W3 몫을 더했다(admin · 화면이 부르는 HTTP): 전략부(
 - `uv run python tools/check_trace.py` — G-01 10/10 PASS · G-02 3/5(고아 6 = DOC · W4).
 - 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from data_query_log where question like 'QA1-%'; select count(*) from sys_user where login_id like 'QA1-%'; select count(*) from item where item_code like 'QA1-%'; select count(*) from erp_upload_batch where source_file like 'QA1-%'"` → 0 · 0 · 0 · 0. `sys_ai_call_log` 의 QA1 사용자 행 0(사용자와 함께 지움).
 - 쓴 파일: `tools/check_screens.py`(범위 130 · `check_rpt_contract` · `_Rpt` 파서 · `schema_columns` · 세계에 전략부 사용자 · 정리 · F-RPT-132 사례 4 · G-19 행 1) · `tests/test_qa1_rpt.py`(새) · `tests/test_qa1_screens.py` · `tests/test_qa1_contract_text.py`(문장만) · `outputs/qa1-기능계약.md`(이 절). 앱 코드 · 계약 · 결정 · 다른 QA 파일은 건드리지 않았다. 커밋 없음.
+
+---
+
+# W4 문서 SSO (2026-10-22) — DOC 2 화면 · 기능 6 을 범위에 넣어 136 기능 전부
+
+검증만 했다. 코드는 고치지 않았다. 검사기 `tools/check_screens.py` 의 `LATER_MENUS` 를 **비웠다**(범위 = 기능 136 전부 · 화면 67 · placeholder 0 기대). 기대값은 계약(`function-list.md` F-DOC-011 · 012 · 021~024 · `api-contract.md` §2 F-DOC-011 예외(브라우저 200 자동 POST 폼 · JSON 토큰 없음 · 주소/비밀 없음 422) · §4 권한 예외 · `permission-matrix.md` DOC 칸 9(DOC-010 8 부서 R · DOC-020 ADM W) · `ia.json` DOC-010 · DOC-020 L3 · logic · `decisions.md` D-514 · D-517 · D-610 · D-611)에서 끌어왔다.
+QA1 세계에 W4 몫을 더했다(admin · 화면이 부르는 HTTP): QA1 사용자 5(`QA1-<6자리>-DA` 생산부 · `DB` 출하실 · `DC` 회계부 · `DD` 디자인·개발실 · `DE` 전략부 · SYS-010) → DA · DC 를 DOC-020 한 건 등록(F-DOC-021)으로 잇고(계정 ID `QA1-…-ACC-<태그> (예시)`) DA · DB · DC 로 로그인. SSO 성공 경로는 `fake_sso()` 안에서만 — `LCOMFINE_DOC_SSO_URL` 을 가짜 `.invalid` 주소로 잠깐 바꾸고 `settings.reset_cache()` → 같은 함수 안에서 되돌림(되돌림 자체도 항목으로 확인 · 주소 · 비밀 값은 찍지 않는다 · TestClient 는 폼 action 으로 아무것도 보내지 않는다 = 외부 전송 0). 정리: `sso_token` · `doc_account_map`(접두 · QA1 사용자) → 사용자 · 세계 행. 정리 후 `QA1-` 행 0(`sys_user` · `doc_account_map` · `sso_token` · `item` 각 0 — `psql` 대조). 감사 로그(`sys_access_log` 구분 SSO · `sys_change_log`)는 W1~W3 과 같이 남긴다 — G-19 쓰기 전수가 시드 계정 8 로 `POST /doc/go` 를 두드려 실행마다 SSO 실패 로그 8 행이 생긴다(토큰 0 · 주소 없음 422). 시드 계정의 매핑 · 상태는 건드리지 않았다(QA2 · QA3 가 같은 DB 에서 동시에 돌았다).
+
+## W4-1. 결함
+
+| ID | 심각도 | 담당 | 상태 | 요약 |
+|---|---|---|---|---|
+| DEF-QA1-010 | 경미 | 개발1 (`templates/doc/go.html` · `routers/doc.py`) · 아키텍트 (좌측 메뉴 링크 `base.html` / `nav`) | **해소(재실측)** | 정본 DOC-010 L3 「메뉴 클릭 → 새 창」 · F-DOC-011 「메뉴를 누르면 MES 서버가 … 토큰을 발급한다 · 새 창으로 … 연다」 인데, 좌측 메뉴는 같은 창의 안내 화면(`GET /doc/go`)을 열고 **「문서관리 열기 (새 창)」 단추를 한 번 더 눌러야** 토큰이 발급 · 새 창이 열린다. 안내 화면 문장도 「메뉴를 누르면 MES 가 일회용 SSO 토큰을 … 발급해 새 창에서 … 넘긴다」 라 실제 동작과 다르다 |
+
+치명 0 · 중대 0 · 경미 1 — **해소 1(재실측 2026-10-22 · 아키텍트 판정 = 정본대로) · 미해소 0**. W1~W3 결함 9 는 재발하지 않았다(화면 GET 403 문장 276/276 · 빈 본문 200 0 · 일반 문장 422 0 · 5xx 0 · RPT 422 모양 · SYS-040 필터 · 메뉴 「AI 리포트」 0).
+
+### DEF-QA1-010 · 경미 · DOC-010 「메뉴 클릭 → 새 창」 이 두 번 클릭이다
+- 재현(QA1 사용자 DA · 생산부 · 매핑 있음 · 가짜 주소): `GET /` 의 좌측 메뉴 → `<a href="/doc/go" data-screen="DOC-010">`(target 없음 = 같은 창). `GET /doc/go` → 200 안내 화면 `data-doc-go="ready"` · `<form method="post" action="/doc/go" target="_blank" rel="noopener">` 「문서관리 열기 (새 창)」 단추(폼에 `data-auto-submit` 없음). 이 단추를 눌러야 `POST /doc/go`(F-DOC-011)가 토큰을 발급하고 새 창에 자동 POST 폼(`data-auto-submit` · app.js 가 제출)이 뜬다.
+- 기대: ia.json DOC-010 L3 「메뉴 클릭 → 새 창」 · logic 「메뉴를 누르면 MES 서버가 로그인 사용자 기준으로 일회용 SSO 토큰을 발급한다」 「새 창으로 문서관리 시스템의 SSO 진입 주소를 열고 토큰을 넘긴다」 — 메뉴 한 번이 새 창 진입이다. D-610 은 POST 응답의 모양(200 POST 폼 · 사람이 「문서관리 열기」를 누른다 — app.js 자동 제출이 생기면 바로 넘어간다)만 정했고 메뉴 → 안내 화면 → 단추의 중간 단계는 계약 · 결정에 없다.
+- 고치는 길(판정은 담당 · 아키텍트): ① 메뉴 링크 DOC-010 에 `target="_blank"` + 안내 화면의 「문서관리 열기」 폼에 `data-auto-submit`(매핑 · 주소가 있을 때만 — 주소 없음 · 매핑 없음은 지금처럼 안내만) → 메뉴 한 번 = 새 창 진입, 또는 ② 지금의 두 단계(메뉴 = 안내 화면)를 정본 편차로 `decisions.md` 에 판정(DEF-QA1-010 을 적는다)하고 안내 화면 문장을 동작대로 고친다. 검사기는 ① 또는 ②(decisions.md 에 `DEF-QA1-010`)이면 통과한다.
+- 처음 실측: `check_screens` 요약 「… 어긋남 — 메뉴 링크 <a href="/doc/go" data-screen="DOC-010"> · 안내 화면 POST 폼 data-auto-submit False」 · `tests/test_qa1_doc.py::test_doc_010_menu_click_opens_new_window` FAILED.
+- 수정(아키텍트 판정 = 정본대로 · ① 길): 좌측 메뉴의 SSO 유형 화면 링크에 `target="_blank" rel="noopener" data-external`(base.html) · `static/app.js` `form[data-auto-submit]` 자동 제출 · `templates/doc/go.html` 은 발급할 수 있을 때만 진입 폼에 `data-auto-submit`(이 화면이 이미 새 창이라 폼의 `target` 은 뺐다 — 남기면 새 창에서 또 새 창 · 팝업 차단). 검사 조건도 그에 맞게 「메뉴 링크 target=_blank + 준비됐을 때 진입 폼 data-auto-submit · 준비 안 됐을 때(매핑 없음 · 주소 없음) 자동 제출 없음」 으로 고쳤다(앞 조건 「진입 폼 target=_blank」 은 뺐다).
+- 재실측: 「메뉴 링크 <a href="/doc/go" data-screen="DOC-010" target="_blank" rel="noopener" data-external> · ready 자동 제출 True · 매핑 없음 자동 제출 False · 주소 없음 자동 제출 False」 OK · 위 테스트 PASS.
+
+## W4-2. 게이트 판정 (QA1 몫)
+
+명령: `uv run python tools/check_screens.py` — 종료코드 = FAIL 행 수. 실측(2026-10-22 · DEF-QA1-010 반영 뒤 재실측) **종료코드 0** — 22 행 전부 PASS(반영 전 실행: 종료코드 1 = `G-02 DOC 계약 문장 … 항목 21 · 어긋남 1`). `LATER_MENUS` 를 비우기만 한 첫 실행(DOC 확인 추가 전)은 18 행 전부 PASS · 종료코드 0 이었다.
+
+| 게이트 | 판정 | 실측 (check_screens 행) |
+|---|---|---|
+| **G-02** 기능 ↔ 라우트 ↔ 표식 (W1~W4) | **PASS** (2/2) | 범위 기능 **136** — API 가 라우트에 글자 그대로 136/136 · `@pytest.mark.fn` 표식 136/136 · 읽지 못한 테스트 0. DOC 6 = `POST /doc/go` · `GET /doc/go` · `POST /doc/account-map` · `POST /doc/account-map/{id}` · `POST /doc/account-map/{id}/delete` · `GET /doc/account-map` |
+| **G-02** 오류 계약 (api-contract §1 · §3 · goal §2.7) | **PASS** (1/1) | 쓰기 **67** × 사례 **268**(W3 240 + **DOC 28**) 어긋남 0 · 5xx 0 · 화면 GET 조회 칸 **199**(+ DOC-020 `q` NUL → 422) 500 0 · 틀린 날짜를 200 으로 받은 칸 0 · 403 문장 다른 것 0 · 「미확정 (D-nn)」 안 보이는 화면 0/**14**(+ DOC-010 · DOC-020 D-517) · 세계 실패 0 · 남은 행 0 |
+| **G-02** 오류 계약 §3 — 422 가 항목을 짚음 | **PASS** (1/1) | 422 사례 **185** 중 일반 문장 0(DOC 24 전부 항목 — `MES 사용자` · `문서관리 계정 ID` · `엑셀 파일` · `사용 여부` · `SSO 설정` · `n행`) |
+| **G-02** RPT · COL 계약 문장 (W3 · W2) | **PASS** (2/2) | RPT 항목 52 · COL 항목 23 — 어긋남 0 (W3 그대로) |
+| **G-02** DOC 계약 문장 (W4 · 정본 L3 · logic · D-514 · D-517 · D-610 · D-611 · 계약 §2 F-DOC-011 예외) — 자동 확인 | **PASS** (1/1) | 항목 **21** · 어긋남 **0**(반영 전: 1 = DEF-QA1-010 — 해소) — 아래 W4-3 · W4-4 |
+| **G-03** 화면 응답 | **PASS** (3/3) | 화면 67 × 계정 8: 칸 W/R 260 → 200 260/260 · 칸 없음 276 → 403 276/276 · 범위 화면 **67** placeholder **0**(전체 placeholder 0). DOC 2 × 8 = 16: 칸 **9**(DOC-010 8 R · DOC-020 ADM W) → 200 9/9 · 칸 없음 7(DOC-020 SL · PR · SH · DS · AC · ST · EX) → 403 7/7 |
+| **G-19** 권한 403 전수 (QA1 몫) | **PASS** (12/12) | 정적: 쓰기 라우트 **67** 전부 `require_fn(<그 기능 ID>)` 하나(DOC 4) · 조회 라우트 **69** 전부 `require_screen`(DOC 2 = `require_screen("DOC-010")` · `("DOC-020")`) / DB `sys_permission` 260 = 계약 260 / 칸 밖 화면 GET 276 → 403 / 메뉴 = 권한 칸(계정 8 어긋남 0 — DOC-010 「문서관리 접근」 칸 있는 8 부서 전부 메뉴에 있음 · DOC-020 은 ADM 메뉴에만) / 쓰기 67 × 계정 8: R · 칸 없음 **387** → 403 387/387 · W 부서 **149** → 401/403/5xx 아님 149/149 / 권한 예외 F-HOME-022 · F-RPT-132 · **F-DOC-011** 칸 R 통과 **19/19** / F-RPT-132 칸 없는 5 부서 403 5/5 / **F-DOC-011 × 8 — 8 부서 전부 422(주소 없음 · 5xx 0)** / **F-DOC-021~023 × 8 — ADM 만 통과 · 나머지 21 → 403 21/21** / **F-DOC-011 칸 없음 → 403**(`rbac.level` 을 프로세스 안에서 잠깐 바꿔 EX 의 DOC-010 칸을 지움 — POST 403 「이 기능을 실행할 권한이 없습니다」 · GET 403 · 메뉴에서 빠짐 · 되돌린 뒤 POST 422) |
+
+- `uv run python tools/check_trace.py` — G-01 10/10 PASS · **G-02 5/5 PASS**(라우트 없는 계약 0 · 계약 없는 라우트 0 · 표식 없는 기능 0 · 이어진 기능 **136/136**). W3 의 고아 6(DOC) 이 0 이 됐다.
+
+## W4-3. 오류 계약 — DOC 쓰기 4 사례 28 (전부 JSON 판정 · 통과) + SSO 진입 응답 모양
+
+| 기능 | 사례 → 실측 |
+|---|---|
+| F-DOC-011 `POST /doc/go` (주소 없음 · 로컬 실제 설정) | QA1 DA(매핑 있음) → **422** `validation_error` 「문서관리 SSO 주소(LCOMFINE_DOC_SSO_URL) 미확정 (D-517) — 토큰을 발급하지 않았습니다」 · fields `[{SSO 설정: … 미확정 (D-517)}]` · 브라우저 → **303** `/doc/go`(폼 POST 422 · 계약 §2) · 5xx 0(501 아님 — D-610) · `sso_token` 0행 · SSO 로그 실패 +2. 시드 8 부서도 전부 422. 계약의 「누락 422 · 없는 ID 404」 는 입력 · 경로 키가 없는 기능이라 해당 없음 |
+| F-DOC-021 `POST /doc/account-map` 한 건 (18) | 빈 본문 → 422 「필수 항목을 입력해 주세요 — MES 사용자」 · 계정 ID 누락 → 422 `문서관리 계정 ID` · NUL → 422 「문서관리 계정 ID: 글자에 NUL(0x00)을 넣을 수 없습니다」 · 201자 → 422 「200자 이하」 · 없는 사용자 `999999999` · `abc` → 422 「MES 사용자: 목록에서 고른 값이 아닙니다」(본문의 ID = 422 · api-contract §1) · **1:1 깨짐** 이미 연결된 사용자 · 다른 사용자에 연결된 계정 ID → 422 「1:1 연결이 깨집니다 — 한 MES 사용자에 한 문서관리 계정 ID」(fields `MES 사용자` / `문서관리 계정 ID`) |
+| F-DOC-021 엑셀 일괄 (`file` · D-611) | **엑셀 아닌 파일** → 422 「엑셀(.xlsx) 파일이 아닙니다 [BadZipFile]」 · xlsx 아닌 zip → 같은 문장 [KeyError] · 빈 파일 → 422 「빈 파일입니다」 · **헤더 틀림**(`사원번호` · `계정`) → 422 「1행에 열 이름이 없습니다 — 사번 · 문서관리 계정 ID」 · 행 0 → 422 「등록할 행이 없습니다」 · 5MB+1 → 422 「5MB 이하」 · 5,001행 → 422 「5000행 이하」 · **오류 행 하나 → 전체 거부** — 없는 사번 · 파일 안 사번 중복 · DB 매핑과 1:1 깨짐 각각 → 422 「엑셀 일괄 등록 — 오류 행 1 / 2 (아무것도 등록하지 않았습니다)」 · fields `n행` · 정상 행(DD)도 등록 0 |
+| F-DOC-022 `POST /doc/account-map/{id}` (7) | 빈 본문 → 422 `문서관리 계정 ID` · NUL → 422 · 사용 여부 `X` → 422 「사용 여부: Y 또는 N 이어야 합니다」 · 1:1 깨짐(다른 사용자의 계정 ID) → 422 · 매핑의 MES 사용자 바꾸기 → 422 「MES 사용자는 바꿀 수 없습니다」(D-611) · 없는 경로 키 `999999999` · `abc` → 404 `not_found` |
+| F-DOC-023 `…/{id}/delete` (2) | 없는 경로 키 `999999999` · `abc` → 404 `not_found` (본문 입력이 없어 「누락 422」 는 해당 없음) |
+| F-DOC-011 **성공 JSON** (가짜 주소 · DA) | **200** `{ok: true, message: 「문서관리 진입 토큰을 발급했습니다」, jti, ttl_seconds: 60, method: "POST", field: "token"}` — **토큰 글자 없음**(키 `token` 없음 · 점 하나 든 긴 글자 0) · `sso_token` 1행(사용자 DA · 계정 ID · `expires_at − issued_at` = 60초 · `used_at` null) · **`sys_change_log` 1행**(function_id F-DOC-011 · target `sso_token:<jti>`) · SSO 로그 성공 +1 |
+| F-DOC-011 **성공 브라우저** (Accept text/html) | **200** `text/html`(303 아님 · 계약 §2 예외) · `Cache-Control: no-store` · `<form method="post" action="<SSO 주소>" data-auto-submit>` 1 · `<input type="hidden" name="token">` 1 · 「문서관리 열기」 단추 · 토큰 글자가 본문에 **1번**(hidden 값) · 요청 주소 · Location 에 없음 · `sys_access_log` · `sys_change_log` 에 토큰 글자 0행 · 받은 토큰 `sso.consume` → 통과(계정 ID = DA 매핑) → 두 번째 → `Invalid` 「이미 사용한 토큰입니다」 · `static/app.js` 에 `form[data-auto-submit]` 보조 · doc 템플릿 `<script` 0 |
+| 거부 (가짜 주소) | 매핑 없음(DB) → GET `data-doc-go="refused"` + 「관리자에게 계정 연결을 요청하세요」 · POST 422 「관리자에게 계정 연결을 요청하세요 — 문서관리 계정 매핑이 없습니다」 fields `계정 매핑` · 토큰 0 · SSO 실패 로그 / 사용 중지 매핑(DC · F-DOC-022 use_yn N) → 422 「… 매핑이 사용 중지되었습니다」 / 비활성(SYS-010 DC 상태 중지) → 그 세션 POST **401** · `sso.refusal` 「비활성 사용자입니다 (상태 중지)」 · 토큰 0 |
+
+## W4-4. 계약 문장 — DOC-010 · DOC-020 (자동 확인 21 + 사람 판정)
+
+| 화면 | 정본 L3 · logic · 결정 | 자동 확인 실측 | 사람 판정 |
+|---|---|---|---|
+| DOC-010 문서관리 바로가기 | L3 「메뉴 클릭 → 새 창」 | 메뉴 링크 `target="_blank" rel="noopener"` → 새 창의 안내 화면 · 준비됐을 때 진입 폼 `data-auto-submit`(폼 target 없음) → 자동 POST 폼 · 매핑 없음 · 주소 없음은 자동 제출 없음(안내만) | 지켜짐 — DEF-QA1-010 해소(메뉴 한 번 = 새 창 진입) |
+| | L3 「문서관리 시스템 첫 화면 (로그인된 상태)」 | MES 쪽은 자동 POST 폼까지(가짜 주소) | 외부 시스템 화면 — 실 접속 확인은 범위 밖(goal §2.8 · D-517). MES 화면에 「문서관리 시스템으로 넘긴다」 문장. 결함 아님 |
+| | logic 「일회용 SSO 토큰 (서명 · 60초 · 한 번만)」 · 「토큰은 주소창에 남지 않게 POST」 | 본문 「일회용」 「60초」 「한 번만」 「POST」 · 토큰 60초 · consume 재사용 거부 · 토큰 주소 · Location · 로그 0 · GET 은 발급 0행 | 지켜짐 |
+| | logic 「문서관리 시스템이 서명 · 만료 · 재사용 확인」 | `sso.consume` 이 그 규칙을 재현(통과 → 재사용 거부) | 상대 시스템 쪽 구현은 범위 밖(D-517). 재현 함수가 있다 |
+| | logic 「표준(SAML 2.0 / OIDC) 먼저, 안 되면 서명 토큰」 | 본문 「SAML 2.0 · OIDC · 서명 토큰」 `미확정 (D-517)` — 그동안 서명 토큰(D-514) | 지켜짐 (차단 결정 표시) |
+| | logic 「매핑 없음 · 비활성 → 토큰 없이 "관리자에게 계정 연결을 요청하세요"」 | 위 W4-3 거부 3 갈래 | 지켜짐 — 비활성은 세션이 먼저 401(G-20) 이라 안내 화면 대신 로그인으로 간다(`sso.refusal` 은 같은 판정) |
+| | logic 「토큰 검증 실패 → 문서관리 로그인 화면에서 직접 로그인」 | 본문 「로그인 화면」 「직접 로그인」 · 응답 화면 「60초가 지나거나 한 번 쓴 토큰은 문서관리 시스템이 거부 … 다시 연다」 | 지켜짐 (상대 시스템 동작은 범위 밖) |
+| | logic 「메뉴는 "문서관리 접근" 이 있는 사용자에게만 · 문서별 권한은 문서관리」 | 메뉴 = 권한 칸(8 부서 모두 칸 R → 메뉴에 있음 · 칸을 지우면 메뉴에서 빠지고 403) · 본문 「문서별 권한은 문서관리 시스템이 관리한다」 | 지켜짐 |
+| | logic 「SSO 호출(사용자, 시각, 성공·실패) 로그」 | `sys_access_log` 구분 SSO · screen DOC-010 · function F-DOC-011 · 성공/실패 · SYS-040 SSO 탭(`?login=<DA>`) 200 `data-n=5`(성공 2 · 실패 3) | 지켜짐 |
+| | F-DOC-011 「SSO 주소가 없으면 미확정 (D-517) 안내 화면」 | GET `data-doc-go="undecided"` · 「문서관리 SSO 연결 정보 미확정 (D-517)」 · 토큰 칸 없음 | 지켜짐 (로컬 실제 상태) |
+| DOC-020 문서관리 계정 매핑 | L3 「MES 사용자 ↔ 문서관리 계정 ID」 | 매핑 표 열 사번 · 이름 · 부서 · 사용자 상태 · 문서관리 계정 ID · 매핑 · 발급 기록 · QA1 DA 행 | 지켜짐 |
+| | L3 「미연결 사용자 목록」 | `data-unmapped` 섹션 「미연결 사용자 — 사용 중인 매핑이 없는 사용자」 · 매핑 없는 DB · DD 있음 · 매핑된 DA 없음 · 사용 중지 DC 는 비고 「사용 중지 매핑 <계정 ID>」 | 지켜짐 (자동 L3 낱말 대조는 「미연결 사용자 목록」 글자를 못 찾음 — 제목이 「미연결 사용자」 · 표가 있다. 결함 아님) |
+| | L3 「엑셀 일괄 등록」 | multipart 폼 · `input type=file name=file accept=.xlsx` · 「첫 시트 · 1행 열 이름 `사번` · `문서관리 계정 ID` · 오류 행이 하나라도 있으면 아무것도 등록하지 않고 행마다 사유」 · 오류 행 하나 → 0행 · 정상 2행(열 순서 바뀜) → count 2 · 변경 로그 1 | 지켜짐 |
+| | logic 「MES 사번과 문서관리 계정 ID 를 1:1」 | 본문 「1:1」 · 한 건 · 엑셀 · 수정 모두 1:1 깨짐 422(사용 중지 매핑도 자리 차지 · D-611) | 지켜짐 |
+| | logic 「MES 에서 사용자를 비활성 → SSO 토큰 발급도 바로 막힌다」 | SYS-010 중지 → 다음 요청 401 · `sso.refusal` 비활성 · 토큰 0 · 본문 문장 + SYS-010 링크 | 지켜짐 |
+| | logic 「양쪽 사번이 같으면 매핑 없이 … (설계 때 확정)」 | `data-same-id="undecided"` 「… 미확정 (D-517) · 그동안 매핑은 필수」 | 지켜짐 (차단 결정 표시) |
+| | F-DOC-022 · 023 | 수정 → 계정 ID 바뀜 · 변경 로그 1 / 발급 기록 없음 → 삭제(행 없음) · 있음(DA) → 사용 중지(active false) · 변경 로그 각 1 / `?edit=999999999` · `abc` → 404 · 있는 매핑 → 수정 폼 | 지켜짐 |
+
+관찰(결함으로 올리지 않음 — 계약에 기준 없음):
+- F-DOC-022 는 `use_yn` 을 빼고 보내면 「Y」(사용)로 저장한다(`yn()` 기본값) — 화면 폼은 늘 보내므로 화면에서는 생기지 않는다. JSON 호출이 계정 ID 만 고치면 사용 중지 매핑이 다시 켜진다.
+- 화면 GET 조회 칸 199 중 200 1 = COL-050 `show_zero=<NUL>`(W2 부터 있던 켜기/끄기 칸 · 5xx 아님 · 틀린 날짜 아님) — W4 범위 밖, 기존 판정 그대로.
+- 정리 뒤에도 `sys_access_log`(구분 SSO · 시드 계정 8 의 실패 행 · QA1 사용자 행)와 `sys_change_log`(F-DOC-011 · 021 · 022 · 023 QA1 행)는 남는다 — 감사 이력(D-524 의 앱 역할은 INSERT 만)이라 지우지 않았다.
+
+## W4-5. 검증 명령 · 산출물
+
+- `uv run python tools/check_screens.py [--json <파일>]` — 2026-10-22 재실측: **G-02 7/7 · G-03 3/3 · G-19 12/12 · 종료코드 0**(반영 전: G-02 6/7 · 종료코드 1 = DEF-QA1-010). `--cleanup-all` 은 앞 실행이 죽어 남은 `QA1-` 행(토큰 · 매핑 포함) 정리.
+- `uv run pytest -q tests/test_qa1_*.py` — 재실측 **62 passed · 0 failed**(29초). 반영 전: 61 passed · 1 failed(`test_doc_010_menu_click_opens_new_window` — xfail · skip 없이 실패 상태로 두었다).
+  - `tests/test_qa1_doc.py`(새 · 13 테스트) — 표식 `F-DOC-011` · `012` · `021` · `022` · `023` · `024`: 기능 6 라우트 · 표식 · `require_fn`/`require_screen` · 권한 예외 · DOC 2 × 8 200/403 + 문장 + 메뉴 · 쓰기 4 × 8(F-DOC-011 8 통과 · 021~023 ADM 만) + 칸 없으면 403 · 오류 계약 28 · 주소 없음 422 D-517 · 성공 JSON(토큰 없음) · 브라우저 자동 POST 폼 · 거부 3 갈래 · DOC-010 · DOC-020 L3 · logic · 엑셀 · 수정 · 삭제 · 메뉴 → 새 창(DEF-QA1-010) · 정리 후 남은 행 0.
+  - `tests/test_qa1_screens.py` · `test_qa1_rpt.py` · `test_qa1_contract_text.py` — 문서 문장만 범위 136 · 화면 67 로 고침(검사는 `check_screens` 상수를 따른다 · W1~W3 테스트는 범위가 넓어진 채 통과).
+- `uv run python tools/check_trace.py` — G-01 10/10 · G-02 5/5 PASS(이어진 기능 136/136).
+- 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from sys_user where login_id like 'QA1-%'; select count(*) from doc_account_map where account_id like 'QA1-%'; select count(*) from sso_token where account_id like 'QA1-%'; select count(*) from item where item_code like 'QA1-%'"` → 0 · 0 · 0 · 0.
+- 쓴 파일: `tools/check_screens.py`(`LATER_MENUS` 비움 · 범위 136 · `World.build_doc` · `doc_acc` · 정리에 `sso_token` · `doc_account_map` · 남은 행 대조 · DOC 사례 28 · `check_doc_contract` · `fake_sso` · `_Tags` 파서 · `doc_exception_denied` · G-19 행 3) · `tests/test_qa1_doc.py`(새) · `tests/test_qa1_screens.py` · `tests/test_qa1_rpt.py` · `tests/test_qa1_contract_text.py`(문장만) · `outputs/qa1-기능계약.md`(이 절). 앱 코드 · 계약 · 결정 · 다른 QA 파일은 건드리지 않았다. SSO 주소 · 비밀 값은 어디에도 적지 않았다(가짜 주소는 `.invalid`). 커밋 없음.

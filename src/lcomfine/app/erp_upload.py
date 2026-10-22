@@ -125,6 +125,8 @@ def _sheet(file: bytes) -> tuple[list[str], list[dict]]:
                 if h:
                     row[h] = t
             rows.append(row)
+    except (SyntaxError, zipfile.BadZipFile, EOFError) as exc:   # 시트 XML 이 깨짐 — read_only 는 행을 읽을 때 파싱한다 (DEF-QA3-009)
+        raise UploadError("파일", f"엑셀 시트를 읽을 수 없습니다 — 파일이 깨졌습니다 [{type(exc).__name__}]") from None
     finally:
         wb.close()
     return [h for h in headers if h], rows

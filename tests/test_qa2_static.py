@@ -80,3 +80,30 @@ def test_g12_col_posts_are_upload_and_mapping_only(static_report):
 def test_g13_erp_upload_row_updates_only_parsed_and_error(static_report):
     """앱 전체에서 erp_upload_row 의 update 는 parsed · error(재해석) 만, erp_upload_batch 는 status · replaced_by · error_count 만. raw · 기간 · 행 수 불변 · 회차 삭제 0."""
     _all_pass(_rows(static_report, "G-13", "erp_upload_row 쓰기"))
+
+
+# ── W4 — DOC 문서관리 · sso.py ──────────────────────────────────────────────
+@pytest.mark.fn("F-DOC-011")
+@pytest.mark.fn("F-DOC-021")
+@pytest.mark.fn("F-DOC-022")
+@pytest.mark.fn("F-DOC-023")
+def test_g05_doc_router_and_sso_write_within_contract(static_report):
+    """doc.py POST 4 의 쓰기(같은 파일 안 호출 · sso.issue/consume · audit 를 따라가며) ⊆ 그 기능의 「쓰는 테이블」 ∪ 알림 · 로그.
+    F-DOC-011 = sso_token + sys_access_log(§2.2 예외 줄) · F-DOC-021~023 = doc_account_map · GET 핸들러 쓰기 0 · 동적 쓰기 0 ·
+    doc.py · sso.py 밖의 app 모듈은 doc_account_map · sso_token 에 쓰지 않고 sso 쓰기 함수를 부르지 않는다."""
+    _all_pass(_rows(static_report, "G-05", "DOC 라우터 · sso.py 쓰기"))
+    # 두 번째 독립 확인 — 계약 글자와 파일 글자를 이 테스트가 직접 읽는다(check_data 의 함수 단위 해석을 거치지 않는다)
+    fl = (cd.ROOT / "contracts/function-list.md").read_text(encoding="utf-8")
+    assert "| F-DOC-011 |" in fl and "| sso_token, sys_access_log |" in fl.split("| F-DOC-011 |", 1)[1].split("\n", 1)[0]
+    for fid in ("F-DOC-021", "F-DOC-022", "F-DOC-023"):
+        assert "| doc_account_map |" in fl.split(f"| {fid} |", 1)[1].split("\n", 1)[0], fid
+    sso_w = set(cd._sql_writes((cd.APP / "sso.py").read_text(encoding="utf-8")))
+    doc_w = set(cd._sql_writes((cd.ROUTERS / "doc.py").read_text(encoding="utf-8")))
+    assert sso_w == {"sso_token"}, sso_w
+    assert doc_w == {"doc_account_map"}, doc_w
+    for p in cd.APP.rglob("*.py"):
+        if p.name in ("doc.py", "sso.py"):
+            continue
+        t = p.read_text(encoding="utf-8")
+        assert not set(cd._sql_writes(t)) & cd.DOC_TABLES, p
+        assert "sso.issue(" not in t and "sso.consume(" not in t, p

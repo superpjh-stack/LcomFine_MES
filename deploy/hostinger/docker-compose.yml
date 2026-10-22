@@ -17,7 +17,6 @@ x-app-image: &app-image ghcr.io/superpjh-stack/lcomfine_mes:latest
 x-app-env: &app-env
   LCOMFINE_ENV: ${LCOMFINE_ENV:-prod}
   LCOMFINE_PORT: "8020"
-  LCOMFINE_PG_DSN: postgresql://lcomfine:${LCOMFINE_DB_PASSWORD:?환경 칸에 LCOMFINE_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db
   LCOMFINE_SESSION_SECRET: ${LCOMFINE_SESSION_SECRET:?환경 칸에 LCOMFINE_SESSION_SECRET 를 넣는다 (비우면 재기동마다 로그인이 풀린다)}
   LCOMFINE_SEED_PASSWORD: ${LCOMFINE_SEED_PASSWORD:?환경 칸에 LCOMFINE_SEED_PASSWORD 를 넣는다 (기본 비밀번호는 없다 — G-19)}
   LCOMFINE_SESSION_IDLE_MINUTES: ${LCOMFINE_SESSION_IDLE_MINUTES:-}
@@ -45,7 +44,11 @@ services:
     image: *app-image
     pull_policy: always
     restart: "no"
-    environment: *app-env
+    environment:
+      <<: *app-env
+      LCOMFINE_PG_DSN: postgresql://lcomfine:${LCOMFINE_DB_PASSWORD:?환경 칸에 LCOMFINE_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db      # 소유자 — 스키마 · 시드 · 역할 (D-524)
+      LCOMFINE_APP_DB_ROLE: lcomfine_app
+      LCOMFINE_APP_DB_PASSWORD: ${LCOMFINE_APP_DB_PASSWORD:?환경 칸에 LCOMFINE_APP_DB_PASSWORD 를 넣는다}
     depends_on:
       db:
         condition: service_healthy
@@ -55,7 +58,9 @@ services:
     image: *app-image
     pull_policy: always
     restart: unless-stopped
-    environment: *app-env
+    environment:
+      <<: *app-env
+      LCOMFINE_PG_DSN: postgresql://lcomfine_app:${LCOMFINE_APP_DB_PASSWORD:?환경 칸에 LCOMFINE_APP_DB_PASSWORD 를 넣는다}@db:5432/lcomfine_db   # 최소 권한 (D-524)
     depends_on:
       db:
         condition: service_healthy

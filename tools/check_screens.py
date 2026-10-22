@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""QA1 기능 · 계약 전수 (W1 · W2 · W3) — `uv run python tools/check_screens.py`. 서버를 띄우지 않고 TestClient 로 앱을 부른다.
+"""QA1 기능 · 계약 전수 (W1 · W2 · W3 · W4) — `uv run python tools/check_screens.py`. 서버를 띄우지 않고 TestClient 로 앱을 부른다.
 
 기대값은 개발 테스트가 아니라 계약에서 직접 끌어온다:
   · `contracts/function-list.md` (contracts.functions()) — 기능 · API · 권한(W 부서 · R 이상 · 권한 예외)
@@ -7,7 +7,7 @@
   · `contracts/ia.json` + `ia-overrides.json` (tools.design_doc.effective()) — 정본 L3 · logic
   · `contracts/api-contract.md` — 오류 계약(422 · 404 · 501 · 403 문장)
 
-검사 (범위 = 대메뉴가 DOC 가 아닌 기능 130 — W1 109 + W2 COL 11 + W3 RPT 10. DOC 6 은 W4 까지 placeholder 라 FAIL 로 세지 않는다):
+검사 (범위 = 기능 136 전부 — W1 109 + W2 COL 11 + W3 RPT 10 + W4 DOC 6 · LATER_MENUS 비움 · placeholder 0 기대):
   G-02  ① 범위 기능의 API 가 라우트에 글자 그대로 ② `@pytest.mark.fn` 표식 ③ 쓰기 라우트의 `require_fn(<그 기능 ID>)` (정적)
   G-03  화면 67 × 계정 8 GET — 칸 W/R → 200 · 칸 없음 → 403 (placeholder 2 포함) · 범위 화면 65 placeholder 0
   G-19  같은 전수의 403 쪽 + 메뉴에 칸 밖 화면 없음 + 쓰기 63 × 계정 8 POST (W → 권한 통과 · R/없음 → 403 · 권한 예외 R 통과 ·
@@ -26,6 +26,11 @@
         RPT-080 일일 · 주간 · 월간 · RPT-130 질문 → SQL → 결과 표 · F-RPT-132 를 `ai.set_client(fake)` 로(실제 OpenAI 호출 0): 거부 SQL 422 「허용되지 않는 질의 — 이유」 ·
         부서 뷰 제한 · 키 없음 · 호출 실패 · 실행 실패 422 · 허용 SQL JSON 200 `http.saved` · 브라우저 같은 화면 200(계약 §2 예외) · 변경 로그 1행 · 로그 행 수 ·
         SYS-040 탭 6(열 = db-schema 컬럼 · 질의 · AI 호출 · ERP 회차가 보임 · 선택지 밖 422) · 좌측 메뉴 「대시보드」. 로그는 QA1 사용자(전략부)로 남겨 끝에 지운다.
+  G-02  DOC 계약 문장 (W4 · 정본 L3 · logic · D-514 · D-517 · D-610 · D-611 · 계약 §2 F-DOC-011 예외) — 세계에 QA1 사용자 5 · 매핑 2 를 두고:
+        주소 없음 GET 안내 · POST 422 `미확정 (D-517)` · `fake_sso()`(가짜 `.invalid` 주소 · 같은 함수 안에서 되돌림 · 외부 전송 0) 안에서 JSON 200(토큰 없음 · jti) ·
+        브라우저 200 자동 POST 폼(hidden 토큰 · data-auto-submit · method post) · sso.consume · 재사용 거부 · 변경 로그 · SSO 로그 · 매핑 없음 · 사용 중지 · 비활성 거부 ·
+        DOC-020 L3 · logic · 엑셀 오류 행 하나 → 전체 거부 · 수정 · 삭제/사용 중지 · SYS-040 SSO 탭 · 메뉴 클릭 → 새 창(DEF-QA1-010)
+  G-19  F-DOC-011 × 8(권한 예외 · 칸 R 8 통과 · 5xx 0) · F-DOC-021~023 × 8(ADM 만) · 칸 없으면 F-DOC-011 403(rbac.level 을 프로세스 안에서 잠깐 바꿈)
   계약 문장 (참고 — 요약 표에만): 화면 본문(계약 패널 · 메뉴 제외)에 정본 L3 낱말이 보이는가 — 자동 대조라 사람이 판정한다(outputs/qa1-기능계약.md)
 
 출력 행: `G-nn  항목  PASS|FAIL  실측` (tools/gate.py 의 `_ROW_RE`). 종료코드 = FAIL 행 수 (최대 125) — gate.py 는 「종료코드 ≠ 0 인데 FAIL 행이 없으면
@@ -43,6 +48,7 @@ import re
 import secrets
 import sys
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from html.parser import HTMLParser
@@ -54,8 +60,8 @@ sys.path.insert(0, str(ROOT))
 
 from lcomfine.app.settings import get_settings  # noqa: E402 — .env 를 먼저 읽는다
 
-LATER_MENUS = ("DOC",)                       # W4 — 아직 placeholder (COL 은 W2 · RPT 는 W3 에 범위로 들어왔다)
-SCOPE = "W1·W2·W3"
+LATER_MENUS: tuple[str, ...] = ()            # W4 — 비었다(COL W2 · RPT W3 · DOC W4 가 범위에 들어왔다 · placeholder 0 기대)
+SCOPE = "W1·W2·W3·W4"
 LOGINS = ("sl", "pr", "sh", "ds", "ac", "st", "ex", "admin")
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 #: QA1 ERP 업로드의 기준 기간 — 개발3 1990~1993 · 개발1 1985 · QA2 는 비는 기간을 고른다. 1980 년은 어느 테스트도 쓰지 않는다
@@ -87,7 +93,7 @@ def app_and_clients():
 
 
 def w1_functions():
-    """범위 기능 — 대메뉴가 DOC 가 아닌 것 (W1 109 + W2 COL 11 + W3 RPT 10 = 130). 이름은 W1 때 것을 그대로 둔다(테스트가 부른다)."""
+    """범위 기능 — LATER_MENUS 밖 전부 (W1 109 + W2 COL 11 + W3 RPT 10 + W4 DOC 6 = 136). 이름은 W1 때 것을 그대로 둔다(테스트가 부른다)."""
     from lcomfine.app import contracts
 
     return [f for f in contracts.functions() if f.menu_code not in LATER_MENUS]
@@ -106,6 +112,16 @@ def xlsx_bytes(headers: list[str], rows: list[list]) -> bytes:
         ws.append(r)
     buf = io.BytesIO()
     wb.save(buf)
+    return buf.getvalue()
+
+
+def _zip_not_xlsx() -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("qa1.txt", "QA1 (예시) — xlsx 가 아닌 zip")
     return buf.getvalue()
 
 
@@ -284,7 +300,7 @@ def check_screens(app, clients, rep: Report) -> dict:
         rep.defects.append(f"[403 문장] 화면 GET 403 인데 「이 기능을 실행할 권한이 없습니다」 — 화면 {len(by_screen)} ({', '.join(by_screen)}) "
                            f"· 예: {badmsg[0]}")
     w1 = [s for s in screens if s.menu_code not in LATER_MENUS]
-    rep.add("G-03", f"{SCOPE} 화면 {len(w1)} — placeholder 0 (DOC 2 는 W4)", not w1_ph,
+    rep.add("G-03", f"{SCOPE} 화면 {len(w1)} — placeholder 0 (W4 DOC 2 포함)", not w1_ph,
             f"{SCOPE} placeholder {len(w1_ph)} · 전체 placeholder {len(ph)}", w1_ph)
 
     # 메뉴 — 칸 밖 화면이 메뉴에 없고, 칸 있는 화면은 메뉴에 있다
@@ -333,14 +349,47 @@ def check_writes(clients, rep: Report) -> list[dict]:
             f"{sum(x['ok'] for x in denied)}/{len(denied)}", [fmt(x) for x in denied if not x["ok"]])
     rep.add("G-19", f"쓰기 {nfn} × 계정 {len(clients)} — W 부서 권한 통과 (401/403/5xx 아님)", all(x["ok"] for x in allowed),
             f"{sum(x['ok'] for x in allowed)}/{len(allowed)}", [fmt(x) for x in allowed if not x["ok"]])
-    rep.add("G-19", "권한 예외 F-HOME-022 · F-RPT-132 — 칸 R 부서 통과", bool(exc) and all(x["ok"] for x in exc),
+    rep.add("G-19", "권한 예외 F-HOME-022 · F-RPT-132 · F-DOC-011 — 칸 R 부서 통과", bool(exc) and all(x["ok"] for x in exc),
             f"{sum(x['ok'] for x in exc)}/{len(exc)}", [fmt(x) for x in exc if not x["ok"]])
     # api-contract §4 「권한 예외 쓰기 기능 … 칸이 없으면 → 403」 — RPT-130 은 ST · EX · ADM 만 칸이 있다(permission-matrix)
     exc_denied = [x for x in denied if contracts.function(x["fid"]).permission_exception]
     rep.add("G-19", "권한 예외 F-RPT-132 — 칸 없는 부서 → 403 (api-contract §4)", bool(exc_denied) and all(x["ok"] for x in exc_denied),
             f"{sum(x['ok'] for x in exc_denied)}/{len(exc_denied)} ({' · '.join(sorted({x['login'] for x in exc_denied}))})",
             [fmt(x) for x in exc_denied if not x["ok"]])
+    # W4 DOC — F-DOC-011 진입은 8 부서 모두 칸 R(권한 예외 · 5xx 0 — 주소 없으면 422 미확정 D-517) · F-DOC-021~023 은 ADM 만 W
+    d11 = [x for x in results if x["fid"] == "F-DOC-011"]
+    rep.add("G-19", "F-DOC-011 × 계정 8 — 칸 R 8 부서 전부 통과 · 5xx 0 (권한 예외 · 계약 §2 주소 없음 422)",
+            len(d11) == len(clients) and all(x["allowed"] and x["ok"] for x in d11),
+            " · ".join(f"{x['login']} {x['status']}" for x in d11), [fmt(x) for x in d11 if not x["ok"]])
+    d2x = [x for x in results if x["fid"] in ("F-DOC-021", "F-DOC-022", "F-DOC-023")]
+    want = lambda x: x["login"] == "admin"  # noqa: E731 — permission-matrix DOC-020 = ADM W 하나
+    rep.add("G-19", "F-DOC-021~023 × 계정 8 — ADM 만 통과 · 나머지 7 → 403",
+            len(d2x) == 3 * len(clients) and all(x["ok"] and x["allowed"] == want(x) for x in d2x),
+            f"통과 {sorted({x['login'] for x in d2x if x['allowed'] and x['ok']})} · 403 {sum(1 for x in d2x if not x['allowed'] and x['ok'])}/21",
+            [fmt(x) for x in d2x if not x["ok"] or x["allowed"] != want(x)])
+    rep.add("G-19", *doc_exception_denied(clients))
     return results
+
+
+def doc_exception_denied(clients) -> tuple:
+    """api-contract §4 「권한 예외 쓰기 … 칸이 없으면 → 403」 — DOC-010 은 정본이 8 부서 모두 R 이라 칸 없는 부서가 없다.
+    프로세스 안에서만 `rbac.level` 을 잠깐 바꿔 경영진(EX)의 DOC-010 칸을 지운 상태를 흉내 내고(DB · 다른 QA 영향 0) 되돌린다."""
+    from lcomfine.app import rbac
+
+    c = clients["ex"]
+    real = rbac.level
+    rbac.level = lambda role, sid: None if (role, sid) == ("EX", "DOC-010") else real(role, sid)
+    try:
+        rp = c.post("/doc/go")
+        rg = c.get("/doc/go")
+        menu = "DOC-010" in parse(c.get("/", headers=HTML).text).menu
+    finally:
+        rbac.level = real
+    back = c.post("/doc/go").status_code
+    ok = (rp.status_code == 403 and jget(rp, "message") == "이 기능을 실행할 권한이 없습니다" and rg.status_code == 403 and not menu
+          and back not in (401, 403) and back < 500)
+    return ("권한 예외 F-DOC-011 — 칸 없는 부서 → 403 (rbac.level 을 프로세스 안에서 잠깐 바꿈 · 되돌린 뒤 통과)", ok,
+            f"칸 지움: POST {rp.status_code} {jget(rp, 'message')!r} · GET {rg.status_code} · 메뉴에 DOC-010 {menu} · 되돌린 뒤 POST {back}")
 
 
 # ── QA1 세계 — 오류 계약을 두드릴 실제 행 (화면이 부르는 HTTP 로 만든다) ─────
@@ -444,7 +493,36 @@ class World:
         I["wo_no"] = wo_no
         I["req_no"] = conn.q1("select request_no from production_request where id = %s", (I["req"],))["request_no"] if I["req"] else None
         self.build_col()
+        self.build_doc()
         return self
+
+    # ── W4 DOC — 문서관리 계정 매핑 · SSO 진입 (admin · 화면의 HTTP) ─────
+    def build_doc(self) -> None:
+        """QA1 사용자 5(DA 생산부 · DB 출하실 · DC 회계부 · DD 디자인·개발실 · DE 전략부)를 SYS-010 HTTP 로 만들고,
+        DA · DC 는 DOC-020 한 건 등록(F-DOC-021)으로 잇는다. DA · DB · DC 는 로그인 세션을 `clients["docDA"]` … 에 둔다.
+        계정 ID 는 `<접두>ACC-<태그> (예시)` — 정리 · 남은 행 대조가 접두로 찾는다. 시드 계정의 매핑은 건드리지 않는다."""
+        from fastapi.testclient import TestClient
+
+        from lcomfine.app.main import app
+
+        I, p = self.ids, self.p
+        for tag, role in (("DA", "PR"), ("DB", "SH"), ("DC", "AC"), ("DD", "DS"), ("DE", "ST")):
+            pw = secrets.token_urlsafe(12)
+            uid = self.post(f"사용자(DOC {tag} · {role})", "/sys/users",
+                            {"login_id": p + tag, "user_name": p + f"문서 {tag} (예시)", "role_code": role, "password": pw}, key="id")
+            I["doc_" + tag] = uid
+            if uid and tag in ("DA", "DB", "DC"):
+                c = TestClient(app, raise_server_exceptions=False)
+                r = c.post("/login", data={"login_id": p + tag, "password": pw}, follow_redirects=False)
+                self.steps.append((f"QA1 사용자 로그인(DOC {tag})", 200 if r.status_code == 303 else r.status_code, str(r.status_code)))
+                if r.status_code == 303:
+                    self.clients["doc" + tag] = c
+        for tag in ("DA", "DC"):
+            I["map_" + tag] = self.post(f"계정 매핑 등록(DOC {tag})", "/doc/account-map",
+                                        {"user_id": str(I["doc_" + tag]), "account_id": self.doc_acc(tag)}, key="id")
+
+    def doc_acc(self, tag: str) -> str:
+        return f"{self.p}ACC-{tag} (예시)"
 
     # ── W2 COL — ERP 수금현황 (예시) xlsx · 거래처 매핑 · 회차 2 (admin · 화면의 HTTP) ─────
     def ensure_map(self) -> dict[str, str]:
@@ -616,6 +694,11 @@ class World:
             cur.execute("delete from data_query_log where user_id in (select user_id from sys_user where login_id like %s) or question like %s",
                         (like, like))
             cur.execute("delete from sys_ai_call_log where user_id in (select user_id from sys_user where login_id like %s)", (like,))
+            # W4 DOC — QA1 사용자의 토큰 · 매핑(FK → sys_user). SSO 로그 · 변경 로그는 감사 이력이라 W1~W3 처럼 남긴다
+            cur.execute("delete from sso_token where account_id like %s or user_id in (select user_id from sys_user where login_id like %s)",
+                        (like, like))
+            cur.execute("delete from doc_account_map where account_id like %s or user_id in (select user_id from sys_user where login_id like %s)",
+                        (like, like))
             cur.execute("delete from sys_user where login_id like %s", (like,))
         self.restore_map()
 
@@ -625,7 +708,8 @@ class World:
         like = self.p + "%"
         q = {"item": "item_code", "customer": "customer_code", "warehouse": "warehouse_code", "location": "location_code",
              "standard": "standard_code", "plate": "plate_code", "sys_user": "login_id", "sys_common_code": "code",
-             "notification": "dedupe_key", "erp_customer_map": "erp_code", "erp_upload_batch": "source_file", "data_query_log": "question"}
+             "notification": "dedupe_key", "erp_customer_map": "erp_code", "erp_upload_batch": "source_file", "data_query_log": "question",
+             "doc_account_map": "account_id", "sso_token": "account_id"}
         out = {}
         for t, col in q.items():
             n = conn.q1(f"select count(*) as n from {t} where {col} like %s", (like,))["n"]
@@ -911,6 +995,48 @@ def cases(w: World) -> list[Case]:
     add("F-RPT-132", "NUL 질문 → 422", "/rpt/query", {"question": p + NUL}, 422, login="qa1st", msg_has="NUL")
     add("F-RPT-132", "10만 자 질문 → 422 (상한 1000자)", "/rpt/query", {"question": p + "q" * 100_000}, 422, login="qa1st", msg_has="1000자")
     add("F-RPT-132", "공백만 → 422", "/rpt/query", {"question": "   "}, 422, login="qa1st", msg_has="질문")
+    # DOC (W4) — F-DOC-011 주소 없음 · F-DOC-021~023 입력 · 1:1 · 엑셀 · 404. 성공 경로 · 주소가 있는 경우는 check_doc_contract(가짜 주소)
+    if I.get("map_DA") and I.get("map_DC"):
+        from lcomfine.app.settings import get_settings
+
+        if not get_settings().doc_sso_url:
+            add("F-DOC-011", "SSO 주소 없음 → 422 「미확정 (D-517) — 토큰을 발급하지 않았습니다」 (계약 §2 예외 · 5xx 아님)", "/doc/go", {}, 422,
+                login="docDA", msg_has="미확정 (D-517) — 토큰을 발급하지 않았습니다")
+        dd, da, ma = s(I["doc_DD"]), s(I["doc_DA"]), I["map_DA"]
+        M = "/doc/account-map"
+        H = ["사번", "문서관리 계정 ID"]
+        xd = lambda data, name="qa1-doc (예시).xlsx": {"file": (name, data, XLSX)}  # noqa: E731
+        add("F-DOC-021", "누락(빈 본문) → 422", M, {}, 422, msg_has="MES 사용자")
+        add("F-DOC-021", "계정 ID 누락 → 422", M, {"user_id": dd}, 422, msg_has="문서관리 계정 ID")
+        add("F-DOC-021", "NUL 계정 ID → 422", M, {"user_id": dd, "account_id": p + NUL}, 422, msg_has="문서관리 계정 ID")
+        add("F-DOC-021", "계정 ID 201자 → 422 (상한 200자)", M, {"user_id": dd, "account_id": p + "a" * 201}, 422, msg_has="200자")
+        add("F-DOC-021", "없는 사용자(본문 999999999) → 422", M, {"user_id": NOID, "account_id": p + "X1"}, 422, msg_has="MES 사용자")
+        add("F-DOC-021", "사용자 값 틀림 abc → 422", M, {"user_id": "abc", "account_id": p + "X2"}, 422, msg_has="MES 사용자")
+        add("F-DOC-021", "1:1 깨짐 — 이미 계정이 연결된 사용자 → 422", M, {"user_id": da, "account_id": p + "X3"}, 422, msg_has="1:1")
+        add("F-DOC-021", "1:1 깨짐 — 다른 사용자에 연결된 계정 ID → 422", M, {"user_id": dd, "account_id": w.doc_acc("DA")}, 422, msg_has="1:1")
+        add("F-DOC-021", "엑셀 아닌 파일 → 422", M, {}, 422, files=xd(b"QA1 not an xlsx file"), msg_has="엑셀")
+        add("F-DOC-021", "빈 파일 → 422", M, {}, 422, files=xd(b""), msg_has="빈 파일")
+        add("F-DOC-021", "헤더 틀림(사원번호 · 계정) → 422", M, {}, 422, files=xd(xlsx_bytes(["사원번호", "계정"], [[p + "DD", p + "X4"]])),
+            msg_has="열 이름")
+        add("F-DOC-021", "데이터 행 0(열 이름만) → 422", M, {}, 422, files=xd(xlsx_bytes(H, [])), msg_has="등록할 행")
+        add("F-DOC-021", "5MB 초과 → 422 (D-611)", M, {}, 422, files=xd(b"\0" * (5 * 1024 * 1024 + 1)), msg_has="5MB")
+        add("F-DOC-021", "xlsx 가 아닌 zip → 422", M, {}, 422, files=xd(_zip_not_xlsx()), msg_has="엑셀")
+        add("F-DOC-021", "5,001 행 → 422 (상한 5,000 · D-611)", M, {}, 422,
+            files=xd(xlsx_bytes(H, [[f"{p}Z{i}", f"{p}ACC-Z{i}"] for i in range(5001)])), msg_has="5000행")
+        add("F-DOC-021", "오류 행 하나(없는 사번) → 전체 거부 422", M, {}, 422,
+            files=xd(xlsx_bytes(H, [[p + "DD", w.doc_acc("DD")], [p + "NOPE", p + "ACC-NOPE"]])), msg_has="아무것도 등록하지 않았습니다")
+        add("F-DOC-021", "오류 행 — 파일 안 사번 중복 → 전체 거부 422", M, {}, 422,
+            files=xd(xlsx_bytes(H, [[p + "DD", w.doc_acc("DD")], [p + "DD", p + "ACC-DD2"]])), msg_has="아무것도 등록하지 않았습니다")
+        add("F-DOC-021", "오류 행 — DB 매핑과 1:1 깨짐 → 전체 거부 422", M, {}, 422,
+            files=xd(xlsx_bytes(H, [[p + "DD", w.doc_acc("DD")], [p + "DE", w.doc_acc("DA")]])), msg_has="아무것도 등록하지 않았습니다")
+        add("F-DOC-022", "누락(빈 본문) → 422", f"{M}/{ma}", {}, 422, msg_has="문서관리 계정 ID")
+        add("F-DOC-022", "NUL 계정 ID → 422", f"{M}/{ma}", {"account_id": p + NUL}, 422, msg_has="문서관리 계정 ID")
+        add("F-DOC-022", "사용 여부 값 틀림 → 422", f"{M}/{ma}", {"account_id": w.doc_acc("DA"), "use_yn": "X"}, 422, msg_has="사용 여부")
+        add("F-DOC-022", "1:1 깨짐 — 다른 사용자의 계정 ID → 422", f"{M}/{ma}", {"account_id": w.doc_acc("DC")}, 422, msg_has="1:1")
+        add("F-DOC-022", "매핑의 MES 사용자 바꾸기 → 422 (D-611)", f"{M}/{ma}", {"account_id": w.doc_acc("DA"), "user_id": dd}, 422,
+            msg_has="MES 사용자")
+        nf("F-DOC-022", M + "/{id}", {"account_id": p + "X5"})
+        nf("F-DOC-023", M + "/{id}/delete", {})
     return C
 
 
@@ -995,6 +1121,7 @@ def check_errors(clients: dict, rep: Report, keep: bool = False) -> tuple[World,
         html_world = world_html(w)                 # COL 계약 문장 확인(매핑 삭제 · 사용 중지)보다 먼저 — 행이 있는 화면
         check_rpt_contract(w, rep)                 # W3 — RPT 8 · 데이터 질의 · SYS-040 (COL 매핑이 살아 있는 동안 — RPT-060 수금)
         check_col_contract(w, rep)
+        check_doc_contract(w, rep)                 # W4 — DOC-010 · DOC-020 (가짜 SSO 주소는 함수 안에서만 · 되돌림)
     finally:
         if not keep:
             w.cleanup()
@@ -1209,6 +1336,330 @@ def check_col_contract(w: World, rep: Report) -> list[dict]:
             f"항목 {len(out)} · 어긋남 {len(bad)}", bad)
     for x in out:
         rep.summary.append((f"COL 계약 문장 — {x['item']}", ("OK — " if x["ok"] else "어긋남 — ") + x["actual"]))
+    return out
+
+
+# ── W4 DOC 문서관리 — 계약 문장 · SSO 진입 응답 모양 (세계가 있는 동안 자동 확인) ─────
+#: 테스트 전용 SSO 주소 — `.invalid` 는 해석되지 않는 이름이고(RFC 6761) TestClient 는 폼 action 으로 아무것도 보내지 않는다(외부 전송 0).
+FAKE_SSO_URL = "https://qa1-doc.example.invalid/sso/entry"
+
+
+@contextmanager
+def fake_sso(url: str = FAKE_SSO_URL):
+    """`LCOMFINE_DOC_SSO_URL` 을 잠깐 가짜 값으로(비밀이 없으면 실행마다 난수 — 어디에도 적지 않는다) → settings.reset_cache() → 되돌린다."""
+    import os
+
+    from lcomfine.app import settings
+
+    keys = ("LCOMFINE_DOC_SSO_URL", "LCOMFINE_SSO_SECRET")
+    old = {k: os.environ.get(k) for k in keys}
+    os.environ["LCOMFINE_DOC_SSO_URL"] = url
+    if not settings.get_settings().sso_secret:
+        os.environ["LCOMFINE_SSO_SECRET"] = secrets.token_urlsafe(32)
+    settings.reset_cache()
+    try:
+        yield
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        settings.reset_cache()
+
+
+class _Tags(HTMLParser):
+    """`<main>` 안의 form · input · section 의 속성 전부(속성 이름 그대로 — data-auto-submit 처럼 값 없는 속성은 None)."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.depth = 0
+        self.forms: list[dict] = []
+        self.sections: list[dict] = []
+        self._form: dict | None = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "main":
+            self.depth += 1
+        if not self.depth:
+            return
+        if tag == "form":
+            self._form = {"attrs": a, "inputs": []}
+            self.forms.append(self._form)
+        elif tag in ("input", "select", "textarea", "button") and self._form is not None:
+            self._form["inputs"].append({"tag": tag, **a})
+        elif tag == "section":
+            self.sections.append(a)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag == "main" and self.depth:
+            self.depth -= 1
+        if tag == "form":
+            self._form = None
+
+
+def tags(html: str) -> _Tags:
+    t = _Tags()
+    t.feed(html)
+    return t
+
+
+def check_doc_contract(w: World, rep: Report) -> list[dict]:
+    """DOC-010 · DOC-020 — 정본 L3 · logic · function-list F-DOC-011 · 012 · 021~024 · api-contract §2 F-DOC-011 예외 · D-514 · D-517 · D-610 · D-611.
+    성공 경로는 `fake_sso()` 안에서만(가짜 주소 · 외부 전송 0) · 받은 토큰은 `sso.consume` 으로 형식을 확인한다(문서관리 시스템 쪽 검증 재현).
+    쓰기는 admin(DOC-020 W) · QA1 사용자 DA · DB · DC 세션(DOC-010 R) · 자기 행만."""
+    from lcomfine.app import sso
+    from lcomfine.app.settings import get_settings
+    from lcomfine.db import conn
+
+    I, p, c = w.ids, w.p, w.c
+    out: list[dict] = []
+
+    def chk(item: str, ok: bool, actual: str) -> None:
+        out.append({"item": item, "ok": bool(ok), "actual": actual})
+
+    def text_of(resp) -> str:
+        return _norm(" ".join(parse(resp.text).text))
+
+    def n(sql: str, args=()) -> int:
+        return conn.q1(f"select count(*) as n from ({sql}) x", args)["n"]
+
+    cA, cB, cC = (w.clients.get(k) for k in ("docDA", "docDB", "docDC"))
+    undecided_html = None
+    title = "DOC 계약 문장 (W4 · 정본 L3 · logic · D-514 · D-517 · D-610 · D-611 · 계약 §2 F-DOC-011 예외) — 자동 확인"
+    if not (cA and cB and cC and I.get("map_DA") and I.get("map_DC")):
+        chk("세계 — QA1 사용자 DA · DB · DC 세션 · 매핑 DA · DC", False,
+            f"세션 {[k for k in ('docDA', 'docDB', 'docDC') if k in w.clients]} · map {I.get('map_DA')} · {I.get('map_DC')}")
+        rep.add("G-02", title, False, "세계가 없어 확인하지 못했다", [f"{x['item']} — {x['actual']}" for x in out])
+        return out
+    uA, uB, uC, uD, uE = (I["doc_" + t] for t in ("DA", "DB", "DC", "DD", "DE"))
+    lA, lB, lC = p + "DA", p + "DB", p + "DC"
+    accA, accC = w.doc_acc("DA"), w.doc_acc("DC")
+    before = (get_settings().doc_sso_url, get_settings().sso_secret)
+    tok = lambda uid: n("select 1 from sso_token where user_id = %s", (uid,))  # noqa: E731
+    slog = lambda lid, res: n("select 1 from sys_access_log where log_type = 'SSO' and login_id = %s and result = %s "  # noqa: E731
+                              "and screen_id = 'DOC-010' and function_id = 'F-DOC-011'", (lid, res))
+    clog = lambda fid, tgt: n("select 1 from sys_change_log where function_id = %s and target like %s", (fid, tgt))  # noqa: E731
+
+    # ── 1. 주소 없음 (로컬 실제 설정 — 비밀 · 주소 값은 찍지 않는다) ──
+    if not get_settings().doc_sso_url:
+        g = cA.get("/doc/go", headers=HTML)
+        undecided_html = g.text
+        tg = tags(g.text)
+        sec = [s_.get("data-doc-go") for s_ in tg.sections if s_.get("data-doc-go")]
+        chk("DOC-010 주소 없음 GET — 200 · 안내 `미확정 (D-517)` · 토큰 칸 없음 (D-514 · D-517)",
+            g.status_code == 200 and sec == ["undecided"] and "미확정(D-517)" in text_of(g) and 'name="token"' not in g.text,
+            f"{g.status_code} · data-doc-go {sec} · D-517 {'미확정(D-517)' in text_of(g)} · token 칸 {'name=\"token\"' in g.text}")
+        t0, f0 = tok(uA), slog(lA, "실패")
+        r = cA.post("/doc/go")
+        rh = cA.post("/doc/go", headers=HTML, follow_redirects=False)
+        chk("F-DOC-011 주소 없음 POST — JSON 422 `validation_error` 「… 미확정 (D-517) — 토큰을 발급하지 않았습니다」 fields `SSO 설정` · "
+            "브라우저 303 → /doc/go (폼 POST 422 · 계약 §2) · 5xx 0 · 토큰 0행 · SSO 로그 실패 +2",
+            r.status_code == 422 and jget(r, "code") == "validation_error"
+            and "미확정 (D-517) — 토큰을 발급하지 않았습니다" in (jget(r, "message") or "")
+            and [f_.get("name") for f_ in jget(r, "fields") or []] == ["SSO 설정"]
+            and rh.status_code == 303 and rh.headers.get("location", "").split("?")[0].endswith("/doc/go")
+            and tok(uA) == t0 and slog(lA, "실패") == f0 + 2,
+            f"JSON {r.status_code} {jget(r, 'message')!r} fields {jget(r, 'fields')} · 브라우저 {rh.status_code} → "
+            f"{rh.headers.get('location')} · 토큰 {t0}→{tok(uA)} · SSO 실패 로그 {f0}→{slog(lA, '실패')}")
+    else:
+        chk("주소 없음 경우 — 로컬 설정에 주소가 있어 건너뜀", True, "LCOMFINE_DOC_SSO_URL 있음 (값은 찍지 않는다)")
+
+    with fake_sso():
+        # ── 2. GET 바로가기 — 새 창 · 로그인된 상태 · 검증 실패 시 로그인 화면 안내 · 토큰은 GET 이 발급하지 않음 ──
+        t0 = tok(uA)
+        g = cA.get("/doc/go", headers=HTML)
+        tg = tags(g.text)
+        tx = text_of(g)
+        sec = [s_.get("data-doc-go") for s_ in tg.sections if s_.get("data-doc-go")]
+        go_forms = [f_["attrs"] for f_ in tg.forms if (f_["attrs"].get("method") or "").lower() == "post" and f_["attrs"].get("action") == "/doc/go"]
+        chk("DOC-010 바로가기 — 매핑 있는 사용자 GET 200 · `ready` · POST /doc/go 진입 폼 1(이미 새 창 — 폼에 target 없음) · 연결된 계정 ID · GET 은 토큰 0행",
+            g.status_code == 200 and sec == ["ready"] and len(go_forms) == 1 and not go_forms[0].get("target") and _norm(accA) in tx
+            and tok(uA) == t0 and 'name="token"' not in g.text,
+            f"{g.status_code} · {sec} · 폼 {go_forms} · 계정 ID {_norm(accA) in tx} · 토큰 {t0}→{tok(uA)}")
+        chk("DOC-010 logic — 서명 · 60초 · 한 번만 · POST(주소창에 남지 않음) · 검증 실패 시 문서관리 로그인 화면에서 직접 로그인 · 문서별 권한은 문서관리 · "
+            "방식 SAML/OIDC `미확정 (D-517)`",
+            all(k in tx for k in ("일회용", "60초", "한번만", "POST", "로그인화면", "직접로그인", "문서별권한", "SAML", "OIDC", "미확정(D-517)")),
+            "빠진 낱말 " + str([k for k in ("일회용", "60초", "한번만", "POST", "로그인화면", "직접로그인", "문서별권한", "SAML", "OIDC", "미확정(D-517)")
+                              if k not in tx]))
+        # DEF-QA1-010 — 정본 L3 「메뉴 클릭 → 새 창」 · F-DOC-011 「메뉴를 누르면 … 토큰을 발급 … 새 창으로 … 연다」. 지금은 메뉴 = 같은 창의 안내 화면이고
+        # 「문서관리 열기 (새 창)」 단추를 한 번 더 눌러야 발급된다. 통과 = 메뉴 링크 target=_blank + 안내 화면의 POST 폼 data-auto-submit (한 번 클릭)
+        # 또는 decisions.md 에 이 편차의 판정(DEF-QA1-010)이 적힘
+        home = cA.get("/", headers=HTML).text
+        a_menu = re.search(r'<a\b[^>]*data-screen="DOC-010"[^>]*>', home)
+        ready_auto = any("data-auto-submit" in a for a in go_forms)
+        auto_in = lambda html: any("data-auto-submit" in f_["attrs"] for f_ in tags(html).forms)  # noqa: E731
+        refused_auto = auto_in(cB.get("/doc/go", headers=HTML).text)
+        undecided_auto = auto_in(undecided_html) if undecided_html else False
+        chk("DOC-010 L3 「메뉴 클릭 → 새 창」 (DEF-QA1-010) — 메뉴 링크 target=_blank · 준비됐을 때(ready) 진입 폼 data-auto-submit · 준비 안 됐을 때(매핑 없음 · 주소 없음) 자동 제출 없음",
+            bool(a_menu) and 'target="_blank"' in a_menu.group(0) and ready_auto and not refused_auto and not undecided_auto,
+            f"메뉴 링크 {a_menu.group(0) if a_menu else None} · ready 자동 제출 {ready_auto} · 매핑 없음 자동 제출 {refused_auto} · "
+            f"주소 없음 자동 제출 {undecided_auto}")
+        chk("DOC-010 L3 「문서관리 시스템 첫 화면 (로그인된 상태)」 — 외부 시스템의 화면(범위 밖 §2.8 실 접속 확인 · D-517) · MES 쪽은 자동 POST 폼까지",
+            True, "사람 판정 — 화면 문장 「문서관리 시스템으로 넘긴다」 · 실 접속은 확인할 수 없다(가짜 주소)")
+
+        # ── 3. POST JSON — 200 · 토큰 없음(jti) · sso_token 1행 · 변경 로그 1행 · SSO 로그 성공 ──
+        s0, c0 = slog(lA, "성공"), clog("F-DOC-011", "sso_token:%")
+        r = cA.post("/doc/go")
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        jti = body.get("jti")
+        row = conn.q1("select user_id, account_id, used_at, extract(epoch from expires_at - issued_at) as ttl from sso_token where jti::text = %s",
+                      (str(jti),)) if jti else None
+        tokenish = [k for k, v in body.items() if isinstance(v, str) and v.count(".") == 1 and len(v) > 60]
+        chk("F-DOC-011 JSON 성공 — 200 `{ok, message, jti, ttl_seconds 60, method POST, field token}` · 토큰 글자 없음 · sso_token 1행(사용자 · 계정 ID · 60초 · 미사용) · "
+            "`sys_change_log` 1행(target sso_token:<jti>) · SSO 로그 성공 1행",
+            r.status_code == 200 and body.get("ok") is True and bool(jti) and "token" not in body and not tokenish
+            and body.get("ttl_seconds") == 60 and body.get("method") == "POST"
+            and row is not None and row["user_id"] == uA and row["account_id"] == accA and int(row["ttl"]) == 60 and row["used_at"] is None
+            and clog("F-DOC-011", f"sso_token:{jti}") == 1 and clog("F-DOC-011", "sso_token:%") == c0 + 1 and slog(lA, "성공") == s0 + 1,
+            f"{r.status_code} 키 {sorted(body)} · 토큰 같은 값 {tokenish} · 행 {dict(row) if row else None} · 변경 로그 "
+            f"{clog('F-DOC-011', f'sso_token:{jti}')} · SSO 성공 {s0}→{slog(lA, '성공')}")
+
+        # ── 4. POST 브라우저 — 200 자동 POST 폼 · hidden 토큰 · data-auto-submit · method post · 주소창 · 로그에 토큰 없음 ──
+        rh = cA.post("/doc/go", headers=HTML, follow_redirects=False)
+        th = tags(rh.text)
+        sso_forms = [f_ for f_ in th.forms if f_["attrs"].get("action") == FAKE_SSO_URL]
+        hidden = [i for f_ in sso_forms for i in f_["inputs"] if i.get("tag") == "input" and i.get("type") == "hidden" and i.get("name") == "token"]
+        token = hidden[0].get("value") if hidden else None
+        f_attrs = sso_forms[0]["attrs"] if sso_forms else {}
+        consumed, again = None, None
+        if token:
+            try:
+                with conn.tx() as cur:
+                    consumed = sso.consume(cur, token)
+            except sso.Invalid as exc:
+                consumed = f"Invalid({exc.reason})"
+            try:
+                with conn.tx() as cur:
+                    sso.consume(cur, token)
+                again = "통과(재사용 허용)"
+            except sso.Invalid as exc:
+                again = f"거부 {exc.reason}"
+        leaked = 0
+        if token:
+            leaked = n("select 1 from sys_access_log where position(%s in coalesce(detail,'') || coalesce(target,'') || coalesce(path,'')) > 0",
+                       (token,)) + n("select 1 from sys_change_log where position(%s in coalesce(detail,'') || target) > 0", (token,))
+        chk("F-DOC-011 브라우저 성공 — 200 text/html (303 아님 · 계약 §2 예외) · 폼 method=post · action=SSO 주소 · `data-auto-submit` · hidden `token` 1개 · "
+            "「문서관리 열기」 단추 · 토큰이 본문에 1번 · 주소/Location 에 없음 · 로그에 없음 · `sso.consume` 통과 → 재사용 거부",
+            rh.status_code == 200 and rh.headers.get("content-type", "").startswith("text/html") and len(sso_forms) == 1
+            and (f_attrs.get("method") or "").lower() == "post" and "data-auto-submit" in f_attrs and len(hidden) == 1
+            and "문서관리열기" in text_of(rh) and token and rh.text.count(token) == 1 and token not in str(rh.url)
+            and token not in (rh.headers.get("location") or "") and leaked == 0
+            and isinstance(consumed, dict) and consumed.get("account_id") == accA and (again or "").startswith("거부"),
+            f"{rh.status_code} {rh.headers.get('content-type')} · 폼 {len(sso_forms)} {f_attrs} · hidden {len(hidden)} · 본문 등장 "
+            f"{rh.text.count(token) if token else 0} · 로그 누출 {leaked} · consume {consumed if not isinstance(consumed, dict) else consumed.get('account_id')} · 재사용 {again} "
+            f"· Cache-Control {rh.headers.get('cache-control')!r}")
+        chk("static/app.js — `form[data-auto-submit]` 자동 제출 보조 (템플릿 스크립트 0)",
+            "data-auto-submit" in (ROOT / "src/lcomfine/app/static/app.js").read_text(encoding="utf-8")
+            and "<script" not in (ROOT / "src/lcomfine/app/templates/doc/go_post.html").read_text(encoding="utf-8"),
+            "app.js 에 data-auto-submit · doc 템플릿 <script 0")
+
+        # ── 5. 매핑 없음 · 사용 중지 매핑 → 토큰 없이 「관리자에게 계정 연결을 요청하세요」 ──
+        g = cB.get("/doc/go", headers=HTML)
+        sec = [s_.get("data-doc-go") for s_ in tags(g.text).sections if s_.get("data-doc-go")]
+        r = cB.post("/doc/go")
+        chk("DOC-010 logic 「계정 매핑이 없으면 토큰을 발급하지 않고 \"관리자에게 계정 연결을 요청하세요\" 안내」 — GET `refused` + 안내 문장 · POST 422 fields `계정 매핑` · 토큰 0 · SSO 실패 로그",
+            g.status_code == 200 and sec == ["refused"] and _norm(sso.REQUEST_MAPPING) in text_of(g)
+            and r.status_code == 422 and sso.REQUEST_MAPPING in (jget(r, "message") or "")
+            and [f_.get("name") for f_ in jget(r, "fields") or []] == ["계정 매핑"] and tok(uB) == 0 and slog(lB, "실패") >= 1,
+            f"GET {g.status_code} {sec} · POST {r.status_code} {jget(r, 'message')!r} · 토큰 {tok(uB)} · SSO 실패 {slog(lB, '실패')}")
+        r1 = c.post(f"/doc/account-map/{I['map_DC']}", data={"account_id": accC, "use_yn": "N"})
+        r = cC.post("/doc/go")
+        m = c.get("/doc/account-map", headers=HTML)
+        unm = m.text.split('data-unmapped="', 1)[-1]
+        chk("F-DOC-022 사용 중지(use_yn N) → 그 사용자 POST 422 「… 사용 중지」 · 미연결 목록에 「사용 중지 매핑 <계정 ID>」 (D-611)",
+            r1.status_code == 200 and r.status_code == 422 and "사용 중지" in (jget(r, "message") or "") and tok(uC) == 0
+            and lC in unm and "사용 중지 매핑" in unm,
+            f"수정 {r1.status_code} · POST {r.status_code} {jget(r, 'message')!r} · 미연결 표에 DC {lC in unm}")
+
+        # ── 6. 비활성 → 발급 바로 막힘 (DOC-020 logic) ──
+        c.post(f"/doc/account-map/{I['map_DC']}", data={"account_id": accC, "use_yn": "Y"})
+        r1 = c.post(f"/sys/users/{uC}", data={"user_name": p + "문서 DC (예시)", "role_code": "AC", "status": "중지"})
+        r = cC.post("/doc/go")
+        with conn.tx() as cur:
+            reason, _ = sso.refusal(cur, uC)
+        chk("DOC-020 logic 「MES 에서 사용자를 비활성으로 바꾸면 SSO 토큰 발급도 바로 막힌다」 — SYS-010 상태 중지 → 그 세션 POST 401 · `sso.refusal` 비활성 · 토큰 0",
+            r1.status_code == 200 and r.status_code == 401 and "비활성" in (reason or "") and tok(uC) == 0,
+            f"SYS-010 {r1.status_code} · POST {r.status_code} · refusal {reason!r} · 토큰 {tok(uC)}")
+
+    after = (get_settings().doc_sso_url, get_settings().sso_secret)
+    chk("가짜 SSO 주소 되돌림 — fake_sso() 뒤 settings 의 주소 · 비밀이 앞과 같다", after == before,
+        f"주소 있음 {bool(after[0])} · 비밀 있음 {bool(after[1])} · 같음 {after == before} (값은 찍지 않는다)")
+
+    # ── 7. DOC-020 화면 — L3 3 · logic 3 ──
+    m = c.get("/doc/account-map", headers=HTML)
+    mt = text_of(m)
+    tm = tags(m.text)
+    unm_sec = [s_ for s_ in tm.sections if "data-unmapped" in s_]
+    bulk = [f_ for f_ in tm.forms if (f_["attrs"].get("enctype") or "") == "multipart/form-data"
+            and any(i.get("type") == "file" and i.get("name") == "file" for i in f_["inputs"])]
+    unm_html = m.text.split('data-unmapped="', 1)[-1]
+    chk("DOC-020 L3 「MES 사용자 ↔ 문서관리 계정 ID」 · 「미연결 사용자 목록」 · 「엑셀 일괄 등록」 — 매핑 표(사번 · 문서관리 계정 ID · QA1 DA 행) · 미연결 표(QA1 DB · DD 있음 · DA 없음) · "
+        "multipart 파일 폼 · 열 이름 `사번` `문서관리 계정 ID`",
+        m.status_code == 200 and "사번" in mt and "문서관리계정ID" in mt and _norm(accA) in mt and len(unm_sec) == 1 and "미연결사용자" in mt
+        and lB in unm_html and p + "DD" in unm_html and lA not in unm_html and len(bulk) == 1 and "엑셀일괄등록" in mt,
+        f"{m.status_code} · 미연결 섹션 {len(unm_sec)} · DB {lB in unm_html} · DD {p + 'DD' in unm_html} · DA(매핑됨) {lA in unm_html} · 엑셀 폼 {len(bulk)}")
+    chk("DOC-020 logic 「1:1」 · 「양쪽 사번이 같으면 매핑 없이 … (설계 때 확정)」 = `미확정 (D-517)` · 매핑 필수",
+        "1:1" in mt and "미확정(D-517)" in mt and 'data-same-id="undecided"' in m.text and "매핑은필수" in mt,
+        f"1:1 {'1:1' in mt} · D-517 {'미확정(D-517)' in mt} · data-same-id {'data-same-id' in m.text}")
+    e1 = c.get("/doc/account-map", params={"edit": NOID})
+    e2 = c.get("/doc/account-map", params={"edit": "abc"})
+    e3 = c.get("/doc/account-map", params={"edit": str(I["map_DA"])}, headers=HTML)
+    chk("F-DOC-024 `?edit=` — 없는 매핑 404 · abc 404 · 있는 매핑 200 수정 폼(action /doc/account-map/<id>)",
+        e1.status_code == 404 and e2.status_code == 404 and e3.status_code == 200
+        and any(f_["attrs"].get("action") == f"/doc/account-map/{I['map_DA']}" for f_ in tags(e3.text).forms),
+        f"{e1.status_code} · {e2.status_code} · {e3.status_code}")
+
+    # ── 8. 엑셀 일괄 — 오류 행 하나 → 0행 등록 · 정상 → 2행 + 변경 로그 1 ──
+    H = ["사번", "문서관리 계정 ID"]
+    xd = lambda data: {"file": ("qa1-doc (예시).xlsx", data, XLSX)}  # noqa: E731
+    mapped = lambda: n("select 1 from doc_account_map where user_id = any(%s)", ([uD, uE],))  # noqa: E731
+    bad_x = c.post("/doc/account-map", files=xd(xlsx_bytes(H + ["비고"], [[p + "DD", w.doc_acc("DD"), "x"], ["", ""], [p + "NOPE", p + "ACC-NOPE"]])))
+    fields_ = jget(bad_x, "fields") or []
+    chk("F-DOC-021 엑셀 — 오류 행 하나(4행 없는 사번 · 3행 빈 줄은 세지 않음 · 다른 열 무시) → 422 · fields `4행` 하나 · 아무것도 등록하지 않음",
+        bad_x.status_code == 422 and [f_.get("name") for f_ in fields_] == ["4행"] and "없는 사번" in (fields_[0].get("reason") if fields_ else "")
+        and mapped() == 0,
+        f"{bad_x.status_code} {jget(bad_x, 'message')!r} fields {fields_} · 등록 {mapped()}")
+    c0 = clog("F-DOC-021", "doc_account_map:엑셀%")
+    good_x = c.post("/doc/account-map", files=xd(xlsx_bytes(["문서관리 계정 ID", "사번"], [[w.doc_acc("DD"), p + "DD"], [w.doc_acc("DE"), p + "DE"]])))
+    chk("F-DOC-021 엑셀 — 정상 2행(열 순서 바뀜) → 200 count 2 · 매핑 2 · `sys_change_log` 1행",
+        good_x.status_code == 200 and (good_x.json().get("count") if good_x.status_code == 200 else None) == 2 and mapped() == 2
+        and clog("F-DOC-021", "doc_account_map:엑셀%") == c0 + 1,
+        f"{good_x.status_code} {jget(good_x, 'message')!r} · 매핑 {mapped()} · 변경 로그 {c0}→{clog('F-DOC-021', 'doc_account_map:엑셀%')}")
+
+    # ── 9. 수정 · 삭제 — 성공 + 변경 로그 · 참조(발급 기록) 있으면 사용 중지 ──
+    mE = conn.q1("select id from doc_account_map where user_id = %s", (uE,))
+    mE = mE and mE["id"]
+    c22 = clog("F-DOC-022", f"doc_account_map:{p}DE")
+    u = c.post(f"/doc/account-map/{mE}", data={"account_id": w.doc_acc("DE2"), "use_yn": "Y"})
+    acc_now = conn.q1("select account_id from doc_account_map where id = %s", (mE,))
+    chk("F-DOC-022 수정 — 200 · 계정 ID 바뀜 · `sys_change_log` 1행",
+        u.status_code == 200 and acc_now and acc_now["account_id"] == w.doc_acc("DE2") and clog("F-DOC-022", f"doc_account_map:{p}DE") == c22 + 1,
+        f"{u.status_code} · {acc_now} · 변경 로그 {c22}→{clog('F-DOC-022', f'doc_account_map:{p}DE')}")
+    d1 = c.post(f"/doc/account-map/{mE}/delete")
+    d2 = c.post(f"/doc/account-map/{I['map_DA']}/delete")
+    rowA = conn.q1("select active from doc_account_map where id = %s", (I["map_DA"],))
+    chk("F-DOC-023 삭제 — 발급 기록 없음 → 삭제(행 없음) · 있음(DA) → 사용 중지(active false) · 변경 로그 각 1",
+        d1.status_code == 200 and jget(d1, "result") == "삭제" and not conn.q1("select 1 from doc_account_map where id = %s", (mE,))
+        and d2.status_code == 200 and jget(d2, "result") == "사용 중지" and rowA is not None and rowA["active"] is False
+        and clog("F-DOC-023", f"doc_account_map:{p}DE") == 1 and clog("F-DOC-023", f"doc_account_map:{p}DA") == 1,
+        f"DE {d1.status_code} {jget(d1, 'result')} · DA {d2.status_code} {jget(d2, 'result')} active {rowA and rowA['active']}")
+
+    # ── 10. SYS-040 SSO 탭 — 사용자 · 시각 · 성공 여부 (DOC-010 logic 「SSO 호출은 로그에 남긴다」) ──
+    lg = c.get("/sys/logs", params={"tab": "sso", "login": lA}, headers=HTML)
+    nn = re.search(r'data-log-tab="sso" data-n="(\d+)"', lg.text)
+    chk("DOC-010 logic 「SSO 호출(사용자, 시각, 성공·실패)은 로그에 남긴다」 — SYS-040 SSO 탭(QA1 DA) 200 · 행 ≥ 3 · 성공 · 실패 둘 다 보임",
+        lg.status_code == 200 and nn and int(nn.group(1)) >= 3 and "성공" in lg.text and "실패" in lg.text and lA in lg.text,
+        f"{lg.status_code} · data-n {nn and nn.group(1)} · DB 성공 {slog(lA, '성공')} 실패 {slog(lA, '실패')}")
+
+    bad = [x for x in out if not x["ok"]]
+    for x in out:
+        rep.summary.append((f"DOC 계약 문장 — {x['item']}", ("OK — " if x["ok"] else "어긋남 — ") + x["actual"]))
+    rep.add("G-02", title, not bad, f"항목 {len(out)} · 어긋남 {len(bad)}", [f"{x['item']} — {x['actual']}" for x in bad])
     return out
 
 

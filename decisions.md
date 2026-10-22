@@ -188,6 +188,8 @@
 - QA3 DEF-QA3-003: 로컬 · Docker(`POSTGRES_USER`) 모두 앱이 superuser 로 붙어 불변 이력 트리거(`stock_adjust` · `shipment_adjust`)를 `session_replication_role` 로 우회할 수 있고, 개발2 · 개발3 테스트 정리가 그 우회에 기댄다.
 - 가설: 운영의 앱 역할은 **테이블 소유자도 superuser 도 아닌** 별도 역할(`lcomfine_app` · 업무 테이블 SELECT/INSERT/UPDATE/DELETE · 불변 이력은 INSERT 만). 스키마 적용 · 시드 · 백업은 소유자 역할. 테스트 정리는 소유자 역할 또는 테스트 전용 DB 로 — W4(운영 · Docker G-24) 에서 `docker_init.py` · `compose` · 테스트 픽스처를 함께 바꾼다. W1~W3 은 로컬 개발 역할 그대로 둔다.
 - 사람 확인: 운영 DB 역할 이름 · 비밀번호 보관 위치(`.env` 만).
+- **W4 구현(아키텍트 · 2026-10-22)**: `src/lcomfine/db/roles.py` `roles.apply(cur, role, password)` — LOGIN · NOSUPERUSER · NOCREATEDB · NOCREATEROLE · NOBYPASSRLS · public 스키마 CREATE 없음 · 업무 표 SELECT/INSERT/UPDATE/DELETE · **불변 이력 · 감사 로그 6 표(`stock_adjust` · `shipment_adjust` · `sys_change_log` · `sys_access_log` · `sys_ai_call_log` · `data_query_log`)는 SELECT · INSERT 만**. `tools/docker_init.py` 가 시드 뒤 소유자 연결로 부른다. `docker-compose.yml` · `deploy/hostinger/docker-compose.yml` 의 `app` 은 `lcomfine_app` 으로, `seed`(스키마 · 시드 · 역할 · 백업 · 복구 검사)는 소유자 `lcomfine` 으로 붙는다. 비밀 `LCOMFINE_APP_DB_PASSWORD`(`make setup` 이 난수).
+- 검증: `tests/test_arch_roles.py` — 한 트랜잭션 안에서 역할을 만들어 `set local role` 로 쓰기 · 읽기 · 불변 표 UPDATE/DELETE 거부 · `session_replication_role` 거부 · DDL 거부를 보고 되돌린다(클러스터에 역할이 남지 않음). 로컬 개발 역할(superuser)은 그대로 — 테스트 정리의 replica 우회는 로컬 소유자 역할에서만 돈다. 실기동 검증은 D-525(Docker).
 
 ## 사람이 정할 것 (`차단` · 스펙 §9)
 
@@ -351,3 +353,20 @@
 - **응답**: JSON(테스트)은 `http.saved` 200 + `{query_no, sql, columns, rows, row_count, truncated, ms}`. **브라우저는 같은 화면(RPT-130)을 200 으로 다시 그려 SQL 과 결과 표를 보인다**(결과 행을 저장하지 않아 303 뒤에 다시 보일 수 없다 — api-contract §2 「쓰기 성공 = 303」의 예외 · 변경 로그 `sys_change_log` 는 그대로 1행). 거부 · 실패는 422(브라우저는 303 + 알림 · `fields` 에 질의 번호 · SQL) — 사유는 최근 질의 목록에도 남는다.
 - **AI**(`ai.complete(system, user, *, kind, cur=None, user_id=None)`): 계약 §9 시그니처에 `user_id`(로그의 사용자) 를 더했다 · `cur` 없으면 자체 연결로 로그. 키 없음 → `ai.NotConfigured("AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY")` · 호출 실패 → `ai.CallFailed(사유)` · 둘 다 로그 뒤 올린다. OpenAI 호출은 표준 라이브러리 `urllib`(Chat Completions · temperature 0 · 30초) — 새 패키지 없음. 테스트는 `ai.set_client(fake)`.
 - 바뀌면 고칠 곳: `dataquery.ALLOWED_FUNCTIONS · FORBIDDEN · CATALOG_PATTERNS · MAX_ROWS · STATEMENT_TIMEOUT_MS · VIEWS` · `ai.OPENAI_URL · TIMEOUT_SECONDS` · 라우터 `run_query` 의 HTML 분기.
+
+## D-610 문서관리 SSO 진입의 토큰 모양 · 응답 · 설정 없음 처리 (W4 · D-514 의 세부) · 상태: 가설 (개발1)
+- 토큰 = `base64url(JSON 본문).base64url(HMAC-SHA256(LCOMFINE_SSO_SECRET, 본문 글자))` · 본문 `{"v":1, "sub": 문서관리 계정 ID, "iat", "exp"(= iat + 60), "jti"(uuid)}` (epoch 초). 토큰 글자는 DB · 로그 어디에도 저장하지 않는다 — `sso_token` 은 jti · 사용자 · 계정 ID · 발급 · 만료 · 사용 시각만.
+- 1회 사용 = `update sso_token set used_at … where jti … and used_at is null and expires_at > … returning`(동시 사용도 하나만). `consume` 은 사용 처리 뒤 사용자 상태(`정상` 만) · 매핑(사용 중 · 같은 계정 ID)을 DB 에서 다시 본다 — 발급 뒤 비활성 · 매핑 사용 중지 · 계정 ID 변경이면 거부. 서명 비교 `hmac.compare_digest`. 비활성 = `sys_user.status <> '정상'`(잠금 · 중지).
+- 거부 예외: 발급 `sso.NotMapped(사유)` · 검증 `sso.Invalid(사유)` · 비밀 없음 `sso.NotConfigured`(발급 · 검증 모두 안 함).
+- `POST /doc/go` 응답: 브라우저 = **같은 화면 200** 의 POST 폼(`action = LCOMFINE_DOC_SSO_URL` · hidden `token` · 사람이 「문서관리 열기」를 누른다 — `static/app.js` 에 자동 제출 보조가 생기면 `form[data-auto-submit]` 으로 바로 넘어간다) — api-contract §2 「쓰기 성공 = 303」의 예외(토큰을 세션 · 주소에 담지 않으려면 303 뒤에 보일 수 없다 · F-RPT-132 와 같은 이유). JSON = 200 `{ok, message, jti, ttl_seconds, method, field}` — **토큰은 싣지 않는다**.
+- 주소(`LCOMFINE_DOC_SSO_URL`) 또는 비밀이 없으면 발급하지 않고 **422** `「… 미확정 (D-517) — 토큰을 발급하지 않았습니다」`(fields `SSO 설정`) — 501 이 아닌 까닭: G-19 는 칸이 있는 부서의 쓰기 기능에 5xx 를 실패로 보고, RPT 의 「AI 키 없음 = 422」(D-806)와 같은 규칙. GET `/doc/go` 는 같은 사실을 `미확정 (D-517)` 안내 화면으로 보인다.
+- 미매핑 · 비활성 거부 = 422 `「관리자에게 계정 연결을 요청하세요 — 사유」`(fields `계정 매핑`). 모든 호출(성공 · 거부 · 설정 없음)은 `sys_access_log` 구분 SSO 1행(`screen_id` DOC-010 · `function_id` F-DOC-011 · `result` · `detail` 사유 · 성공은 `target = sso_token:<jti>`) — 트랜잭션 밖 자체 연결이라 거부도 남는다. 성공은 `sys_change_log` 1행.
+- 바뀌면 고칠 곳: `app/sso.py`(TTL_SECONDS · VERSION · 본문 키) · `routers/doc.py` `go` · `templates/doc/go_post.html`. 문서관리 시스템의 방식(SAML/OIDC)이 정해지면(D-517) 이 결정을 다시 쓴다.
+
+## D-611 DOC-020 계정 매핑의 1:1 · 수정 · 삭제 · 엑셀 일괄 규칙 · 상태: 가설 (개발1)
+- 1:1 은 **사용 중지 매핑도 자리를 차지한다** — `schema.sql` 의 유니크 2 개(`doc_account_map_user_uq` · `_account_uq`)가 `active` 와 무관하기 때문. 라우터가 먼저 사람 문장 422(`MES 사용자` 「이미 계정이 연결된 사용자입니다 (… · 사용 중지 매핑 — 그 행을 수정해 다시 쓰세요)」 · `문서관리 계정 ID` 「다른 사용자(…)에 이미 연결된 계정 ID 입니다」).
+- 수정(F-DOC-022)은 계정 ID · 사용 여부만 — 매핑의 MES 사용자는 바꾸지 않는다(422 · 지우고 새로 등록).
+- 삭제(F-DOC-023)의 「참조」= 그 사용자 · 계정 ID 로 발급한 `sso_token` 행(FK 가 아니라 이력). 있으면 `active = false`, 없으면 지운다.
+- 엑셀 일괄 등록(F-DOC-021 · `file`): 첫 시트 · 1행 헤더 `사번`(= `sys_user.login_id`) · `문서관리 계정 ID`(열 순서 무관 · 다른 열 무시) · 메모리에서만 읽는다 · 5MB · 5,000 행. 행마다 검사(빈 칸 · 없는 사번 · 파일 안 중복 · DB 의 매핑과 1:1 · 200자) — **오류 행이 하나라도 있으면 아무것도 등록하지 않고** 422 에 행마다 사유(`fields` 이름 `n행`). 빈 줄은 세지 않는다.
+- 미연결 사용자 목록 = 사용 중 매핑이 없는 모든 사용자(상태 무관 · 사용 중지 매핑이 있으면 그 계정 ID 를 비고에). 사번 동일 방식은 `미확정 (D-517)` 문장만 · 매핑 필수.
+- 시드: 시드 계정 8 → `doc-<login_id> (예시)`(그 사용자 · 계정 ID 에 매핑이 없을 때만 · 멱등).

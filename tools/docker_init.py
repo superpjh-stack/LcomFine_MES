@@ -6,15 +6,19 @@
   그 뒤의 스키마 변경은 이관 SQL(ALTER)로 반영한다(D-08). 호스트 bind-mount(`docker-entrypoint-initdb.d`)를 쓰지 않는 이유는
   compose 파일만 받아 가는 배포 도구(Hostinger Docker Manager 등)에는 호스트에 저장소가 없기 때문이다(D-31).
 - 시드는 `lcomfine.db.seed` 그대로 — 두 번 돌려도 행 수가 같다(G-09). 비밀번호는 `LCOMFINE_SEED_PASSWORD` 로만(G-19).
+- 이어서 **앱 DB 역할**(`LCOMFINE_APP_DB_ROLE` · 기본 `lcomfine_app`)을 만들거나 맞춘다 — superuser 도 테이블 소유자도 아니고,
+  불변 이력 · 감사 로그는 INSERT 만(`lcomfine.db.roles` · D-524). `app` 서비스는 이 역할로 붙는다. 이 스크립트는 소유자 역할로 돈다.
+  `LCOMFINE_APP_DB_PASSWORD` 가 비면 실패한다(빈 비밀번호로 로그인 역할을 만들지 않는다).
 - 실패는 삼키지 않는다 — 스키마 SQL 오류·DB 접속 실패는 그대로 올라가 `seed` 서비스가 실패하고 `app` 은 뜨지 않는다.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-from lcomfine.db import conn, seed
+from lcomfine.db import conn, roles, seed
 
 SCHEMA = Path(__file__).resolve().parents[1] / "src" / "lcomfine" / "db" / "schema.sql"
 
@@ -32,7 +36,14 @@ def main(argv: list[str]) -> int:
         print(f"스키마 — 빈 DB 에 {SCHEMA.name} 적용 → 테이블 {table_count()}")
     else:
         print(f"스키마 — 테이블 {before} 있음 · 건너뜀 (변경은 ALTER 이관으로)")
-    return seed.main(argv)
+    rc = seed.main(argv)
+    if rc:
+        return rc
+    role = os.environ.get("LCOMFINE_APP_DB_ROLE") or "lcomfine_app"
+    with conn.tx() as cur:
+        out = roles.apply(cur, role, os.environ.get("LCOMFINE_APP_DB_PASSWORD") or "")
+    print(f"앱 DB 역할 — {out['role']} {'생성' if out['created'] else '갱신'} · 표 {out['tables']} · INSERT 만 {len(out['append_only'])} (D-524)")
+    return 0
 
 
 if __name__ == "__main__":

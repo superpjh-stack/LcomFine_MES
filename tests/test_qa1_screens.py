@@ -1,4 +1,4 @@
-# tests/test_qa1_screens.py — QA1 G-02 · G-03 · G-19 (tools/check_screens.py 의 검사를 그대로 부른다 · W2 COL · W3 RPT 가 범위에 든다 — COL 표식은 test_qa1_col.py · RPT 는 test_qa1_rpt.py)
+# tests/test_qa1_screens.py — QA1 G-02 · G-03 · G-19 (tools/check_screens.py 의 검사를 그대로 부른다 · W2 COL · W3 RPT · W4 DOC 가 범위에 든다 — COL 표식은 test_qa1_col.py · RPT 는 test_qa1_rpt.py · DOC 는 test_qa1_doc.py)
 # 기대값은 계약(function-list.md · permission-matrix.md · api-contract.md)에서 끌어온다. 시드 계정 8 로 로그인만 하고 아무것도 쓰지 않는다
 # (쓰기 403 전수는 빈 본문 · 없는 경로 키로만 두드린다 — W 부서도 404/422 로 끝나 행이 생기지 않는다).
 import pytest
@@ -33,7 +33,7 @@ def _assert_rows(rep: cs.Report, gate: str | None = None) -> None:
                 "F-SYS-014", "F-SYS-022", "F-SYS-032", "F-SYS-041")
 def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
     """화면 67 × 부서 8: 칸 W/R → 200 · 칸 없음 → 403(브라우저 · JSON) + 문장 「이 화면을 볼 권한이 없습니다」(api-contract §1)
-    · 범위(W1·W2·W3) 화면 65 placeholder 0 (DOC 2 는 W4) · 메뉴 = 권한 칸 · DB sys_permission = 계약 260 칸."""
+    · 범위(W1~W4) 화면 67 placeholder 0 (W4 DOC 2 포함) · 메뉴 = 권한 칸 · DB sys_permission = 계약 260 칸."""
     app, clients = world
     rep = cs.Report()
     cs.check_screens(app, clients, rep)
@@ -42,7 +42,7 @@ def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
 
 
 def test_g02_w1_functions_route_and_marks(world):
-    """범위 기능 130(W1 109 + W2 COL 11 + W3 RPT 10 — DOC 6 제외) — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
+    """범위 기능 136(W1 109 + W2 COL 11 + W3 RPT 10 + W4 DOC 6) — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
     app, _ = world
     rep = cs.Report()
     cs.check_functions(app, rep)

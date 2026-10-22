@@ -24,6 +24,20 @@
   "file": "sl_trk_customers-1280.png"
  },
  {
+  "account": "sl",
+  "path": "/doc/go",
+  "action": null,
+  "width": 1280,
+  "status": 200,
+  "url": "/doc/go",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "sl_doc_go-1280.png",
+  "flash": "미확정 (D-517)",
+  "flash_seen": true
+ },
+ {
   "account": "pr",
   "path": "/lot/backward",
   "action": null,
@@ -306,6 +320,20 @@
   "file": "admin_ia-1280.png"
  },
  {
+  "account": "admin",
+  "path": "/doc/account-map",
+  "action": null,
+  "width": 1280,
+  "status": 200,
+  "url": "/doc/account-map",
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "ok": true,
+  "file": "admin_doc_account-map-1280.png",
+  "flash": "미연결 사용자",
+  "flash_seen": true
+ },
+ {
   "account": "sl",
   "path": "/wo/requests",
   "action": null,
@@ -328,6 +356,20 @@
   "innerWidth": 390,
   "ok": true,
   "file": "sl_trk_customers-390.png"
+ },
+ {
+  "account": "sl",
+  "path": "/doc/go",
+  "action": null,
+  "width": 390,
+  "status": 200,
+  "url": "/doc/go",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "sl_doc_go-390.png",
+  "flash": "미확정 (D-517)",
+  "flash_seen": true
  },
  {
   "account": "pr",
@@ -608,5 +650,19 @@
   "innerWidth": 390,
   "ok": true,
   "file": "admin_ia-390.png"
+ },
+ {
+  "account": "admin",
+  "path": "/doc/account-map",
+  "action": null,
+  "width": 390,
+  "status": 200,
+  "url": "/doc/account-map",
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "ok": true,
+  "file": "admin_doc_account-map-390.png",
+  "flash": "미연결 사용자",
+  "flash_seen": true
  }
 ]

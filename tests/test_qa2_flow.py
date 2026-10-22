@@ -229,6 +229,8 @@ def test_g11_due_check_batch_is_idempotent(flow):
 @pytest.mark.fn("F-LOT-021")
 @pytest.mark.fn("F-TRK-011")
 @pytest.mark.fn("F-PRP-011")
+@pytest.mark.fn("F-DOC-012")
+@pytest.mark.fn("F-DOC-024")
 def test_g05_readonly_screens_do_not_write(flow):
     _all_pass(_rows(flow, "G-05", "조회 화면 GET 전후 업무 테이블 diff 0"))
 
@@ -249,3 +251,39 @@ def test_dev2_empty_body_is_422_and_qc_status_filter(flow):
     for path in ("/qc/incoming?status=보류", "/qc/product?status=가용", "/qc/incoming?status=없는상태"):
         resp = pr.get(path, follow_redirects=False)
         assert resp.status_code == (422 if "없는상태" in path else 200), f"GET {path} → {resp.status_code}"
+
+
+# ── W4 — CLAUDE.md 완료 기준: 출하 1건 → 원자재 LOT ─────────────────────────
+@pytest.mark.fn("F-LOT-021")
+@pytest.mark.fn("F-SHP-021")
+def test_completion_chain_shipment_to_material_lot(flow):
+    """check_data 의 사슬 행(독립 사슬 SQL = LOT-020 화면 = trace) 위에, 고리를 한 칸씩 따로 묻는 세 번째 SQL 로 다시 잇는다.
+    shipment_order → shipment_line → product_lot(원 LOT 까지) → product_receipt → work_order → material_issue_line → material_lot(원 LOT 까지)."""
+    _all_pass(_rows(flow, "G-07", "완료 기준 사슬"))
+    v = flow.v
+    so = flow.q1("select id, status from shipment_order where shipment_no = %s", (v["S1"],))
+    assert so and so["status"] == "확정", so
+    plots = flow.q("select product_lot_id from shipment_line where shipment_order_id = %s", (so["id"],))
+    assert plots
+    hops = set()
+    for pl in plots:
+        pid = pl["product_lot_id"]
+        while (par := flow.q1("select parent_lot_id from product_lot where id = %s", (pid,))["parent_lot_id"]) is not None:
+            pid = par
+        rc = flow.q1("select work_order_id from product_receipt where product_lot_id = %s and canceled_at is null", (pid,))
+        assert rc, f"제품 LOT {pid} 의 입고가 없다"
+        wo = flow.q1("select work_order_no from work_order where id = %s", (rc["work_order_id"],))["work_order_no"]
+        lines = flow.q("""select l.material_lot_id from material_issue_line l join material_issue i on i.id = l.issue_id
+                           where l.work_order_id = %s and i.canceled_at is null""", (rc["work_order_id"],))
+        assert lines, f"{wo} 의 불출이 없다"
+        for ln in lines:
+            mid = ln["material_lot_id"]
+            issued = flow.q1("select lot_no from material_lot where id = %s", (mid,))["lot_no"]
+            while (par := flow.q1("select parent_lot_id from material_lot where id = %s", (mid,))["parent_lot_id"]) is not None:
+                mid = par
+            origin = flow.q1("select lot_no from material_lot where id = %s", (mid,))["lot_no"]
+            plot_no = flow.q1("select lot_no from product_lot where id = %s", (pid,))["lot_no"]
+            hops.add((origin, issued, wo, plot_no))
+    assert {x[:4] for x in flow.chain["hops"]} == hops, (flow.chain["hops"], hops)
+    assert {h[0] for h in hops} == {v["A1"], v["A2"]} and {h[2] for h in hops} == {v["WO"]}
+    assert not flow.chain["missing"], flow.chain["missing"]

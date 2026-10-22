@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """QA2 흐름 · 데이터 검사기 — G-05 ~ G-15 판정 (`make check-data` · `tools/gate.py` 가 부른다). 소유 QA2.
 
-W1 = G-05 ~ G-11 · W2 = G-11 `erp_upload_error` + G-12 ~ G-14(수금) · W3 = G-15(대시보드 8 독립 재계산) + G-05 RPT 8 화면 diff 0. `LATER` 없음 — 전부 잰다.
+W1 = G-05 ~ G-11 · W2 = G-11 `erp_upload_error` + G-12 ~ G-14(수금) · W3 = G-15(대시보드 8 독립 재계산) + G-05 RPT 8 화면 diff 0.
+W4 = G-05 DOC(doc.py · sso.py 기능 단위 정적 · DOC GET 2 diff 0) + G-07 완료 기준 사슬(출하 1건 → 원자재 LOT · 독립 사슬 SQL = LOT-020 = trace). `LATER` 없음 — 전부 잰다.
 
 하는 일 — **코드는 읽기만 한다. 만든 행은 끝에 지운다(접두 `QA2-`).**
   G-05  쓰기 경계 — 라우터 파일별 쓰기 SQL 정적 스캔(+ 그 라우터가 부르는 공용 모듈 · COL 은 `erp_upload.py` 포함) ↔ `function-list.md`
@@ -65,6 +66,8 @@ LATER: dict[str, str] = {}      # W3 까지 전부 잰다 — 잴 수 없는 것
 MUST_MEASURE = {("G-11", "erp_upload_error"), ("G-12", "같은 기간 재업로드"), ("G-13", "오류 행 보존"), ("G-14", "COL-070 화면")}
 #: W3 대시보드 단계가 돌지 못하면 행이 없어 PASS 로 보일 수 있는 것
 MUST_MEASURE_W3 = {("G-15", "RPT-010"), ("G-15", "RPT-080"), ("G-05", "RPT 대시보드 8 화면")}
+#: W4 — 완료 기준 사슬(CLAUDE.md) 은 추적 단계에서 반드시 잰다 · DOC 정적 행은 static_doc 이 늘 남긴다(파일 없으면 FAIL)
+MUST_MEASURE_W4 = {("G-07", "완료 기준 사슬")}
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -284,6 +287,145 @@ def static_scan(report: Report) -> None:
                f"rpt.py 직접 쓰기 {sorted(rpt_own) or 0} · dataquery.py 쓰기 {sorted(dq_w)} · ai.py 쓰기 {sorted(ai_w)} ⊆ F-RPT 「쓰는 테이블」 {sorted(rpt_contract)} · "
                f"계약 밖 {rpt_bad or 0} · 쓰기 호출 {sorted(set(writers))} 전부 POST 핸들러 {post_handlers} 안 {writers_ok} · GET 핸들러 {len(get_handlers)} 에는 없음 · "
                f"대시보드 집계 캐시 테이블 없음(dashboard.py 쓰기 0 — 위 행)")
+    static_doc(report)
+
+
+# ── W4 — DOC 문서관리 · sso.py (F-DOC-011 「쓰는 테이블」 sso_token, sys_access_log · F-DOC-021~023 doc_account_map · §2.2 F-DOC-011 → sys_access_log) ──
+DOC_TABLES = {"doc_account_map", "sso_token"}
+#: 다른 모듈 호출 → 그 호출이 쓰는 테이블 (sso 는 함수 단위로 sso.py 를 읽어 채운다)
+_EXT_WRITES = {"audit.write_log": {"sys_access_log"}, "audit.log_change": {"sys_change_log"}}
+
+
+def contract_fn_writes() -> dict[str, set[str]]:
+    """function-list.md §2 → {기능 ID: 쓰는 테이블}."""
+    out: dict[str, set[str]] = {}
+    for ln in (ROOT / "contracts/function-list.md").read_text(encoding="utf-8").splitlines():
+        if ln.startswith("| F-"):
+            cells = [c.strip() for c in ln.strip("|").split("|")]
+            out[cells[0]] = {t.strip() for t in cells[5].split(",")} if cells[5] and cells[5] != "-" else set()
+    return out
+
+
+def _fn_info(text: str) -> dict[str, dict]:
+    """파일의 최상위 함수마다 {sql: 쓰기 테이블, calls: 호출 이름, route: get|post|None, fn_id, dyn: 해석 못한 f-string 쓰기}.
+
+    f-string 은 `{…}` 자리표시로 다시 짜서 스캔한다(동적 테이블 이름이면 dyn 에 남는다)."""
+    import ast
+
+    tree = ast.parse(text)
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        strs, calls, fn_id = [], set(), None
+        inner_consts = {id(v) for n in ast.walk(node) if isinstance(n, ast.JoinedStr) for v in n.values}
+        for n in ast.walk(node):
+            if isinstance(n, ast.JoinedStr):
+                strs.append("".join(v.value if isinstance(v, ast.Constant) else "{x}" for v in n.values))
+            elif isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in inner_consts:
+                strs.append(n.value)
+            elif isinstance(n, ast.Call):
+                f = n.func
+                name = f.id if isinstance(f, ast.Name) else (
+                    f"{f.value.id}.{f.attr}" if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) else None)
+                if name:
+                    calls.add(name)
+                if name == "rbac.require_fn" and n.args and isinstance(n.args[0], ast.Constant):
+                    fn_id = n.args[0].value
+        route = None
+        for d in node.decorator_list:
+            if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name) \
+                    and d.func.value.id == "router":
+                route = d.func.attr
+        tables = [t for s in strs for t in _sql_writes(s)]
+        out[node.name] = {"sql": {t for t in tables if "{" not in t}, "dyn": [t for t in tables if "{" in t],
+                          "calls": calls, "route": route, "fn_id": fn_id}
+    return out
+
+
+def _closure(info: dict[str, dict], name: str, ext: dict[str, set[str]], seen=None) -> tuple[set[str], set[str]]:
+    """함수 하나가 (같은 파일 안 호출을 따라가며) 쓰는 테이블 · 부르는 외부 쓰기 함수."""
+    seen = seen if seen is not None else set()
+    if name in seen or name not in info:
+        return set(), set()
+    seen.add(name)
+    tables, ext_calls = set(info[name]["sql"]), set()
+    for c in info[name]["calls"]:
+        if c in ext:
+            tables |= ext[c]
+            ext_calls.add(c)
+        elif c in info:
+            t, e = _closure(info, c, ext, seen)
+            tables |= t
+            ext_calls |= e
+    return tables, ext_calls
+
+
+def static_doc(report: Report) -> None:
+    """G-05 DOC — doc.py · sso.py 의 쓰기를 기능(핸들러) 단위로 F-DOC 「쓰는 테이블」 ∪ 알림 · 로그 · §2.2 와 대조."""
+    doc_p, sso_p = ROUTERS / "doc.py", APP / "sso.py"
+    if not doc_p.exists() or not sso_p.exists():
+        report.add("G-05", "DOC 라우터 · sso.py 쓰기 ⊆ F-DOC 계약 (정적)", FAIL, f"파일 없음 doc.py {doc_p.exists()} · sso.py {sso_p.exists()}")
+        return
+    fn_contract = contract_fn_writes()
+    exc = schema_exceptions()
+    sso_info = _fn_info(sso_p.read_text(encoding="utf-8"))
+    sso_ext = {}
+    for name, i in sso_info.items():
+        if not name.startswith("_"):
+            t, _ = _closure(sso_info, name, {})
+            if t:
+                sso_ext[f"sso.{name}"] = t          # 공개 함수 중 쓰기가 있는 것 — issue · consume
+    sso_all = set().union(*sso_ext.values()) if sso_ext else set()
+    ext = {**_EXT_WRITES, **sso_ext}
+    doc_info = _fn_info(doc_p.read_text(encoding="utf-8"))
+    dyn = [f"doc.py:{n}:{t}" for n, i in doc_info.items() for t in i["dyn"]] + \
+          [f"sso.py:{n}:{t}" for n, i in sso_info.items() for t in i["dyn"]]
+    per_fn, bad, get_bad = [], [], []
+    for name, i in doc_info.items():
+        if not i["route"]:
+            continue
+        tables, ext_calls = _closure(doc_info, name, ext)
+        sso_calls = sorted(c for c in ext_calls if c.startswith("sso."))
+        if i["route"] == "get":
+            if tables or sso_calls:
+                get_bad.append(f"GET {name} {sorted(tables)} {sso_calls}")
+            continue
+        fid = i["fn_id"]
+        allowed = fn_contract.get(fid, set()) | ALWAYS
+        over = sorted(tables - allowed)
+        if not fid or fid not in fn_contract or over:
+            bad.append(f"{name}({fid}) 계약 밖 {over}")
+        per_fn.append(f"{fid} {name} {sorted(tables)}{' via ' + ','.join(sso_calls) if sso_calls else ''}")
+    # F-DOC-011 진입: sso_token(sso.issue) + sys_access_log(SSO 로그) 둘 다 실제로 쓴다 · §2.2 에 F-DOC-011 → sys_access_log 줄
+    go_fn = next((n for n, i in doc_info.items() if i["fn_id"] == "F-DOC-011" and i["route"] == "post"), None)
+    go_t = _closure(doc_info, go_fn, ext)[0] if go_fn else set()
+    go_ok = bool(go_fn) and {"sso_token", "sys_access_log"} <= go_t and fn_contract.get("F-DOC-011") == {"sso_token", "sys_access_log"}
+    sec22 = (ROOT / "contracts/db-schema.md").read_text(encoding="utf-8").split("### 2.2", 1)[1].split("### 2.3", 1)[0]
+    exc_line = bool(re.search(r"\|\s*F-DOC-011\s*\|\s*`sys_access_log`", sec22)) and "sys_access_log" in exc
+    # 다른 곳 — app 전체(doc.py · sso.py 밖)에서 doc_account_map · sso_token 쓰기 0 · sso 쓰기 함수 호출 0
+    others, callers = [], []
+    sso_call_re = re.compile(r"\bsso\.(" + "|".join(re.escape(k.split(".", 1)[1]) for k in sso_ext) + r")\(") if sso_ext else None
+    for p in sorted(APP.rglob("*.py")):
+        if p in (doc_p, sso_p):
+            continue
+        t = p.read_text(encoding="utf-8")
+        hit = sorted(set(_sql_writes(t)) & DOC_TABLES)
+        if hit:
+            others.append(f"{p.relative_to(APP)}→{hit}")
+        if sso_call_re and sso_call_re.search(t):
+            callers.append(str(p.relative_to(APP)))
+    seed_w = sorted(f"{p.name}→{sorted(set(_sql_writes(p.read_text(encoding='utf-8'))) & DOC_TABLES)}"
+                    for p in (ROOT / "src/lcomfine/db").glob("*.py") if set(_sql_writes(p.read_text(encoding="utf-8"))) & DOC_TABLES)
+    ok = (not bad and not get_bad and not dyn and go_ok and exc_line and not others and not callers
+          and sso_all <= {"sso_token"} and per_fn)
+    report.add("G-05", "DOC 라우터 · sso.py 쓰기 ⊆ F-DOC 계약 ∪ 알림 · 로그 · §2.2 — 기능 단위 (정적)", ok,
+               f"sso.py 쓰기 함수 { {k: sorted(v) for k, v in sorted(sso_ext.items())} } ⊆ {{sso_token}} · "
+               f"POST {len(per_fn)} [{' / '.join(per_fn)}] · 계약 밖 {bad or 0} · "
+               f"F-DOC-011 = sso_token + sys_access_log {go_ok} · §2.2 「F-DOC-011 → sys_access_log」 줄 {exc_line} · "
+               f"GET 핸들러 쓰기 {get_bad or 0} · 해석 못한 동적 쓰기 {len(dyn)} {dyn or ''} · "
+               f"다른 app 모듈의 doc_account_map · sso_token 쓰기 {others or 0} · sso 쓰기 함수를 부르는 다른 모듈 {callers or 0} · "
+               f"(참고 시드 {seed_w or 0} — 화면 아님)")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -801,6 +943,63 @@ class Flow:
              where sl.product_lot_id in (select id from pls) and so.status <> '취소'""", {"no": material_lot_no})
         return {r["v"] for r in rows if r["k"] == "P"}, {r["v"] for r in rows if r["k"] == "S"}
 
+    def indep_chain(self, shipment_no: str) -> list[dict]:
+        """QA2 독립 SQL — CLAUDE.md 완료 기준 사슬을 한 행씩: 원자재 LOT(원) ← 불출 LOT ← 불출 ← 생산지시 ← 제품 입고 ← 제품 LOT ← 출하 지시.
+        trace 모듈 · 뷰를 거치지 않는다. 제품 LOT 은 분할이면 입고 LOT(원)까지 올라가 그 입고 · 지시를 잡는다."""
+        return self.q("""
+            with recursive pup as (
+                select sl.product_lot_id as start_id, p.id, p.parent_lot_id
+                  from shipment_line sl join shipment_order so on so.id = sl.shipment_order_id
+                  join product_lot p on p.id = sl.product_lot_id
+                 where so.shipment_no = %(no)s
+                union
+                select pup.start_id, p.id, p.parent_lot_id from product_lot p join pup on p.id = pup.parent_lot_id
+            ), mup as (
+                select l.id as line_id, m.id, m.parent_lot_id from material_issue_line l join material_lot m on m.id = l.material_lot_id
+                union
+                select mup.line_id, m.id, m.parent_lot_id from material_lot m join mup on m.id = mup.parent_lot_id
+            )
+            select so.shipment_no, so.status as ship_status, sp.lot_no as shipped_lot, rp.lot_no as received_lot,
+                   pr.id as receipt_id, pr.qty as receipt_qty, wo.work_order_no,
+                   mi.id as issue_id, l.qty as issue_qty, im.lot_no as issued_lot, om.lot_no as origin_lot
+              from shipment_order so
+              join shipment_line sl on sl.shipment_order_id = so.id
+              join product_lot sp on sp.id = sl.product_lot_id
+              join pup on pup.start_id = sp.id and pup.parent_lot_id is null
+              join product_lot rp on rp.id = pup.id
+              join product_receipt pr on pr.product_lot_id = rp.id and pr.canceled_at is null
+              join work_order wo on wo.id = pr.work_order_id
+              join material_issue_line l on l.work_order_id = wo.id
+              join material_issue mi on mi.id = l.issue_id and mi.canceled_at is null
+              join material_lot im on im.id = l.material_lot_id
+              join mup on mup.line_id = l.id and mup.parent_lot_id is null
+              join material_lot om on om.id = mup.id
+             where so.shipment_no = %(no)s
+             order by om.lot_no, im.lot_no""", {"no": shipment_no})
+
+    def completion_chain(self) -> None:
+        """CLAUDE.md 완료 기준 — 출하 1건 → 원자재 LOT. 독립 사슬 SQL 의 모든 고리가 LOT-020 화면 글자 · trace.backward 와 같다."""
+        from lcomfine.app import trace
+
+        v = self.v
+        S1 = v["S1"]
+        rows = self.indep_chain(S1)
+        html = self.get("완료 기준 — LOT-020 출하 → 원자재 LOT", "sh", f"/lot/backward?shipment_no={S1}").text
+        bw = trace.backward(shipment_no=S1)
+        hops = sorted({(r["origin_lot"], r["issued_lot"], r["work_order_no"], r["received_lot"], r["shipped_lot"]) for r in rows})
+        words = {w for h in hops for w in h} | {S1}
+        missing = sorted(w for w in words if w not in html)
+        chain_txt = " / ".join(f"{o}{'(←' + i + ')' if i != o else ''} → 불출 → {w} → 제품 입고 → {pl}{'(→' + sp + ')' if sp != pl else ''} → {S1}"
+                               for o, i, w, pl, sp in hops)
+        self.chain = {"S1": S1, "hops": hops, "rows": rows, "missing": missing}   # 보고서 · 테스트용
+        ok = (bool(rows) and not missing and {h[0] for h in hops} == set(bw["origin_material_lot_nos"]) == {v["A1"], v["A2"]}
+              and {h[1] for h in hops} == set(bw["issued_material_lot_nos"]) and {h[2] for h in hops} == {v["WO"]})
+        self.db(f"사슬 {len(rows)} 고리 · 화면에 빠진 글자 {missing or 0}")
+        self.r.add("G-07", "완료 기준 사슬 — 출하 1건 → 원자재 LOT (CLAUDE.md · 독립 사슬 SQL = LOT-020 화면 = trace)", ok,
+                   f"{chain_txt} · 고리 {len(rows)} (불출 라인 × 원 LOT) · 화면에 빠진 글자 {missing or 0} · "
+                   f"origin 독립 {sorted({h[0] for h in hops})} = trace {sorted(bw['origin_material_lot_nos'])} · "
+                   f"불출 LOT 독립 {sorted({h[1] for h in hops})} = trace {sorted(bw['issued_material_lot_nos'])}")
+
     def traces(self) -> None:
         from lcomfine.app import trace
 
@@ -817,6 +1016,7 @@ class Flow:
                    set(bw["origin_material_lot_nos"]) == origin == {A1, A2} and set(bw["issued_material_lot_nos"]) == issued,
                    f"origin {sorted(bw['origin_material_lot_nos'])} · 독립 {sorted(origin)} · 기대 {{{A1}, {A2}}} · "
                    f"불출 LOT {sorted(bw['issued_material_lot_nos'])} = 독립 {sorted(issued)} (분할 {A1s} → 원 {A1})")
+        self.completion_chain()
         bw2 = trace.backward(product_lot_no=P1)
         o2, _ = self.indep_backward(product_lot_no=P1)
         self.r.add("G-07", "trace.backward(제품 LOT) = 독립 SQL", set(bw2["origin_material_lot_nos"]) == o2 == {A1, A2},
@@ -1148,7 +1348,7 @@ class Flow:
     def readonly_diff(self) -> None:
         v = self.v
         paths = READ_SCREENS + [f"/lot/backward?shipment_no={v.get('S1', '')}", f"/lot/forward?lot_no={v.get('A1', '')}",
-                                f"/trk/orders?q={v.get('R1', '')}"]
+                                f"/trk/orders?q={v.get('R1', '')}", "/doc/go", "/doc/account-map"]   # W4 DOC-010 · 020 GET
         diff = None
         for _ in range(3):          # 같은 DB 를 다른 QA 가 함께 쓴다 — 바깥 변화면 다시 잰다
             before = self.table_counts()
@@ -1159,7 +1359,7 @@ class Flow:
                 break
         self.r.add("G-05", "조회 화면 GET 전후 업무 테이블 diff 0",
                    not diff and all(c == 200 for c in codes),
-                   f"admin GET {len(paths)} 화면(TRK 3 · LOT 2 · PRP 3 · WO-040 · INV-010 · QC-030 · SHP-030 · HOME · COL 7) "
+                   f"admin GET {len(paths)} 화면(TRK 3 · LOT 2 · PRP 3 · WO-040 · INV-010 · QC-030 · SHP-030 · HOME · COL 7 · DOC 2) "
                    f"응답 {sorted(set(codes))} · 테이블 diff {diff or 0} (로그 4 — 조회 · 변경 · 질의 · AI 로그 — 는 다른 세션이 동시에 쓰므로 제외 · 질의 로그는 정적 행이 보증)")
 
     # ════════════════════════════════════════════════════════════════════════
@@ -2265,6 +2465,8 @@ class Flow:
                 need |= MUST_MEASURE
             if not only or "dashboards" in only:
                 need |= MUST_MEASURE_W3
+            if not only or "traces" in only:
+                need |= MUST_MEASURE_W4
             for gate, prefix in sorted(need):
                 if not any(c.gate == gate and c.item.startswith(prefix) for c in self.r.checks):
                     self.r.add(gate, f"{prefix} ({GATE_NAMES[gate]})", FAIL, f"수금 · 대시보드 단계가 돌지 못해 재지 못함 — {failed or '행 없음'}")

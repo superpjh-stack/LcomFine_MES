@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">좌측 메뉴를 누르면 이 화면이 새 창으로 열리고, 발급할 수 있는 상태(SSO 주소 · 서명 비밀 · 계정 매핑 · 활성 사용자)면
+    곧바로 MES 가 일회용 SSO 토큰(서명 · 유효 {{ ttl }}초 · 한 번만 사용)을 발급해 문서관리 시스템으로 넘긴다 — 한 번 클릭.
+    토큰은 주소창에 남지 않게 POST 로 보낸다. 발급할 수 없는 상태면 넘어가지 않고 아래에 사유만 보인다. 토큰 검증이 실패하면 문서관리 시스템의 로그인 화면에서 직접 로그인할 수 있다 ·
+    문서별 권한은 문서관리 시스템이 관리한다.</p>
+  <p class="muted">연계 방식(SAML 2.0 · OIDC · 서명 토큰)은 {{ ui.undecided("D-517") }} — 그동안 서명 토큰(D-514).</p>
+</section>
+
+<section class="panel" data-doc-go="{{ 'undecided' if missing else ('refused' if reason else 'ready') }}">
+  {% if missing %}
+  <h2>문서관리 SSO 연결 정보 {{ ui.undecided("D-517") }}</h2>
+  <p>다음 설정이 없어 토큰을 발급하지 않는다:</p>
+  <ul>{% for m in missing %}<li>{{ m }} — {{ ui.undecided("D-517") }}</li>{% endfor %}</ul>
+  {% elif reason %}
+  <h2>{{ request_mapping }}</h2>
+  <p role="status">토큰을 발급하지 않는다 — {{ reason }}</p>
+  <p class="muted">계정 연결은 전산 관리자가 <a href="{{ nav.path_of('DOC-020') }}">문서관리 계정 매핑</a>에서 한다.</p>
+  {% else %}
+  <h2>문서관리 열기</h2>
+  <dl class="kv"><dt>연결된 문서관리 계정 ID</dt><dd><code>{{ mapping.account_id }}</code></dd></dl>
+  {% if fn_allowed.get("F-DOC-011") %}
+  {# 발급할 수 있을 때만 자동 제출(static/app.js `form[data-auto-submit]`) — 이 화면이 이미 새 창이라 target 은 두지 않는다 (DEF-QA1-010) #}
+  <form method="post" action="{{ nav.path_of('DOC-010') }}" data-auto-submit>
+    <p class="muted">자동으로 넘어가지 않으면 단추를 누른다.</p>
+    <div class="actions"><button type="submit" class="btn btn-primary">문서관리 열기</button></div>
+  </form>
+  {% else %}
+  <p class="muted">이 부서는 이 기능을 실행할 권한이 없습니다 <code>F-DOC-011</code></p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

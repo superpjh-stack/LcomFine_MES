@@ -57,7 +57,7 @@ def _rows(rep: cs.Report, gate: str | None = None) -> None:
 
 @pytest.mark.fn(*RPT_ALL, "F-SYS-041")
 def test_g02_rpt_10_functions_route_marks_and_deps(lab):
-    """범위 기능 130(W1 109 + COL 11 + RPT 10 — DOC 6 은 W4): API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 ·
+    """범위 기능 136(W1 109 + COL 11 + RPT 10 + DOC 6 — W4 에 넓힘): API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 ·
     쓰기 63(F-RPT-132 포함) 은 require_fn(<그 기능 ID>) 하나 · 조회 67(RPT 9 · SYS-040 포함) 은 require_screen(화면) (G-02 · G-19 정적)."""
     rep = cs.Report()
     cs.check_functions(lab["app"], rep)

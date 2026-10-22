@@ -281,3 +281,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
   .shell { display: block; }
   body { background: #fff; }
 }
+
+/* 화면 읽기 도구에만 읽히는 글자 (예: 메뉴의 「(새 창)」) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

@@ -51,6 +51,14 @@
     });
   }
 
+  /* 자동 제출 — `<form data-auto-submit>` 은 화면이 열리면 한 번 제출한다(문서관리 SSO 진입 · D-514 · F-DOC-011).
+     토큰은 hidden 칸에만 있고 POST 로 넘어가 주소창에 남지 않는다. 막히면 사람이 단추를 누르면 된다(단추는 그대로 보인다). */
+  document.querySelectorAll("form[data-auto-submit]").forEach(function (f) {
+    if (f.getAttribute("data-auto-submitted")) return;
+    f.setAttribute("data-auto-submitted", "1");
+    try { f.submit(); } catch (e) { console.warn("자동 제출 실패 — 단추를 눌러 주세요", e); }
+  });
+
   /* 확인 대화 — `<button data-confirm="정말 삭제할까요?">` · `<form data-confirm=…>` */
   document.addEventListener("click", function (e) {
     var el = e.target.closest ? e.target.closest("button[data-confirm], a[data-confirm], input[data-confirm]") : null;

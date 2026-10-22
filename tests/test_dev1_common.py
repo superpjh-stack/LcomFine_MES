@@ -79,6 +79,9 @@ def cleanup(prefix: str) -> None:
         cur.execute("delete from sys_common_code where code like %s", (like,))
         cur.execute("delete from notification_setting where user_id in (select user_id from sys_user where login_id like %s)",
                     (like,))
+        for t in ("sso_token", "doc_account_map"):                     # DOC (W4) — 테스트 사용자의 토큰 · 매핑
+            cur.execute(f"delete from {t} where user_id in (select user_id from sys_user where login_id like %s)", (like,))
+        cur.execute("delete from doc_account_map where account_id like %s", (like,))
         cur.execute("delete from sys_user where login_id like %s", (like,))
 
 

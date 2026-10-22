@@ -69,7 +69,7 @@
         <h3 class="side__menu-title">{{ m.name }}</h3>
         <ul>
           {% for s in m.screens %}
-          <li><a href="{{ s.path }}" data-screen="{{ s.screen_id }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}>{{ s.name }}</a></li>
+          <li><a href="{{ s.path }}" data-screen="{{ s.screen_id }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}{% if "SSO" in s.kind %} target="_blank" rel="noopener" data-external{% endif %}>{{ s.name }}{% if "SSO" in s.kind %}<span class="sr-only"> (새 창)</span>{% endif %}</a></li>
           {% endfor %}
         </ul>
       </div>
