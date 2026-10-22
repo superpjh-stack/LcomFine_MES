@@ -117,12 +117,50 @@ def test_ia_page_counts_from_contracts(app):
 def test_theme_tokens_present():
     css = (STATIC / "style.css").read_text()
     for tok in ("--bg: #f5f6f8", "--surface: #fff", "--ink: #1b2333", "--muted: #5d6779", "--line: #dde1e8",
-                "--cyan: #0b7a8a", "--cyan-soft: #e0f1f3",
+                "--brand: #b3122e", "--brand-soft: #fbe8eb",                       # D-527 브랜드 크림슨(라이트)
                 "--bg: #11151d", "--surface: #181e29", "--ink: #e4e8ef", "--muted: #99a3b5", "--line: #2a3242",
-                "--cyan: #4cc0cf"):
+                "--brand: #f2667c",                                                 # 다크
+                "--cyan: var(--brand)", "--cyan-soft: var(--brand-soft)"):          # 옛 이름은 브랜드의 별칭
         assert tok in css, tok
     assert ':root:not([data-theme="light"])' in css and ':root[data-theme="dark"]' in css
     assert '"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif' in css
+
+
+def _theme_blocks(css: str) -> dict[str, dict[str, str]]:
+    """라이트(:root) · 다크(media) · 다크(data-theme) 세 토큰 묶음의 `--이름: #hex` 값."""
+    def grab(start: str) -> dict[str, str]:
+        i = css.index(start)
+        body = css[i:css.index("}", i)]
+        return dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{3,6})\b", body))
+    return {"light": grab(":root {"), "dark_media": grab(':root:not([data-theme="light"])'), "dark_attr": grab(':root[data-theme="dark"]')}
+
+
+def _contrast(a: str, b: str) -> float:
+    def lum(h: str) -> float:
+        h = h.lstrip("#")
+        h = "".join(c * 2 for c in h) if len(h) == 3 else h
+        ch = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        ch = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_brand_tokens_contrast():
+    """D-527 — 브랜드 토큰이 세 묶음에 모두 있고, 글자 대비 ≥ 4.5:1 · 상태 「나쁨」 은 브랜드와 다른 값."""
+    blocks = _theme_blocks((STATIC / "style.css").read_text())
+    assert blocks["dark_media"] == blocks["dark_attr"]          # 시스템 다크 = 토글 다크
+    for name, t in blocks.items():
+        for k in ("--brand", "--brand-strong", "--brand-soft", "--brand-ink", "--bad", "--bad-soft", "--surface", "--ink", "--bg"):
+            assert k in t, (name, k)
+        assert _contrast(t["--brand-ink"], t["--brand"]) >= 4.5, (name, "주요 단추 글자")
+        assert _contrast(t["--brand-ink"], t["--brand-strong"]) >= 4.5, (name, "주요 단추 hover")
+        assert _contrast(t["--brand"], t["--surface"]) >= 4.5, (name, "링크 · 현재 단계")
+        assert _contrast(t["--brand"], t["--bg"]) >= 4.5, (name, "링크 · 바탕")
+        assert _contrast(t["--ink"], t["--brand-soft"]) >= 4.5, (name, "선택 메뉴 글자")
+        assert _contrast(t["--bad"], t["--bad-soft"]) >= 4.5, (name, "오류 칩 · 오류 행 글자")
+        assert _contrast(t["--bad"], t["--surface"]) >= 4.5, (name, "오류 글자")
+        assert t["--bad"].lower() != t["--brand"].lower() and t["--bad-soft"].lower() != t["--brand-soft"].lower(), name
 
 
 def test_templates_have_no_inline_script():
