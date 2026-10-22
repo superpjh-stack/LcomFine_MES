@@ -3,14 +3,37 @@
 검증된 것만 적는다. 여기 없는 숫자는 화면에 지어내지 않는다. 형식: `| 항목 | 실측 | 검증 방법 |`.
 옛 판(설계도 기준 · 대메뉴 12)의 기록은 `progress-v1.md` 에 있다 — v2 의 실측이 아니다.
 
-## 지금 해야 할 것: W2 수금 (개발3 → QA 3 → gate-full → 커밋)
+## 지금 해야 할 것: W3 대시보드 (개발3 + 개발1 → QA 3 → gate-full → 커밋)
 
-W1 끝(아래 실측 · 커밋). 다음 회전은 `goal.md` §3.1 **W2 수금** — 개발3 을 §5 프롬프트로 기동한다:
-COL 7 화면(COL-010~070) · `erp_upload.py` · `stats.customer_receivable(customer_id)` · `stats.due_compliance(period)` 공표 → 개발1 이 TRK-030 수금 칸 · TRK-020 납기 준수율에 붙인다(Ruling 23).
-회차 교체 · 이전 회차 보존 · 오류 행 제외 · 미매핑 → `erp_upload_error` 알림(G-11 의 마지막 1종) · 열 구성은 `차단` D-516 — 매핑 화면이 흡수한다.
-끝나면 QA1 · QA2(G-12~G-14 를 W2 로 잰다) · QA3 → 결함 수정 → `make gate-full` → 커밋. 그 뒤 W3 대시보드(G-15~G-17) · W4 문서 SSO(G-18 · D-524 앱 DB 역할 · G-24 D-525).
+W2 끝(아래 실측 · 커밋). 다음 회전은 `goal.md` §3.1 **W3 대시보드** — 개발3 을 §5 프롬프트로 기동한다:
+RPT 9 화면(RPT-010~080 대시보드 8 + RPT-130 데이터 질의 · 대메뉴 이름 「대시보드」 D-505) · `dashboard.py`(8 함수 · 화면을 열 때 집계 · 캐시 테이블 없음 · D-512) · `ai.py`(키 없으면 `ai.NotConfigured` → 화면에 명시 · 호출마다 `sys_ai_call_log` · G-17) · `dataquery.py`(D-513 검증 — SELECT 한 문장 · 허용 뷰 `v_dq_*` 만 · 부서 제한 · 로그 `data_query_log` · G-16). 차트는 인라인 SVG + 같은 숫자의 표(`dataviz` 규칙 · 색은 CSS 토큰).
+개발1 은 W3 에서 공통코드 · 로그 화면 보강(SYS-030 · SYS-040 에 AI 호출 로그 · 데이터 질의 로그 탭) — 개발3 공표 뒤.
+끝나면 QA1 · QA2(G-15 독립 재계산) · QA3(G-16 · G-17 우회 시도) → 결함 수정 → `make gate-full` → 커밋. 그 뒤 W4 문서 SSO(DOC 2 · `sso.py` · G-18 · D-524 앱 DB 역할 · G-24 D-525).
 
-사람이 할 것(루프는 기다리지 않는다): **D-525** Docker Desktop 을 켜고 `docker compose up -d --build` → `/health` 200 (G-24) · **D-526** HOME-030 「개인 추가 알림」의 뜻 · D-516~D-520.
+사람이 할 것(루프는 기다리지 않는다): **D-525** Docker Desktop → `docker compose up -d --build` → `/health` 200 · **D-526** HOME-030 「개인 추가 알림」 · **D-516** ERP 엑셀 열 구성(지금은 COL-010 열 매핑이 흡수) · D-517~D-520 · `LCOMFINE_OPENAI_API_KEY`(없으면 RPT-130 은 「키 없음」을 그대로 보인다 — G-17).
+
+## 2026-10-22 W2 수금 실측 (개발3 · 개발1 → QA 3 → 결함 수정 → gate-full)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| W2 화면 · 기능 | COL 7 화면 · 기능 11 등록 → 라우트 · 표식 **120/136** · placeholder **11**(RPT 9 · DOC 2 = W3/W4) · 쓰기 4(`POST /col/uploads` · `/col/customer-map` · `/{id}` · `/{id}/delete`) — 수금 금액을 고치는 엔드포인트 없음 | `make check-trace` · `make check-routes` · `tools/check_data.py` G-12 정적 |
+| 회차 교체 (G-12) | 같은 기간 재업로드 → 새 회차 `반영` · 이전 `교체` + `replaced_by` · 이전 행 보존 · 기간마다 반영 1 · `v_dq_collections` 는 반영 회차만 | `tools/check_data.py` G-12 (검사 4) |
+| 오류 행 · 미매핑 (G-13) | 날짜 · 금액 · 누락 · 미매핑 행이 `error` + 원문으로 보존 · 반영 · COL-040 · COL-050 에서 제외 · COL-030 미매핑 목록 → 매핑 뒤 반영 회차만 재해석(「다시 해석 N · 그중 반영 M」) · `erp_upload_row` 쓰기 = parsed · error 만 | `tools/check_data.py` G-13 (검사 5) |
+| 출하 대비 수금 (G-14) | COL-070 = QA2 독립 SQL(확정 출하 월 × 반영 회차 매핑 행 월) · 매핑 전 출하만 · ERP 만 · 미매핑 어디에도 없음 | `tools/check_data.py` G-14 (검사 4) |
+| 알림 9종 (G-11) | `erp_upload_error` → AC 1행 · dedupe · 회차 교체 · 재해석 오류 0 이면 **누가 바꿨든 닫힘**(`notify.resolve_by_link` · Ruling 27 · DEF-QA1-006) → 9종 전부 PASS | `tools/check_data.py` G-11 (검사 13) · `tests/test_arch_notify.py` |
+| TRK · HOME 연결 | TRK-030 수금 칸 = `stats.customer_receivable`(미수집 / 미확정 (D-516) / ok · ERP 업로드 기준일) · TRK-020 준수율 = `stats.due_compliance(period)`(D-804) · HOME 회계부 「90일 초과 미수」 = `stats.aging` | `tests/test_dev1_trk.py` · `test_dev1_home.py` · QA1 사람 판정 표(W2-4) |
+| 오류 계약 · 권한 | 기능 120 · 사례 236 어긋남 0 · 5xx 0 · 422 160 전부 항목을 짚음 · 화면 67×8 200/403 전수 · 쓰기 62×8 R/없음 361 → 403 · COL 업로드 이상 파일 11 종 → 422 · 셀 속 `<script>` · DDE · 경로 글자는 글자로만(화면 이스케이프 · **xlsx 내려받기 수식 셀 0** DEF-QA3-004) · 파일을 디스크에 쓰지 않음 | `tools/check_screens.py`(rc 0) · `make check-security`(rc 3 = G-16 · 17 · 18 W3/W4) |
+| 감사 로그 (G-22) | COL 쓰기 표본 8 각 1행 · preview · 422 · 403 · 404 → 0행 | `make check-security` G-22 |
+| QA 리포트 | 「W2 수금」 절 3종 — QA1 결함 1(해소) · QA2 결함 1(해소) · QA3 결함 1(해소) · **치명 0** · 열림 1 = DEF-QA3-003(경미 · D-524 · W4) · E2E 캡처 **32**(W1 16 + W2 16 · 1280 · 390 · 가로 스크롤 0) | `outputs/qa{1,2,3}-*.md` · `outputs/e2e/` |
+| 계약 · 결정 | `interfaces.md` §9 코드대로(`stats` 7 · `erp_upload` 11 · `notify.resolve_by_link`) · F-TRK-011 · 021 · 031 문장(Ruling 26: 진행 · 단계 조회 SQL 은 라우터 · 수치 집계만 `stats`) · D-608(개발1) · D-802~D-804(개발3) · Ruling 27 | `contracts/` · `decisions.md` |
+| pytest | **300 passed · 0 failed** (테스트 파일 39) | `uv run pytest -q` |
+| 시드 멱등 · 백업 | 시드 재실행 diff 0(테이블 46 · 행 313 — `seed_dev3` 열 매핑 7 포함) · 백업 → 복구 테이블 48 · 행 56,635 일치 | `make gate-full` G-21 · G-23 |
+| 게이트 판정표 | **PASS 17 · FAIL 6 · 미검증 0 · BLOCKED 1** / 24 — W1 + W2 범위(G-01 · 04~14 · 19~23) 전부 PASS. FAIL 6 = G-02 · 03(RPT · DOC 몫) · G-15(W3) · G-16 · 17(W3) · G-18(W4) · BLOCKED G-24(D-525). gate-full 종료코드 6 | `make gate-full` |
+| 커밋 | `W2 수금 끝: COL 7 · erp_upload · stats 공표 · TRK 연결 · QA 3 W2 절 · 결함 3 해소 · gate-full PASS 17` (이 커밋) | `git log --oneline -1` |
+
+`make gate-full` 요약 (2026-10-22 09:26): 빌드 전제 PASS(pytest 300) · G-01 · G-04~G-14 · G-19~G-23 PASS · G-02 FAIL(고아 16 = RPT 10 · DOC 6) · G-03 FAIL(placeholder 11) · G-15~G-18 FAIL(W3/W4 미구현) · G-24 BLOCKED(D-525) → PASS 17 · FAIL 6 · BLOCKED 1 · 종료코드 6.
+
+알아둘 것(W2): 알림을 「처리」(`handle_by_link` · 그 부서 사람이 처리 화면에서)와 「해소」(`resolve_by_link` · 사실이 사라짐 · 부서 무관)로 나눈다 — ADM 이 올린 회차의 회계부 알림이 남는 결함(DEF-QA1-006)이 그 경계였다. xlsx 내려받기는 글자 셀을 `data_type="s"` 로 고정한다(수식 주입).
 
 ## 2026-10-21 W1 핵심 흐름 실측 (개발 3 → QA 3 → 결함 수정 → gate-full)
 

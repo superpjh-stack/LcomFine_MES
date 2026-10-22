@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% import "col/_c.html" as c %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">반영 회차의 오류 없는 행만 · 거래처는 <a href="{{ nav.path_of('COL-030') }}">거래처 코드 매핑</a>으로 잇는다. 어음은 만기일과 만기 도래 여부를 함께 보인다. 기간은 일자(양끝 포함). 열 구성은 {{ ui.undecided(decision) }} — 매핑되지 않은 열은 비어 있다.</p>
+  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+        {% for cu in customers %}<option value="{{ cu.id }}"{% if (cu.id | string) == form.customer %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span>수단</span>
+      <select name="method"><option value="">전체</option>
+        {% for m in methods %}<option value="{{ m.method }}"{% if m.method == form.method %} selected{% endif %}>{{ m.method }}{% if m.code_name %} · {{ m.code_name }}{% endif %}</option>{% endfor %}
+      </select></label>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">조회</button>
+      {% if data %}<a class="btn" href="?date_from={{ form.date_from }}&amp;date_to={{ form.date_to }}&amp;customer={{ form.customer }}&amp;method={{ form.method | urlencode }}&amp;format=xlsx">엑셀</a>{% endif %}
+    </div>
+  </form>
+</section>
+{% if data %}
+<section class="panel">
+  <div class="kpis">
+    {{ ui.kpi("행", data.total.rows | num if data.total.rows else none) }}
+    {{ ui.kpi("매출액 합", data.total.sales_amount | num if data.total.sales_amount is not none else none, "" if data.fields.sales_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")") }}
+    {{ ui.kpi("수금액 합", data.total.collected_amount | num if data.total.collected_amount is not none else none, "" if data.fields.collected_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")") }}
+  </div>
+</section>
+<section class="panel">
+  <h2>수단별 수금액</h2>
+  {{ ui.svg_bar(series) }}
+  {% if data.by_method %}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>수단</th><th class="num">행</th><th class="num">수금액</th></tr></thead>
+    <tbody>{% for m in data.by_method %}<tr><td>{{ m.method | txt("(수단 없음)") }}</td><td class="num">{{ m.rows | num }}</td><td class="num">{{ m.collected_amount | num }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+<section class="panel panel--grid">
+  {% if data.rows %}
+  <div class="grid-wrap grid-wrap--tall"><table class="grid">
+    <thead><tr><th>일자</th><th>ERP 거래처코드</th><th>거래처</th><th class="num">매출액</th><th class="num">수금액</th><th class="num">잔액</th><th>수단</th><th>어음 만기</th><th>만기 도래</th><th>회차</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+    <tr data-erp-code="{{ r.erp_code }}" data-customer="{{ r.customer_id | txt('') }}">
+      <td>{{ r.txn_date | dt }}</td><td><code>{{ r.erp_code }}</code></td><td>{{ r.customer_name | txt("미매핑") }}</td>
+      <td class="num">{{ r.sales_amount | num }}</td><td class="num">{{ r.collected_amount | num }}</td><td class="num">{{ r.balance_amount | num }}</td>
+      <td>{{ r.method | txt }}</td><td>{{ r.bill_due_date | dt }}</td>
+      <td>{% if r.bill_due == "도래" %}<span class="chip chip--warn">도래</span>{% elif r.bill_due == "예정" %}<span class="chip chip--muted">예정</span>{% else %}-{% endif %}</td>
+      <td><code>{{ r.batch_no }}</code></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

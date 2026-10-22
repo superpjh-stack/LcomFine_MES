@@ -82,6 +82,23 @@ def test_handle_by_link_closes_dept_rows():
             raise _Rollback
 
 
+def test_resolve_by_link_closes_all_depts():
+    """DEF-QA1-006 · Ruling 27 — 사실이 사라진 알림은 바꾼 사람의 부서와 무관하게 닫힌다(ADM 이 회차를 교체해도 AC 알림이 닫힌다)."""
+    link = f"/col/upload-history?batch={_key()}"
+    adm = rbac.load_user("admin")
+    with pytest.raises(_Rollback):
+        with conn.tx() as cur:
+            notify.emit(cur, "erp_upload_error", link=link, dedupe_key=_key(), text="업로드 오류 (예시)")   # → AC
+            notify.emit(cur, "shipment_confirmed", link=link, dedupe_key=_key(), text="확정 (예시)")       # → SL · AC
+            assert notify.handle_by_link(cur, link, adm) == 0          # ADM 수신 행은 없다 — 부서 기준으로는 닫히지 않는다
+            assert notify.resolve_by_link(cur, link, adm) == 3         # 사실 기준 — 전부 닫힌다
+            cur.execute("select count(*) as n from notification where link = %s and handled_at is null", (link,))
+            assert cur.fetchone()["n"] == 0
+            cur.execute("select distinct handled_by from notification where link = %s", (link,))
+            assert [r["handled_by"] for r in cur.fetchall()] == [adm.login_id]
+            raise _Rollback
+
+
 def test_unread_dept_and_setting():
     key = _key()
     ac = rbac.load_user("ac")

@@ -1,10 +1,27 @@
 # tests/test_dev1_home.py — HOME 내 할 일 · 알림함 · 알림 설정 — 실제 DB · 시드 뒤 · 만든 행은 지운다
+from datetime import date
+
 import pytest
 
-from lcomfine.app import notify
+from lcomfine.app import nav, notify, stats
 from lcomfine.app.routers.home import CARDS
 from lcomfine.db import conn
-from test_dev1_common import cleanup, client, login, make_customer, make_item, make_request, make_user, uniq
+from test_dev1_common import Erp, cleanup, client, login, make_customer, make_item, make_request, make_user, uniq
+
+
+def over90_card(html: str) -> str:
+    """HOME-010 회계부 「90일 초과 미수」 카드 조각."""
+    assert 'data-card="90일 초과 미수"' in html
+    return html.split('data-card="90일 초과 미수"')[1].split("</div>")[0]
+
+
+def over90_expected() -> str:
+    """카드가 보여야 하는 값 — stats 그대로: 반영 회차 없음 = 미수집 · 매출액 열 미매핑 = 미확정 (D-516) · 그 밖 = len(aging["over90"])."""
+    asof = stats.erp_asof()
+    if asof is None:
+        return "미수집"
+    a = stats.aging(asof)
+    return f"미확정 ({a['undecided']})" if a["undecided"] else f"{len(a['over90']):,}"
 
 
 @pytest.fixture
@@ -38,7 +55,7 @@ def test_my_work_cards_due_and_today(p):
     r = client("admin").get("/")                              # 전산 관리자 — 전 부서 카드 (D-601)
     assert all(f'data-card="{cd.title}"' in r.text for cards in CARDS.values() for cd in cards)
     r = client("ac").get("/")
-    assert "90일 초과 미수" in r.text and "미수집" in r.text
+    assert over90_expected() in over90_card(r.text)                      # 집계는 stats (W2)
 
 
 @pytest.mark.fn("F-HOME-021")
@@ -106,3 +123,38 @@ def test_notification_settings_view(p):
     # 수신하는 이벤트가 없는 부서(전산 관리자) — 칸 없음 · 저장 버튼 없음
     r = client("admin").get("/home/notification-settings")
     assert r.status_code == 200 and "수신하는 알림이 없다" in r.text and 'name="events"' not in r.text
+
+
+@pytest.mark.fn("F-HOME-011")
+def test_ac_over90_card_from_stats_aging(p):
+    """회계부 「90일 초과 미수」 = len(stats.aging(stats.erp_asof())["over90"]) — 반영 회차가 없으면 `미수집` · 링크 COL-060 ·
+    (예시) ERP 행(기준일에서 90일 넘게 지난 매출)을 올리면 그 거래처가 센다 · 「업로드 오류 행」 카드에 미처리 알림 건수. 끝에 지운다."""
+    cu = make_customer(p)
+    erp = Erp(p, cu["id"])
+    try:
+        c = client("ac")
+        r = c.get("/")
+        assert r.status_code == 200
+        seg = over90_card(r.text)
+        assert over90_expected() in seg and f'href="{nav.path_of("COL-060")}"' in seg
+        if stats.erp_asof() is None:
+            assert "미수집" in seg and "반영된 ERP 업로드 회차가 없다" in seg
+        erp.map_code()
+        erp.upload(date(1985, 1, 1), date(1985, 1, 31), [(erp.code, "1984-09-01", 500, 0)])    # 기준일 1985-01-31 에서 152일 전
+        asof = stats.erp_asof()
+        a = stats.aging(asof)
+        r = c.get("/")
+        seg = over90_card(r.text)
+        assert over90_expected() in seg and "ERP 업로드 기준일" in seg
+        if not a["undecided"]:
+            assert cu["id"] in [row["customer_id"] for row in a["over90"]]
+            assert f'kpi__value num">{len(a["over90"]):,}</strong>' in seg
+        else:
+            assert "미확정 (D-516)" in seg
+        err = r.text.split('data-card="업로드 오류 행"')[1].split("</div>")[0]
+        n_alerts = conn.q1("""select count(*) as n from notification
+                               where event_key = 'erp_upload_error' and to_role = 'AC' and handled_at is null""")["n"]
+        assert f"미처리 알림 {n_alerts}건" in err
+        assert 'data-card="ERP 업로드 오류' not in r.text                    # 알림 건수는 따로 카드를 두지 않는다(중복)
+    finally:
+        erp.close()

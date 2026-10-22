@@ -1,4 +1,4 @@
-# tests/test_qa1_screens.py — QA1 G-02 · G-03 · G-19 (tools/check_screens.py 의 검사를 그대로 부른다)
+# tests/test_qa1_screens.py — QA1 G-02 · G-03 · G-19 (tools/check_screens.py 의 검사를 그대로 부른다 · W2 부터 COL 이 범위에 든다 — COL 표식은 test_qa1_col.py)
 # 기대값은 계약(function-list.md · permission-matrix.md · api-contract.md)에서 끌어온다. 시드 계정 8 로 로그인만 하고 아무것도 쓰지 않는다
 # (쓰기 403 전수는 빈 본문 · 없는 경로 키로만 두드린다 — W 부서도 404/422 로 끝나 행이 생기지 않는다).
 import pytest
@@ -33,7 +33,7 @@ def _assert_rows(rep: cs.Report, gate: str | None = None) -> None:
                 "F-SYS-014", "F-SYS-022", "F-SYS-032", "F-SYS-041")
 def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
     """화면 67 × 부서 8: 칸 W/R → 200 · 칸 없음 → 403(브라우저 · JSON) + 문장 「이 화면을 볼 권한이 없습니다」(api-contract §1)
-    · W1 화면 49 placeholder 0 · 메뉴 = 권한 칸 · DB sys_permission = 계약 260 칸."""
+    · 범위(W1·W2) 화면 56 placeholder 0 (DOC · RPT 11 은 W3 · W4) · 메뉴 = 권한 칸 · DB sys_permission = 계약 260 칸."""
     app, clients = world
     rep = cs.Report()
     cs.check_screens(app, clients, rep)
@@ -42,7 +42,7 @@ def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
 
 
 def test_g02_w1_functions_route_and_marks(world):
-    """W1 기능 109 — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
+    """범위 기능 120(W1 109 + W2 COL 11 — DOC · RPT 제외) — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
     app, _ = world
     rep = cs.Report()
     cs.check_functions(app, rep)
@@ -57,7 +57,7 @@ def test_g02_w1_functions_route_and_marks(world):
                 "F-QC-021", "F-QC-022", "F-INV-021", "F-INV-022", "F-INV-031", "F-SHP-011", "F-SHP-012", "F-SHP-021", "F-SHP-023",
                 "F-SYS-011", "F-SYS-012", "F-SYS-013", "F-SYS-021", "F-SYS-031")
 def test_g19_write_routes_require_fn_static(world):
-    """쓰기 라우트 58 의 의존성이 require_fn(<그 기능 ID>) 하나다 · 조회 라우트 51 은 require_screen(화면) 또는 require_fn(기능) (정적 · G-19)."""
+    """쓰기 라우트 62(W1 58 + COL 4) 의 의존성이 require_fn(<그 기능 ID>) 하나다 · 조회 라우트 58 은 require_screen(화면) 또는 require_fn(기능) (정적 · G-19)."""
     app, _ = world
     rep = cs.Report()
     cs.check_functions(app, rep)
@@ -66,7 +66,7 @@ def test_g19_write_routes_require_fn_static(world):
 
 @pytest.mark.fn("F-HOME-022")
 def test_g19_write_58_x_8_403_sweep(world):
-    """쓰기 58 × 계정 8 POST(빈 본문 · 없는 경로 키): 칸 R · 없음 → 403 「이 기능을 실행할 권한이 없습니다」 · W 부서는 401/403/5xx 아님
+    """쓰기 62 × 계정 8 POST(빈 본문 · 없는 경로 키): 칸 R · 없음 → 403 「이 기능을 실행할 권한이 없습니다」 · W 부서는 401/403/5xx 아님 (COL 4 = 회계부 · 전산 관리자 W)
     · 권한 예외 F-HOME-022 는 칸 R 부서가 통과 (api-contract §4)."""
     _, clients = world
     rep = cs.Report()

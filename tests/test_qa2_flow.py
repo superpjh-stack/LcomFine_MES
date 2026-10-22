@@ -10,7 +10,7 @@ import pytest
 
 from tools import check_data as cd
 
-#: decisions.md D-511 알림 9종 — 이벤트 키 → 수신 부서 (W1 에서 발생시킬 수 있는 8종 · erp_upload_error 는 W2)
+#: decisions.md D-511 알림 9종 — 이벤트 키 → 수신 부서 (업무 흐름이 내는 8종 · erp_upload_error(AC) 는 tests/test_qa2_col.py)
 D511 = {
     "request_created": {"PR", "DS"}, "order_issued": {"PR"}, "material_received": {"PR"}, "product_received": {"PR"},
     "judged": {"SH", "SL"}, "shipment_confirmed": {"SL", "AC"}, "due_d3_unshipped": {"SL", "PR"}, "shipment_ordered": {"SH"},

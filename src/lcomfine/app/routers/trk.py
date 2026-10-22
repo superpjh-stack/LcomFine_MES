@@ -1,8 +1,10 @@
 """TRK 통합 조회 — 주문 진행 조회(TRK-010) · 납기 현황(TRK-020) · 거래처 종합 조회(TRK-030). 담당 개발1.
 
 **읽기만 한다** — 어떤 업무 테이블에도 쓰지 않는다(G-05). 결과를 저장하지 않고 화면을 열 때마다 센다.
-계약은 「집계 SQL 은 `stats` 뿐」이지만 `stats` 는 개발3 소유이고 W1 에 아직 공표되지 않아 W1 은 이 파일 안의 조회 SQL 로 보인다
-(w1-dev1 지시). `stats` 가 공표되면 옮긴다(progress-dev1 §3). 수금 칸은 W2 `stats.customer_receivable` 로 붙인다 — 그때까지 `미수집`.
+계약은 「집계 SQL 은 `stats` 뿐」(Ruling 23) — W2 에 개발3 이 공표한 것은 그대로 쓴다:
+  TRK-020 납기 준수율 = `stats.due_compliance(period)`(산식 가설 D-804) · TRK-030 수금·미수 칸 = `stats.customer_receivable(cid)` ·
+  ERP 업로드 기준일 = `stats.erp_asof()`(customer_receivable 의 `asof` 와 같다).
+의뢰별 **진행 · 단계** 조회(`progress`)는 개발3 이 공표하지 않아 이 파일의 조회 SQL 로 남는다(D-607 · progress-dev1 §3-2).
 
 단계 막대 = 의뢰 → 지시 → 생산 → 검사 → 제품 입고 → 출하 (정본 TRK-010). 각 단계의 수량 · 날짜:
   의뢰 = 의뢰 수량 · 의뢰일 / 지시 = 취소 아닌 지시 수량 합 · 첫 작성일 / 생산 = 생산일보 양품 합 · 마지막 일자 /
@@ -12,11 +14,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
-from .. import nav, rbac, templating
+from .. import nav, rbac, stats, templating
 from .bas import bad, choice, like, ref_id, s
 
 router = APIRouter()
@@ -150,9 +154,15 @@ def bucket_of(r: dict) -> str:
 
 @router.get(nav.path_of("TRK-020"), response_class=HTMLResponse)
 def due(request: Request, bucket: str | None = None, customer: str | None = None, item: str | None = None,
-        user: rbac.User = rbac.require_screen("TRK-020")):
-    """F-TRK-021 — 납기 임박(D-7 · D-3) · 납기 지연 · 거래처·제품별. 지연 건은 어느 단계에서 멈췄는지 함께 보인다."""
+        period: str | None = None, user: rbac.User = rbac.require_screen("TRK-020")):
+    """F-TRK-021 — 납기 임박(D-7 · D-3) · 납기 지연 · 거래처·제품별. 지연 건은 어느 단계에서 멈췄는지 함께 보인다.
+    납기 준수율 수치는 `stats.due_compliance(period)`(W2 · Ruling 23) — `period` = `YYYY-MM`(기본 이번 달) · 분모 0 이면 `미수집`."""
     b = choice(bucket, "구분", BUCKETS, required=False)
+    ym = s(period, "조회 기간") or date.today().strftime("%Y-%m")          # 준수율 기간 — 기본 이번 달
+    try:
+        compliance = stats.due_compliance(ym)                              # 집계 SQL 은 stats 뿐 (Ruling 23)
+    except ValueError:
+        raise bad("조회 기간", f"YYYY-MM 형식으로 입력해 주세요 — {ym}") from None
     request_no = request.query_params.get("request")
     where, params = _filters(None, customer, item, request_no)
     rows = progress(where + " and r.status <> '취소'", params, order="r.due_date, r.id", limit=2000)
@@ -179,14 +189,15 @@ def due(request: Request, bucket: str | None = None, customer: str | None = None
                              {"rows": shown, "counts": counts, "buckets": BUCKETS, "bucket": b or "",
                               "by_customer": sorted(by_customer.values(), key=lambda g: g["code"]),
                               "by_item": sorted(by_item.values(), key=lambda g: g["code"]),
-                              "customers": _customers(), "items": _items(),
-                              "form": {"customer": customer or "", "item": item or ""}}, screen_id="TRK-020")
+                              "customers": _customers(), "items": _items(), "compliance": compliance, "period": ym,
+                              "form": {"customer": customer or "", "item": item or "", "period": ym}}, screen_id="TRK-020")
 
 
 # ── TRK-030 거래처 종합 조회 ────────────────────────────────────────────
 @router.get(nav.path_of("TRK-030"), response_class=HTMLResponse)
 def customers(request: Request, customer: str | None = None, user: rbac.User = rbac.require_screen("TRK-030")):
-    """F-TRK-031 — 거래처 하나의 진행 중 주문 · 가용 재고(그 거래처 제품) · 최근 출하 · 수금·미수(W2 — 미수집)."""
+    """F-TRK-031 — 거래처 하나의 진행 중 주문 · 가용 재고(그 거래처 제품) · 최근 출하 · 수금·미수(`stats.customer_receivable` ·
+    ERP 업로드 기준일 표시). 미수는 회계부가 올린 ERP 데이터를 그대로 보여 주고 고치지 않는다."""
     cid = ref_id(customer, "거래처", required=False)
     picked = None
     data: dict = {}
@@ -214,8 +225,9 @@ def customers(request: Request, customer: str | None = None, user: rbac.User = r
                  from shipment_order so left join production_request r on r.id = so.request_id
                 where so.customer_id = %s
                 order by coalesce(so.confirmed_at, so.created_at) desc limit 20""", (cid,))
-        asof = conn.q1("select max(period_to) as d from erp_upload_batch where status = '반영'")["d"]
-        data = {"open_rows": open_rows, "stock": stock, "shipments": shipments, "erp_asof": asof}
+        receivable = stats.customer_receivable(cid)          # 집계 SQL 은 stats 뿐 — asof = stats.erp_asof()
+        data = {"open_rows": open_rows, "stock": stock, "shipments": shipments, "receivable": receivable,
+                "erp_asof": receivable["asof"]}
     return templating.render(request, "trk/customers.html",
                              {"customers": _customers(), "picked": picked, **data,
                               "form": {"customer": customer or ""}}, screen_id="TRK-030")

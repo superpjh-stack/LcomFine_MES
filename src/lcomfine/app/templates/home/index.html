@@ -14,7 +14,7 @@
     {% for c in g.cards %}
     <div class="kpi" data-card="{{ c.title }}">
       <span class="kpi__label">{% if c.href %}<a href="{{ c.href }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}</span>
-      <strong class="kpi__value num">{{ c.count | num if c.count is not none else "미수집" }}</strong>
+      <strong class="kpi__value num">{% if c.count is none %}미수집{% elif c.count is string %}<span class="undecided">{{ c.count }}</span>{% else %}{{ c.count | num }}{% endif %}</strong>
       <span class="kpi__note">{{ c.screen.name }} <code>{{ c.screen.screen_id }}</code>{% if c.note %} · {{ c.note }}{% endif %}{% if not c.href %} · 이 부서는 열 수 없는 화면{% endif %}</span>
     </div>
     {% endfor %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% import "col/_c.html" as c %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">회차 목록(기간 · 건수 · 오류 건 · 올린 사람). 현재 반영된 회차는 <span class="chip chip--ok">반영</span>, 같은 기간을 다시 올려 바뀐 회차는 <span class="chip chip--muted">교체됨</span> — 교체된 회차의 행은 지우지 않고 그대로 남는다. 업로드는 <a href="{{ nav.path_of('COL-010') }}">ERP 수금현황 업로드</a>.</p>
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.select("status", "상태", [("반영", "반영"), ("교체", "교체됨")], form.status) }}
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+<section class="panel">
+  <div class="kpis">
+    {{ ui.kpi("회차 전체", rows | length if rows else none) }}
+    {{ ui.kpi("반영", (rows | selectattr("status", "equalto", "반영") | list | length) if rows else none) }}
+    {{ ui.kpi("교체됨", (rows | selectattr("status", "equalto", "교체") | list | length) if rows else none) }}
+  </div>
+  {{ c.batch_table(rows, nav.path_of("COL-020")) }}
+</section>
+{% if shown %}
+<section class="panel">
+  <h2>회차 <code>{{ shown.batch_no }}</code> 오류 행 — {{ shown.period_from | dt }} ~ {{ shown.period_to | dt }} · {{ shown.round_no }}회차 · {% if shown.status == "반영" %}<span class="chip chip--ok">반영</span>{% else %}<span class="chip chip--muted">교체됨</span>{% if shown.replaced_by_no %} → <code>{{ shown.replaced_by_no }}</code>{% endif %}{% endif %}</h2>
+  <p class="muted">오류·미매핑 {{ shown.error_count }}행 / 읽은 {{ shown.row_count }}행 · 파일 {{ shown.source_file }} · {{ shown.created_by | txt }} · {{ shown.uploaded_at | dt }}.
+    {% if shown.unmapped_count %}미매핑 거래처 코드 행 {{ shown.unmapped_count }} — <a href="{{ nav.path_of('COL-030') }}">거래처 코드 매핑</a>에서 매핑하면 {% if shown.status == "반영" %}이 회차의 행이 다시 반영된다{% else %}교체된 회차는 이력이라 그대로 둔다{% endif %}.{% endif %}</p>
+  {{ c.row_table(error_rows, fields, cmap, limit) }}
+</section>
+{% endif %}
+{% endblock %}

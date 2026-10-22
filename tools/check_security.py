@@ -6,6 +6,8 @@
   · G-19 권한 403 전수 · G-20 세션 상태 · G-21 비밀 · G-22 변경 감사 로그 를 실제 요청으로 잰다.
   · G-24 는 compose 문법 · Dockerfile 정적 검사만(컨테이너는 띄우지 않는다 — gate.py 가 G-24 를 따로 판정한다).
   · `X-nn` 행은 조용한 실패 사냥(DB 끊김 · 이상한 입력)이다 — 게이트 번호가 아니라 gate.py 는 읽지 않지만 FAIL 이면 종료코드에 센다.
+  · W2 수금(COL): 화면 7 × 부서 8 · 쓰기 4 × 부서 8 · 비활성/로그아웃 세션의 COL 401 · 쓰기 4 의 변경 로그 · 업로드 보안(X-05~X-08) 을 더 잰다.
+    업로드 회차는 1985년 기준 기간(다른 테스트는 1990~1993 · 자기 접두) · 파일 이름 `q3…` · 끝에 지운다. 열 매핑은 **바꾸지 않는다**(지금 매핑의 열 이름으로 파일을 만든다).
 
 계정: 부서 8 의 **임시 계정**(접두 `q3…` · 난수 비밀번호 · 이름 `(예시)`)을 만들어 쓰고 끝나면 지운다. 시드 계정(sl pr sh ds ac st ex admin)은
 로그인 확인에만 쓴다 — 시드 계정의 상태를 바꾸면 `session_epoch` 트리거가 같은 DB 를 쓰는 다른 검사·테스트의 세션까지 끊기 때문이다.
@@ -24,6 +26,7 @@ warnings.filterwarnings("ignore", message="Using `httpx` with `starlette.testcli
 
 import importlib
 import inspect
+import io
 import json
 import os
 import re
@@ -32,8 +35,10 @@ import subprocess
 import sys
 import time
 import uuid
+import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +166,7 @@ class Lab:
             cur.execute("delete from notification where dedupe_key ilike %s or message ilike %s or dedupe_key = any(%s)",
                         (f"%{self.prefix}%", f"%{self.prefix}%", [f"request_created:{n}" for n in reqs]))
             cur.execute("delete from production_request where item_id in (select id from item where item_code ilike %s)", (like,))
+            cleanup_col(cur, like)
             cur.execute("delete from standard where standard_code ilike %s", (like,))
             cur.execute("delete from location where warehouse_id in (select id from warehouse where warehouse_code ilike %s)", (like,))
             cur.execute("delete from location where location_code ilike %s", (like,))
@@ -689,6 +695,13 @@ grab("home_html", c.get("/", headers={"accept": "text/html"}, follow_redirects=F
 grab("write", c.post("/bas/items", data={"item_code": "x", "item_name": "y", "item_type": "제품"}))
 grab("login_page", c.get("/login", headers={"accept": "text/html"}))
 grab("login_post", c.post("/login", data={"login_id": "x", "password": "y"}))
+import io
+from openpyxl import Workbook
+wb = Workbook(); ws = wb.active; ws.append(["a", "b"]); ws.append(["1", "2"]); buf = io.BytesIO(); wb.save(buf)
+grab("col_upload", c.post("/col/uploads", data={"action": "apply", "period_from": "1985-01-01", "period_to": "1985-01-31"},
+                          files={"file": ("q3 db-down (예시).xlsx", buf.getvalue(),
+                                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}))
+grab("col_screen", c.get("/col/collections"))
 print("QA3JSON" + json.dumps(out, ensure_ascii=False))
 """
 
@@ -712,7 +725,8 @@ def check_db_down(lab: Lab) -> list[Result]:
     out.append(res("X-01", "DB 끊김 /health 503", h["status"] == 503 and not any(v in h["body"] for v in values),
                    f"/health {h['status']} · 본문에 접속 문자열 {'있음' if any(v in h['body'] for v in values) else '없음'}"))
     for key, label in (("screen_json", "화면 GET(JSON)"), ("screen_html", "화면 GET(브라우저)"), ("home_html", "메인 GET(브라우저)"),
-                       ("write", "쓰기 POST"), ("login_page", "로그인 화면"), ("login_post", "로그인 POST")):
+                       ("write", "쓰기 POST"), ("login_page", "로그인 화면"), ("login_post", "로그인 POST"),
+                       ("col_upload", "COL 업로드 POST(multipart)"), ("col_screen", "COL 화면 GET")):
         g = got[key]
         silent = g["status"] < 400 and key != "login_page"
         if key == "login_page":   # 퀵 로그인 패널이 DB 를 읽는다 — 200 이면 DB 를 읽지 않은 것이므로 「미수집」 류 거짓 값이 없어야 한다
@@ -844,16 +858,53 @@ def check_docker() -> list[Result]:
 
 
 # ── E2E 캡처 ────────────────────────────────────────────────────────────
+E2E_TAG = "q3e2e"                                  # 브라우저 한 바퀴가 만든 회차 · 매핑의 접두 — 끝에 지운다
+E2E_PERIOD = ("1985-02-01", "1985-02-28")          # 다른 테스트와 겹치지 않는 해
+E2E_W2_AC = ("/col/uploads", "/col/upload-history", "/col/customer-map",
+             f"/col/collections?date_from={E2E_PERIOD[0]}&date_to={E2E_PERIOD[1]}", f"/col/receivables?asof={E2E_PERIOD[1]}",
+             f"/col/aging?asof={E2E_PERIOD[1]}", "/col/shipment-vs-collection?ym_from=1984-09&ym_to=1985-02")
+
+
+def _e2e_xlsx(tmp_dir: Path) -> tuple[Path, str, str]:
+    """지금 열 매핑의 열 이름으로 (예시) 수금현황 xlsx 를 임시 폴더에 쓴다 — (경로, 매핑할 ERP 코드, 미매핑 ERP 코드)."""
+    cmap, fields, hdrs = col_map()
+    code_e, code_u = f"{E2E_TAG}-E", f"{E2E_TAG}-U"
+    rows = [col_row(fields, customer_code=code_e, txn_date="1985-02-05", sales_amount="1000", collected_amount="0", method="PM (예시)"),
+            col_row(fields, customer_code=code_e, txn_date="1985-02-20", collected_amount="600", method="PM (예시)", bill_due_date="1985-03-15"),
+            col_row(fields, customer_code=code_u, txn_date="1985-02-21", sales_amount="500")]
+    path = tmp_dir / f"{E2E_TAG} 수금현황 (예시).xlsx"
+    path.write_bytes(xlsx_bytes(hdrs, rows))
+    return path, code_e, code_u
+
+
+def _e2e_cleanup() -> None:
+    from lcomfine.db import conn
+
+    with conn.tx() as cur:
+        cleanup_col(cur, E2E_TAG + "%")
+
+
 def e2e(port: int = 8020) -> int:
-    """앱을 port 에 띄우고(하위 프로세스) Playwright 로 1280 · 390 캡처 + 가로 스크롤 0 확인 → outputs/e2e/."""
+    """앱을 port 에 띄우고(하위 프로세스) Playwright 로 1280 · 390 캡처 + 가로 스크롤 0 확인 → outputs/e2e/.
+    W1 화면 5 + W2: 회계부(ac)가 COL-010 에서 (예시) 엑셀을 **실제로 올리고**(1280 = 1회차 · 390 = 2회차 교체) → COL-020 이력 →
+    COL-030 매핑 등록(1280 에서 한 번) → COL-040 · 050 · 060 · 070, 영업부(sl)가 TRK-030 수금 칸. 만든 회차 · 매핑은 끝에 지운다."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         print("E2E  Playwright 없음 — `uv run --offline --with playwright python tools/check_security.py --e2e` (전역 설치 안 함)")
         return 1
+    import tempfile
     import urllib.request
 
+    from lcomfine.db import conn
+
     E2E_DIR.mkdir(parents=True, exist_ok=True)
+    tmp_dir = Path(tempfile.mkdtemp(prefix="qa3-e2e-"))
+    xlsx_path, code_e, _ = _e2e_xlsx(tmp_dir)
+    cust = conn.q1("select id, customer_code from customer order by id limit 1")       # TRK-030 · 매핑 대상 (시드 거래처)
+    if cust is None:
+        print("E2E  거래처가 없다 — 시드를 먼저 돌린다")
+        return 1
     server = subprocess.Popen([sys.executable, "-m", "uvicorn", "lcomfine.app.main:app", "--host", "127.0.0.1", "--port", str(port)],
                               cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src")), stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL)
@@ -870,13 +921,15 @@ def e2e(port: int = 8020) -> int:
             print("E2E  앱이 뜨지 않았다")
             return 1
         pw = get_settings().seed_password or ""
-        plan = [("admin", p) for p in E2E_PATHS] + [("sl", "/wo/requests"), ("sh", "/shp/orders"), ("pr", "/lot/backward")]
+        plan = ([("admin", p) for p in E2E_PATHS] + [("sl", "/wo/requests"), ("sh", "/shp/orders"), ("pr", "/lot/backward")]
+                + [("ac", p) for p in E2E_W2_AC] + [("sl", f"/trk/customers?customer={cust['id']}")])
         with sync_playwright() as play:
             browser = play.chromium.launch()
             for width in E2E_WIDTHS:
                 for account in sorted({a for a, _ in plan}, key=SEED_ACCOUNTS.index):
                     ctx = browser.new_context(viewport={"width": width, "height": 900})
                     page = ctx.new_page()
+                    page.on("dialog", lambda d: d.accept())          # data-confirm (반영 · 삭제) 는 승인
                     page.goto(base + "/login")
                     page.fill("input[name=login_id]", account)
                     page.fill("input[name=password]", pw)
@@ -885,23 +938,474 @@ def e2e(port: int = 8020) -> int:
                     for acc, path in plan:
                         if acc != account:
                             continue
+                        action, want_text = "", ""
                         resp = page.goto(base + path)
                         page.wait_for_load_state("networkidle")
+                        if account == "ac" and path == "/col/uploads":                       # COL-010 업로드 (apply)
+                            action, want_text = "upload-apply", "반영했습니다"
+                            page.fill("input[name=period_from]", E2E_PERIOD[0])
+                            page.fill("input[name=period_to]", E2E_PERIOD[1])
+                            page.set_input_files("input[name=file]", str(xlsx_path))
+                            page.click("button[name=action][value=apply]")
+                            page.wait_for_load_state("networkidle")
+                        elif account == "ac" and path == "/col/customer-map" and width == E2E_WIDTHS[0]:   # COL-030 매핑 등록
+                            action, want_text = "map-create", "매핑을 등록했습니다"
+                            form = page.locator("form[method=post]").filter(has=page.locator("input[name=erp_code]"))
+                            form.locator("input[name=erp_code]").fill(code_e)
+                            form.locator("input[name=erp_name]").fill(f"{E2E_TAG} ERP 거래처 (예시)")
+                            form.locator("select[name=customer_id]").select_option(str(cust["id"]))
+                            form.locator("button[type=submit]").click()
+                            page.wait_for_load_state("networkidle")
                         sw, iw = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
-                        name = f"{account}{path.replace('/', '_') if path != '/' else '_home'}-{width}.png"
+                        clean = path.split("?")[0]
+                        name = f"{account}{clean.replace('/', '_') if clean != '/' else '_home'}{'-' + action if action else ''}-{width}.png"
                         page.screenshot(path=str(E2E_DIR / name), full_page=True)
-                        ok = resp is not None and resp.status == 200 and sw <= iw and "/login" not in page.url
+                        body = page.content()
+                        ok = (resp is not None and resp.status == 200 and sw <= iw and "/login" not in page.url
+                              and (not want_text or want_text in body))
                         fails += 0 if ok else 1
-                        results.append({"account": account, "path": path, "width": width, "status": resp.status if resp else None,
-                                        "url": page.url.replace(base, ""), "scrollWidth": sw, "innerWidth": iw, "ok": ok, "file": name})
-                        print(f"E2E  {account} {path} @{width}  {'PASS' if ok else 'FAIL'}  status {resp.status if resp else '?'} · scrollWidth {sw} ≤ innerWidth {iw} · {name}")
+                        results.append({"account": account, "path": path, "action": action or None, "width": width,
+                                        "status": resp.status if resp else None, "url": page.url.replace(base, ""),
+                                        "scrollWidth": sw, "innerWidth": iw, "ok": ok, "file": name,
+                                        **({"flash": want_text, "flash_seen": want_text in body} if want_text else {})})
+                        print(f"E2E  {account} {path}{' [' + action + ']' if action else ''} @{width}  {'PASS' if ok else 'FAIL'}  "
+                              f"status {resp.status if resp else '?'} · scrollWidth {sw} ≤ innerWidth {iw}"
+                              f"{' · ' + want_text + (' 보임' if want_text in body else ' 안 보임') if want_text else ''} · {name}")
                     ctx.close()
             browser.close()
     finally:
         server.terminate()
         server.wait(timeout=10)
+        _e2e_cleanup()
+        left = conn.q1("select (select count(*) from erp_upload_batch where source_file ilike %s) as b, "
+                       "(select count(*) from erp_customer_map where erp_code ilike %s) as m", (E2E_TAG + "%", E2E_TAG + "%"))
+        print(f"E2E  정리 — 남은 {E2E_TAG} 회차 {left['b']} · 매핑 {left['m']}")
     (E2E_DIR / "result.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     return fails
+
+
+# ── W2 수금 (COL) ───────────────────────────────────────────────────────
+# 회차는 1985년 기준 기간(개발3 테스트 1990~1993 · QA2 는 자기 접두와 겹치지 않는다) · 파일 이름 · 거래처 · ERP 코드는 전부 `q3<난수>` 접두.
+# 열 매핑(`erp_column_map`)은 전역 설정이라 **바꾸지 않는다** — 지금 저장된 매핑의 열 이름으로 (예시) xlsx 를 만든다.
+COL_PERIOD = (date(1985, 1, 1), date(1985, 1, 31))          # G-22 표본
+COL_PERIOD_ABUSE = (date(1985, 3, 1), date(1985, 3, 31))    # X-05~X-07
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_COL_WRITE_PATTERNS = (r"\bopen\(", r"\.write\(", r"\bPath\(", r"\bos\.", r"\bshutil\b", r"\btempfile\b", r"NamedTemporaryFile",
+                       r"\.save\((?!buf\))")
+
+
+def cleanup_col(cur, like: str) -> None:
+    """이 Lab 이 만든 수금 회차 · 행 · 알림 · 거래처 매핑을 지운다(사용자 login_id · 파일 이름 · ERP 코드가 접두로 시작하는 것)."""
+    from lcomfine.app import erp_upload
+
+    cur.execute("select id from erp_upload_batch where created_by ilike %s or source_file ilike %s", (like, like))
+    ids = [r["id"] for r in cur.fetchall()]
+    if ids:
+        cur.execute("delete from notification where link = any(%s)", ([erp_upload.error_link(i) for i in ids],))
+        cur.execute("delete from erp_upload_row where batch_id = any(%s)", (ids,))
+        cur.execute("delete from erp_upload_batch where id = any(%s)", (ids,))     # replaced_by FK 는 문장 끝에 검사된다
+    cur.execute("delete from erp_customer_map where erp_code ilike %s or customer_id in (select id from customer where customer_code ilike %s)",
+                (like, like))
+
+
+def col_map() -> tuple[dict[str, str], list[str], list[str]]:
+    """지금 저장된 열 매핑 — (항목→열 이름, 매핑된 항목 순서, 그 열 이름). 필수 매핑이 없으면 UploadError 로 검사가 FAIL 한다."""
+    from lcomfine.app import erp_upload
+
+    cmap = erp_upload.column_map()
+    erp_upload.check_map(cmap)
+    fields = [f for f in erp_upload.FIELDS if cmap.get(f)]
+    return cmap, fields, [cmap[f] for f in fields]
+
+
+def col_row(fields: list[str], **vals) -> list:
+    return [vals.get(f) for f in fields]
+
+
+def xlsx_bytes(headers: list, rows: list[list], *, text_formulas: bool = True) -> bytes:
+    """(예시) xlsx — 저장소에 바이너리를 두지 않는다. `=` 로 시작하는 글자는 기본으로 **글자 셀**(ERP 가 값으로 내려준 꼴)로 쓴다.
+    text_formulas=False 면 openpyxl 기본대로 수식 셀이 된다(캐시 값 없음)."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for r in rows:
+        ws.append(r)
+    if text_formulas:
+        for row in ws.iter_rows(min_row=2):
+            for c in row:
+                if isinstance(c.value, str) and c.value.startswith("="):
+                    c.data_type = "s"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def col_post(client, period: tuple[date, date], data: bytes, *, action: str = "apply", name: str = "q3 erp (예시).xlsx",
+             extra: dict | None = None, headers: dict | None = None):
+    form = {"action": action, "period_from": period[0].isoformat(), "period_to": period[1].isoformat(), **(extra or {})}
+    return client.post("/col/uploads", data=form, files={"file": (name, data, XLSX_MIME)}, headers=headers or {})
+
+
+def _counts() -> tuple[int, int, int]:
+    from lcomfine.db import conn
+
+    r = conn.q1("select (select count(*) from erp_upload_batch) as b, (select count(*) from erp_upload_row) as r, "
+                "(select count(*) from notification) as n")
+    return r["b"], r["r"], r["n"]
+
+
+def check_col_access(lab: Lab) -> list[Result]:
+    """COL 화면 7 × 부서 8 — 칸 있으면 200 · 없으면 403 · R 칸에는 쓰기 폼이 없다. COL 쓰기 4 × 부서 8 — W 아닌 부서는 403."""
+    from lcomfine.app import contracts, nav, rbac
+
+    cells = {(sid, rc): lv for sid, rc, lv in contracts.permission_cells()}
+    screens = [sc for sc in nav.SCREENS if sc.screen_id.startswith("COL-")]
+    fns = [f for f in write_functions_routed() if f.id.startswith("F-COL-")]
+    bad, n200, n403, forms = [], 0, 0, 0
+    for r in rbac.roles():
+        c = lab.client(r.code)
+        for sc in screens:
+            lv = cells.get((sc.screen_id, r.code))
+            want = 200 if lv else 403
+            got = c.get(sc.path).status_code
+            if want == 200:
+                n200 += 1
+            else:
+                n403 += 1
+            if got != want:
+                bad.append(f"{sc.screen_id}×{r.code} {got} ({want} 기대)")
+            if lv == "R" and sc.screen_id in ("COL-010", "COL-030"):
+                forms += 1
+                html = c.get(sc.path, headers={"accept": "text/html"}).text
+                if 'enctype="multipart/form-data"' in html or 'name="action" value="map"' in html or 'name="erp_code"' in html:
+                    bad.append(f"{sc.screen_id}×{r.code} R 칸인데 쓰기 폼이 보인다")
+    out = [res("G-19", "COL 화면 7 × 부서 8 (200/403 · R 칸 쓰기 폼 없음)", not bad,
+               f"화면 {len(screens)} × 부서 {len(rbac.roles())} — 200 기대 {n200} · 403 기대 {n403} · R 칸 폼 검사 {forms} · 어긋남 {len(bad)}", bad)]
+    bad2, n403w, nw = [], 0, 0
+    for f in fns:
+        for r in rbac.roles():
+            got = lab.client(r.code).post(concrete(f.path), data={}).status_code
+            if r.code not in f.roles_w:
+                n403w += 1
+                if got != 403:
+                    bad2.append(f"{f.id}×{r.code} {got} (403 기대)")
+            else:
+                nw += 1
+                if got in (401, 403) or got >= 500:
+                    bad2.append(f"{f.id}×{r.code} {got} (W 칸 — 403/401/5xx 아님 기대)")
+    out.append(res("G-19", "COL 쓰기 4 × 부서 8 (R·없음 403)", not bad2 and len(fns) == 4,
+                   f"쓰기 기능 {len(fns)} × 부서 8 — 403 기대 {n403w} · 통과 기대 {nw} (빈 본문 → 422/404) · 어긋남 {len(bad2)}", bad2))
+    return out
+
+
+def check_col_sessions(lab: Lab) -> Result:
+    """회계부 세션 — 비활성(F-SYS-013) 다음 요청부터 COL GET · POST 401 · 로그아웃 뒤 같은 쿠키 COL 401."""
+    admin = lab.client("ADM")
+    lid, pw, uid = lab.make_user("AC", "cac")
+    c = login(lid, pw)
+    a = c.get("/col/uploads").status_code
+    deact = admin.post(f"/sys/users/{uid}/delete").status_code
+    b, bp = c.get("/col/collections").status_code, c.post("/col/customer-map", data={}).status_code
+    lid2, pw2, _ = lab.make_user("AC", "cac2")
+    c2 = login(lid2, pw2)
+    a2 = c2.get("/col/customer-map").status_code
+    c2.post("/logout", follow_redirects=False)
+    d, dp = c2.get("/col/uploads").status_code, c2.post("/col/uploads", data={"action": "preview"}).status_code
+    got = (a, deact, b, bp, a2, d, dp)
+    return res("G-20", "COL 비활성 · 로그아웃 → 401", got == (200, 200, 401, 401, 200, 401, 401),
+               f"AC 전 {a} · 비활성 {deact} → COL-040 GET {b} · 매핑 POST {bp} / 다른 AC 전 {a2} · 로그아웃 → COL-010 GET {d} · 업로드 POST {dp}")
+
+
+def check_col_change_log(lab: Lab) -> list[Result]:
+    """COL 쓰기 4(업로드 apply · 매핑 등록 · 수정 · 삭제) + 열 매핑 저장 → 쓰기 성공마다 sys_change_log 1행 · preview · 422 · 403 · 404 는 0행."""
+    from lcomfine.app import contracts, erp_upload
+    from lcomfine.db import conn
+
+    p = lab.prefix
+    ac, ac_lid = lab.client("AC"), lab.users["AC"][0]
+    cmap, fields, hdrs = col_map()
+    cu = conn.q1("insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id",
+                 (f"{p}cc", f"{p} 거래처 (예시)"))["id"]
+    code_e, code_x = f"{p}E", f"{p}X"
+    rows1 = [col_row(fields, customer_code=code_e, txn_date="1985-01-05", sales_amount="1000", collected_amount="0", method="PM (예시)"),
+             col_row(fields, customer_code=code_e, txn_date="1985-01-20", collected_amount="600", method="PM (예시)"),
+             col_row(fields, customer_code=code_e, txn_date="1985/13/01", sales_amount="1")]          # 날짜 형식 오류
+    rows2 = rows1 + [col_row(fields, customer_code=code_e, txn_date="1985-01-25", collected_amount="100")]   # 날짜 오류 행은 그대로
+    ctx: dict = {}
+    map_before = erp_upload.column_map()
+
+    def c_map():
+        return ac.post("/col/uploads", data={"action": "map", **{f"map_{f}": c for f, c in map_before.items()}})
+
+    def c_apply(rows, name):
+        return col_post(ac, COL_PERIOD, xlsx_bytes(hdrs, rows), name=name)
+
+    cases = [
+        ("열 매핑 저장(같은 값)", "F-COL-011", "/col/uploads", c_map),
+        ("업로드 apply 1회차", "F-COL-011", "/col/uploads", lambda: c_apply(rows1, f"{p} 1회차 (예시).xlsx")),
+        ("업로드 apply 2회차(교체)", "F-COL-011", "/col/uploads", lambda: c_apply(rows2, f"{p} 2회차 (예시).xlsx")),
+        ("매핑 등록(참조 있음)", "F-COL-031", "/col/customer-map",
+         lambda: ac.post("/col/customer-map", data={"erp_code": code_e, "erp_name": f"{p} ERP (예시)", "customer_id": str(cu)})),
+        ("매핑 등록(참조 없음)", "F-COL-031", "/col/customer-map",
+         lambda: ac.post("/col/customer-map", data={"erp_code": code_x, "customer_id": str(cu)})),
+        ("매핑 수정", "F-COL-032", lambda: f"/col/customer-map/{ctx['map_e']}",
+         lambda: ac.post(f"/col/customer-map/{ctx['map_e']}", data={"erp_name": f"{p} ERP 수정 (예시)", "customer_id": str(cu), "use_yn": "Y"})),
+        ("매핑 삭제(참조 → 사용 중지)", "F-COL-033", lambda: f"/col/customer-map/{ctx['map_e']}/delete",
+         lambda: ac.post(f"/col/customer-map/{ctx['map_e']}/delete")),
+        ("매핑 삭제(참조 없음 → 삭제)", "F-COL-033", lambda: f"/col/customer-map/{ctx['map_x']}/delete",
+         lambda: ac.post(f"/col/customer-map/{ctx['map_x']}/delete")),
+    ]
+    bad, logs, notes = [], [], []
+    for label, fid, path, call in cases:
+        path = path() if callable(path) else path
+        fn = contracts.function(fid)
+        since = _max_change_id()
+        r = call()
+        rows = _changes_since(since, ac_lid)
+        if r.status_code != 200:
+            bad.append(f"{label} {r.status_code} {r.text[:120]}")
+            continue
+        data = r.json()
+        if label == "업로드 apply 1회차":
+            ctx["b1"] = data["id"]
+            if (data["rows"], data["errors"], data["round_no"], data["replaced"]) != (3, 3, 1, None):
+                bad.append(f"{label} 응답 {data}")
+            notes_ac = conn.q("select to_role, handled_at from notification where link = %s", (erp_upload.error_link(data["id"]),))
+            if [n["to_role"] for n in notes_ac] != ["AC"]:
+                bad.append(f"{label} erp_upload_error 알림 {notes_ac} (AC 1행 기대)")
+        if label == "업로드 apply 2회차(교체)":
+            ctx["b2"] = data["id"]
+            b1 = conn.q1("select status, replaced_by from erp_upload_batch where id = %s", (ctx["b1"],))
+            if (data["rows"], data["errors"], data["round_no"]) != (4, 4, 2) or b1["status"] != "교체" or b1["replaced_by"] != data["id"]:
+                bad.append(f"{label} 교체 안 됨 — 응답 {data} · 1회차 {b1}")
+        if label == "매핑 등록(참조 있음)":
+            ctx["map_e"] = data["id"]
+            ec = conn.q1("select error_count from erp_upload_batch where id = %s", (ctx["b2"],))["error_count"]
+            if data["remapped"] < 1 or ec != 1:
+                bad.append(f"{label} 재해석 {data['remapped']} · 2회차 error_count {ec} (1 기대 — 날짜 오류 행만)")
+        if label == "매핑 등록(참조 없음)":
+            ctx["map_x"] = data["id"]
+        if label == "매핑 삭제(참조 → 사용 중지)":
+            m = conn.q1("select use_yn from erp_customer_map where id = %s", (ctx["map_e"],))
+            if not data.get("disabled") or not m or m["use_yn"] != "N":
+                bad.append(f"{label} 사용 중지 아님 — 응답 {data} · 행 {m}")
+        if label == "매핑 삭제(참조 없음 → 삭제)":
+            if data.get("disabled") or conn.q1("select 1 from erp_customer_map where id = %s", (ctx["map_x"],)):
+                bad.append(f"{label} 지워지지 않음 — 응답 {data}")
+        if label == "열 매핑 저장(같은 값)" and erp_upload.column_map() != map_before:
+            bad.append("열 매핑 저장(같은 값) 이 매핑을 바꿨다")
+        if len(rows) != 1:
+            bad.append(f"{label} 변경 로그 {len(rows)}행 (1 기대)")
+            continue
+        rw = rows[0]
+        if (rw["function_id"], rw["screen_id"], rw["method"], rw["path"]) != (fid, fn.screen_id, "POST", path) or not rw["target"]:
+            bad.append(f"{label} 로그 값 {rw}")
+        logs.append(rw["target"])
+    out = [res("G-22", "COL 쓰기 성공 → sys_change_log 1행", not bad, f"쓰기 표본 {len(cases)} (기능 4 · 업로드 apply 2 · map 1) · 어긋남 {len(bad)}", bad)]
+    # 쓰지 않는 요청 — preview 200 · 422 · 403 · 404 → 로그 0행 · 회차/행/알림 수 불변
+    bad2 = []
+    sl = lab.client("SL")
+    neg = [
+        ("AC preview", lambda: col_post(ac, COL_PERIOD, xlsx_bytes(hdrs, rows2), action="preview"), (200,)),
+        ("AC preview(HTML)", lambda: col_post(ac, COL_PERIOD, xlsx_bytes(hdrs, rows2), action="preview", headers={"accept": "text/html"}), (200,)),
+        ("AC apply 파일 없음", lambda: ac.post("/col/uploads", data={"action": "apply", "period_from": "1985-01-01", "period_to": "1985-01-31"}), (422,)),
+        ("AC apply 텍스트 파일", lambda: col_post(ac, COL_PERIOD, b"not,an,xlsx\n"), (422,)),
+        ("AC apply 헤더만", lambda: col_post(ac, COL_PERIOD, xlsx_bytes(hdrs, [])), (422,)),
+        ("AC map 필수 빠짐", lambda: ac.post("/col/uploads", data={"action": "map", "map_txn_date": "x"}), (422,)),
+        ("AC 매핑 중복(사용 중지된 코드)", lambda: ac.post("/col/customer-map", data={"erp_code": code_e, "customer_id": str(cu)}), (422,)),
+        ("AC 매핑 수정 없는 id", lambda: ac.post("/col/customer-map/999999999", data={"customer_id": str(cu)}), (404,)),
+        ("SL(R) apply", lambda: col_post(sl, COL_PERIOD, xlsx_bytes(hdrs, rows2)), (403,)),
+        ("SL(R) 매핑 등록", lambda: sl.post("/col/customer-map", data={"erp_code": f"{p}SL", "customer_id": str(cu)}), (403,)),
+    ]
+    for label, call, want in neg:
+        role_lid = lab.users["SL"][0] if label.startswith("SL") else ac_lid
+        since, before = _max_change_id(), _counts()
+        got = call().status_code
+        n, after = len(_changes_since(since, role_lid)), _counts()
+        if got not in want or n or after != before:
+            bad2.append(f"{label} → {got} (기대 {'/'.join(map(str, want))}) · 로그 {n}행 · 회차/행/알림 {before}→{after}")
+    if erp_upload.column_map() != map_before:
+        bad2.append("음성 표본이 열 매핑을 바꿨다")
+    out.append(res("G-22", "COL preview · 422 · 403 · 404 → 0행 · 회차/행/알림 불변", not bad2, f"표본 {len(neg)} · 어긋남 {len(bad2)}", bad2))
+    page = lab.client("ADM").get("/sys/logs", params={"tab": "change", "login": ac_lid}).text
+    seen = [t for t in logs if t in page]
+    out.append(res("G-22", "COL 변경 로그 SYS-040 에서 조회", bool(logs) and len(seen) == len(logs),
+                   f"변경 로그 {len(logs)} 중 SYS-040 에 보인 것 {len(seen)}", [t for t in logs if t not in page]))
+    return out
+
+
+def _zip_not_xlsx() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("a.txt", "q3 (예시)")
+    return buf.getvalue()
+
+
+def check_col_upload_abuse(lab: Lab) -> list[Result]:
+    """업로드 보안 — 엑셀 아닌 파일 · 빈 파일 · 20MB 초과 · 헤더 결함 → 422(500 0) · 셀의 수식/스크립트/긴 글자는 값으로만 저장되고
+    화면에 이스케이프돼 나온다 · 내려받는 엑셀(COL-040)에 수식으로 되살아나지 않는다 · 파일 이름의 경로는 글자로만 저장된다."""
+    from lcomfine.db import conn
+    from openpyxl import load_workbook
+
+    cached = getattr(lab, "_col_abuse", None)
+    if cached is not None:        # 같은 Lab 에서 여러 테스트가 부른다 — 거래처 · 매핑 · 회차를 두 번 만들지 않는다
+        return cached
+    lab._col_abuse = out = _check_col_upload_abuse(lab, conn, load_workbook)
+    return out
+
+
+def _check_col_upload_abuse(lab: Lab, conn, load_workbook) -> list[Result]:
+    p = lab.prefix
+    ac = lab.client("AC")
+    P = COL_PERIOD_ABUSE
+    cmap, fields, hdrs = col_map()
+    good = [col_row(fields, customer_code=f"{p}M", txn_date="1985-03-05", collected_amount="1")]
+    out: list[Result] = []
+    # 1. 파일 수준
+    files = [
+        ("텍스트(csv)", b"a,b\n1,2\n"), ("HTML", b"<html><body><script>alert(1)</script></body></html>"),
+        ("zip(엑셀 아님)", _zip_not_xlsx()), ("0 바이트", b""), ("PNG 머리", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64),
+        ("20MB+1", b"\x00" * (erp_upload_max_bytes() + 1)),
+        ("헤더만", xlsx_bytes(hdrs, [])), ("열 이름 중복", xlsx_bytes(hdrs + [hdrs[0]], [good[0] + ["x"]])),
+        ("1행(열 이름) 비어 있음", xlsx_bytes([None] * len(hdrs), good)), ("__row_no 열", xlsx_bytes(hdrs + ["__row_no"], [good[0] + ["1"]])),
+        ("매핑된 열이 파일에 없음", xlsx_bytes([f"q3없는열{i}" for i in range(len(hdrs))], good)),
+    ]
+    bad, statuses = [], []
+    for label, data in files:
+        r = col_post(ac, P, data, name=f"{p} {label} (예시).xlsx")
+        statuses.append(f"{label} {r.status_code}")
+        if r.status_code != 422:
+            bad.append(f"{label} {r.status_code} (422 기대){' — 500!' if r.status_code >= 500 else ''} {r.text[:100]}")
+        elif not r.json().get("fields"):
+            bad.append(f"{label} 422 인데 fields 없음")
+    for label, extra in (("기준 기간 NUL", {"period_from": "1985-03-01\x00"}), ("기준 기간 99999년", {"period_to": "99999-03-31"}),
+                         ("동작 NUL", {"action": "apply\x00"})):
+        r = col_post(ac, P, xlsx_bytes(hdrs, good), extra=extra)
+        statuses.append(f"{label} {r.status_code}")
+        if r.status_code != 422:
+            bad.append(f"{label} {r.status_code} (422 기대)")
+    out.append(res("X-05", "업로드: 엑셀 아닌 파일 · 빈 파일 · 20MB 초과 · 헤더 결함 → 422", not bad,
+                   f"파일 {len(files)} + 폼 3 — 500 {sum(1 for s in statuses if s.endswith(('500', '502', '503')))} · 어긋남 {len(bad)}", bad))
+    # 2. 셀 내용 — 수식 글자 · 스크립트 · 10만 자 · NUL 이스케이프 · 파일 이름 경로. 거래처 코드 {p}M 은 매핑해 COL-040 까지 흐르게 한다
+    cu = conn.q1("insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id",
+                 (f"{p}cx", f"{p} 거래처 X (예시)"))["id"]
+    r = ac.post("/col/customer-map", data={"erp_code": f"{p}M", "erp_name": "<i>q3</i> (예시)", "customer_id": str(cu)})
+    bad2 = []
+    if r.status_code != 200:
+        bad2.append(f"매핑 등록 {r.status_code}")
+    evil_code = f"{p}<script>alert(1)</script>"
+    hyper = '=HYPERLINK("http://evil.example/q3","클릭")'
+    dde = "=CMD|' /C calc'!A0"
+    big = "가" * 100_000
+    rows = [col_row(fields, customer_code=evil_code, txn_date="1985-03-05", collected_amount="1", method=hyper),
+            col_row(fields, customer_code=f"{p}M", txn_date="1985-03-06", collected_amount="2", method=dde),
+            col_row(fields, customer_code=f"{p}M", txn_date="1985-03-07", collected_amount="3", method=hyper),
+            col_row(fields, customer_code=f"{p}M", txn_date="1985-03-08", collected_amount="4", method=big),
+            col_row(fields, customer_code=f"{p}M", txn_date="1985-03-09", collected_amount="5", method="a_x0000_b"),
+            col_row(fields, customer_code=f"{p}M", txn_date="1985-03-10", collected_amount="6", method="<img src=x onerror=alert(1)>")]
+    fname = f"../../../etc/{p}<b>passwd</b>.xlsx"
+    r = col_post(ac, P, xlsx_bytes(hdrs, rows), name=fname)
+    if r.status_code != 200:
+        bad2.append(f"셀 내용 업로드 {r.status_code} {r.text[:160]}")
+        out.append(res("X-06", "셀의 수식·스크립트·긴 글자 → 값으로 저장 · 화면 이스케이프", False, "업로드 실패", bad2))
+        return out
+    bid = r.json()["id"]
+    b = conn.q1("select source_file, row_count, error_count from erp_upload_batch where id = %s", (bid,))
+    if b["source_file"] != fname[:200]:
+        bad2.append(f"source_file 저장 값 {b['source_file']!r} (올린 이름 그대로 기대)")
+    if (b["row_count"], b["error_count"]) != (6, 1):
+        bad2.append(f"행 {b['row_count']} · 오류 {b['error_count']} (6 · 1 기대 — 미매핑 코드 1행만)")
+    stored = {r_["row_no"]: r_ for r_ in conn.q("select row_no, raw, parsed, error from erp_upload_row where batch_id = %s", (bid,))}
+    mcol = cmap.get("method")
+    if mcol:
+        if stored[3]["raw"].get(mcol) != dde or stored[3]["parsed"].get("method") != dde:
+            bad2.append(f"DDE 글자가 그대로 저장되지 않음 raw={stored[3]['raw'].get(mcol)!r}")
+        # 엑셀 셀 상한은 32,767자 — openpyxl 이 쓴 파일에 든 길이 그대로 raw 에 보존되고 parsed 는 200자로 잘린다
+        raw_len = len(stored[5]["raw"].get(mcol) or "")
+        if raw_len < 32_767 or len(stored[5]["parsed"].get("method") or "") != 200:
+            bad2.append(f"10만 자 — raw {raw_len} · parsed {len(stored[5]['parsed'].get('method') or '')} (≥32767 · 200 기대)")
+    if stored[2]["error"] is None or evil_code not in (stored[2]["error"] or ""):
+        bad2.append(f"<script> 거래처 코드 행이 미매핑 오류가 아님 {stored[2]['error']!r}")
+    pages = {
+        "COL-010 ?batch": ac.get("/col/uploads", params={"batch": str(bid)}, headers={"accept": "text/html"}),
+        "COL-020 ?batch": ac.get("/col/upload-history", params={"batch": str(bid)}, headers={"accept": "text/html"}),
+        "COL-030": ac.get("/col/customer-map", headers={"accept": "text/html"}),
+        "COL-040": ac.get("/col/collections", params={"date_from": "1985-03-01", "date_to": "1985-03-31", "customer": str(cu)},
+                          headers={"accept": "text/html"}),
+        "HOME": ac.get("/", headers={"accept": "text/html"}),
+    }
+    escaped_seen = 0
+    for name, pg in pages.items():
+        if pg.status_code != 200:
+            bad2.append(f"{name} {pg.status_code}")
+            continue
+        html = pg.text
+        if "<script>alert(1)</script>" in html or "<img src=x onerror" in html or 'href="http://evil.example' in html or "<b>passwd</b>" in html:
+            bad2.append(f"{name}: 저장된 글자가 이스케이프 없이 렌더됨")
+        if "&lt;script&gt;alert(1)&lt;/script&gt;" in html or "&lt;img src=x" in html or "&lt;b&gt;passwd" in html:
+            escaped_seen += 1
+    if not escaped_seen:
+        bad2.append("어느 화면에도 이스케이프된 글자가 보이지 않는다(저장 글자가 화면에 안 나왔다 — 검사가 비었다)")
+    out.append(res("X-06", "셀의 수식·스크립트·10만 자·파일 이름 경로 → 값으로만 저장 · 화면 이스케이프", not bad2,
+                   f"행 6 · 화면 {len(pages)} · 이스케이프 확인 화면 {escaped_seen} · source_file 글자 보존 · 10만 자 셀 raw {len(stored[5]['raw'].get(mcol) or '') if mcol else '-'}자(엑셀 상한 32767) · 어긋남 {len(bad2)}", bad2))
+    # 3. 내려받는 엑셀(COL-040 ?format=xlsx) — 저장된 `=…` 글자가 수식 셀로 되살아나면 수식 주입(DDE · HYPERLINK)
+    bad3 = []
+    x = ac.get("/col/collections", params={"date_from": "1985-03-01", "date_to": "1985-03-31", "customer": str(cu), "format": "xlsx"})
+    if x.status_code != 200 or not x.headers.get("content-type", "").startswith(XLSX_MIME):
+        bad3.append(f"xlsx 내려받기 {x.status_code} {x.headers.get('content-type')}")
+    else:
+        wb = load_workbook(io.BytesIO(x.content))
+        formulas = [(c.coordinate, str(c.value)[:40]) for row in wb.active.iter_rows() for c in row if c.data_type == "f"]
+        if formulas:
+            bad3.append(f"수식 셀 {len(formulas)}: " + " · ".join(f"{k}={v}" for k, v in formulas[:3]))
+    out.append(res("X-07", "COL-040 엑셀 내려받기 — 저장된 `=…` 글자가 수식 셀로 되살아나지 않는다", not bad3,
+                   "수식 셀 0" if not bad3 else "DDE · HYPERLINK 글자가 수식 셀(data_type f)로 쓰였다 — 여는 사람의 엑셀에서 실행될 수 있다", bad3))
+    # 4. 진짜 수식 셀(캐시 값 없음)은 빈 칸으로 읽힌다 — preview 로 쓰지 않고 확인 (참고)
+    pv = col_post(ac, P, xlsx_bytes(hdrs, [col_row(fields, customer_code=f"{p}M", txn_date="1985-03-11", collected_amount="=1+1")],
+                                     text_formulas=False), action="preview")
+    if pv.status_code == 200:
+        item = pv.json()["items"][0]
+        print(f"참고 (X-06): 진짜 수식 셀 `=1+1`(캐시 값 없음)은 수금액 {item['parsed'].get('collected_amount')!r} 로 읽힌다 · error {item['error']!r}"
+              " — 값이 아닌 수식은 빈 칸(조용히 0 이 되지는 않는다)")
+    return out
+
+
+def erp_upload_max_bytes() -> int:
+    from lcomfine.app import erp_upload
+
+    return erp_upload.MAX_BYTES
+
+
+def check_col_static() -> list[Result]:
+    """정적 — 업로드 모듈 · 라우터가 파일을 디스크에 쓰지 않는다(open · write · Path · tempfile 0) · 쓰기 4 전부 require_fn + log_change."""
+    hits = []
+    for rel in ("src/lcomfine/app/erp_upload.py", "src/lcomfine/app/routers/col.py"):
+        for i, ln in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if ln.strip().startswith("#"):
+                continue
+            for pat in _COL_WRITE_PATTERNS:
+                if re.search(pat, ln):
+                    hits.append(f"{rel}:{i} {ln.strip()[:60]}")
+    return [res("X-08", "정적: 업로드 파일을 디스크에 쓰지 않는다", not hits,
+                f"erp_upload.py · col.py 의 open/write/Path/os./tempfile {len(hits)} (wb.save(buf) BytesIO 만 허용)", hits)]
+
+
+def check_seed_dev3_static() -> Result:
+    """seed_dev3.py — `on conflict … do nothing`(멱등) · 지우는 문장 없음 · created_by 'seed'. 실측(2회 실행 diff 0)은 gate-full 이 잰다."""
+    from lcomfine.db import conn
+
+    src = (ROOT / "src/lcomfine/db/seed_dev3.py").read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith("#"))
+    idem = "on conflict (field) do nothing" in body
+    destructive = bool(re.search(r"\b(delete|truncate|drop)\b", body, re.I))
+    seeded = conn.q1("select count(*) as n from erp_column_map where created_by = 'seed'")["n"]
+    ex = "(예시)" in src
+    ok = idem and not destructive and "SEEDED_BY = \"seed\"" in body
+    return res("G-21", "seed_dev3 멱등 · (예시) (정적)", ok,
+               f"on conflict do nothing {'있음' if idem else '없음'} · delete/truncate {'있음' if destructive else '없음'} · "
+               f"erp_column_map(created_by=seed) {seeded}행 · 열 이름은 정본 낱말이라 (예시) 표식 없음(문서에만 — D-802) · 실측 멱등은 gate-full")
 
 
 # ── 판정표 ──────────────────────────────────────────────────────────────
@@ -935,6 +1439,13 @@ def run_all(run_seeds: bool = False) -> list[Result]:
         rows += guard("G-22", "감사 로그", check_change_log, lab)
         rows += guard("X-01", "DB 끊김", check_db_down, lab)
         rows += guard("X-03", "이상한 입력", check_malformed, lab)
+        # W2 수금 (COL)
+        rows += guard("G-19", "COL 화면·쓰기 × 부서 8", check_col_access, lab)
+        rows += guard("G-20", "COL 비활성·로그아웃 401", check_col_sessions, lab)
+        rows += guard("G-22", "COL 쓰기 4 변경 로그", check_col_change_log, lab)
+        rows += guard("X-05", "COL 업로드 보안", check_col_upload_abuse, lab)
+    rows += guard("X-08", "COL 정적", check_col_static)
+    rows += guard("G-21", "seed_dev3 정적", check_seed_dev3_static)
     rows += guard("G-24", "docker", check_docker)
     return rows
 

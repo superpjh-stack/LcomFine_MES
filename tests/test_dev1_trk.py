@@ -1,8 +1,13 @@
 # tests/test_dev1_trk.py — TRK 통합 조회 3 화면 (읽기만) — 실제 DB · 시드 뒤 · 만든 행은 지운다
+from datetime import date
+from decimal import Decimal
+
 import pytest
 
+from lcomfine.app import nav, stats
+from lcomfine.app.routers import trk
 from lcomfine.db import conn
-from test_dev1_common import cleanup, client, make_customer, make_item, make_order, make_request, uniq
+from test_dev1_common import Erp, cleanup, client, make_customer, make_item, make_order, make_request, uniq
 
 
 def _counts() -> dict:
@@ -75,8 +80,69 @@ def test_customer_overview(p):
     before = _counts()
     r = client("sl").get("/trk/customers", params={"customer": str(cu["id"])})
     assert r.status_code == 200 and f'data-customer="{cu["customer_code"]}"' in r.text
-    assert rq["request_no"] in r.text and "미수집" in r.text and "stats.customer_receivable" in r.text
+    assert rq["request_no"] in r.text and 'data-receivable="미수집"' in r.text     # 매핑 · 반영 회차 없음 = 미수집
     assert _counts() == before
     assert client("sl").get("/trk/customers").status_code == 200
     assert client("sl").get("/trk/customers", params={"customer": "99999999999"}).status_code == 422
     assert client("pr").get("/trk/customers").status_code == 403
+
+
+# ── W2 — stats 공표 연결 (Ruling 23 · progress-dev3 §1.3) ───────────────────────────────────────────
+@pytest.mark.fn("F-TRK-031")
+def test_customer_receivable_from_erp_upload(p, monkeypatch):
+    """수금·미수 칸 = stats.customer_receivable: 반영 회차가 없으면 `미수집`, (예시) xlsx 를 올리면 매출 · 수금 · 미수 잔액 · 마지막 거래일 ·
+    ERP 업로드 기준일(asof) 이 보인다. 매출액 열 미매핑(status 미확정)은 글자 그대로. 끝에 회차 · 행 · 알림 · 매핑을 지운다."""
+    it, cu, rq, _wo = _flow(p)
+    erp = Erp(p, cu["id"])
+    try:
+        c = client("sl")
+        r = c.get("/trk/customers", params={"customer": str(cu["id"])})
+        assert r.status_code == 200 and 'data-receivable="미수집"' in r.text and "매핑된 ERP 거래처코드가 없다" in r.text
+        erp.map_code()
+        erp.upload(date(1985, 1, 1), date(1985, 1, 31), [(erp.code, "1985-01-10", 1000, 300), (erp.code, "1985-01-20", 500, 0)])
+        cr = stats.customer_receivable(cu["id"])
+        assert cr["status"] == "ok" and cr["receivable_amount"] == Decimal("1200.00") and cr["asof"] is not None
+        before = _counts()
+        r = c.get("/trk/customers", params={"customer": str(cu["id"])})
+        assert r.status_code == 200 and 'data-receivable="ok"' in r.text
+        assert f'data-asof="{cr["asof"].isoformat()}"' in r.text and "ERP 업로드 기준일" in r.text
+        seg = r.text.split('data-receivable="ok"')[1]
+        assert "1,500" in seg and "1,200" in seg and "1985-01-20" in seg and erp.code in seg and "D-803" in seg
+        assert "수금 칸은 W2 에 개발3 의" not in r.text                        # W1 자리표시 문장은 없다(계약 패널의 문장은 남는다)
+        assert _counts() == before                                            # 읽기만
+        # 매출액 열이 매핑되지 않은 모양(status 미확정) — 전역 열 매핑을 건드리지 않고 공표 반환 모양으로 화면만 검사한다
+        und = dict(cr, status="미확정 (D-516)", decision="D-516", sales_amount=None, receivable_amount=None)
+        monkeypatch.setattr(trk.stats, "customer_receivable", lambda cid: und)
+        r = c.get("/trk/customers", params={"customer": str(cu["id"])})
+        assert r.status_code == 200 and 'data-receivable="미확정 (D-516)"' in r.text
+        assert r.text.count("미확정 (D-516)") >= 3 and "300" in r.text.split("<h2>수금·미수")[1]   # 매출 · 미수는 미확정 · 수금 합은 그대로
+        monkeypatch.undo()
+    finally:
+        erp.close()
+    assert stats.customer_receivable(cu["id"])["status"] == "미수집"
+
+
+@pytest.mark.fn("F-TRK-021")
+def test_due_compliance_from_stats(p):
+    """납기 준수율 수치 = stats.due_compliance(period) — period `YYYY-MM`(기본 이번 달) · 산식 문장(가설 D-804) 이 수치 옆에 ·
+    분모 0 이면 `미수집` · 형식이 틀리면 422."""
+    it, cu = make_item(p), make_customer(p)
+    late = make_request(p, customer_id=cu["id"], item_id=it["id"], due="date '1986-03-15'", status="지시완료")   # 지연 (미완료)
+    c = client("pr")
+
+    def expected(ym: str) -> str:
+        comp = stats.due_compliance(ym)
+        return f"{comp['rate']:,.1f}" if comp["rate"] is not None else "미수집"
+
+    r = c.get("/trk/due", params={"period": "1986-03", "customer": str(cu["id"])})
+    assert r.status_code == 200 and late["request_no"] in r.text and 'data-period="1986-03"' in r.text
+    assert f'data-compliance="{expected("1986-03")}"' in r.text and stats.due_compliance("1986-03")["late_open"] >= 1
+    assert stats.DUE_COMPLIANCE_FORMULA in r.text and "D-804" in r.text and "stats.due_compliance" in r.text
+    r = c.get("/trk/due")                                                       # 기본 = 이번 달
+    assert r.status_code == 200 and f'data-period="{date.today():%Y-%m}"' in r.text
+    assert f'data-compliance="{expected(date.today().strftime("%Y-%m"))}"' in r.text
+    comp = stats.due_compliance("1987-01")                                      # 아무도 쓰지 않는 달 — 분모 0 = 미수집
+    r = c.get("/trk/due", params={"period": "1987-01"})
+    assert f'data-compliance="{"미수집" if comp["rate"] is None else f"{comp["rate"]:,.1f}"}"' in r.text
+    for bad_period in ("1986-3", "abcd-ef", "1986/03"):
+        assert c.get("/trk/due", params={"period": bad_period}).status_code == 422, bad_period

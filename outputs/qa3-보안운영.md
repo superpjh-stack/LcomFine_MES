@@ -9,6 +9,7 @@
 | DEF-QA3-001 | **중대** | 아키텍트 (Dockerfile) | Dockerfile 이 지워진 `tools/sample_data.py` 를 COPY 한다. 그래서 이미지 빌드가 실패하고 G-24 는 통과할 수 없다 | **해소(실측)** — COPY 원본 7 전부 있음(§6) |
 | DEF-QA3-002 | 경미 | 개발1 (bas · wo · sys) | NUL 이 든 입력의 422 가 어느 항목인지 짚지 않는다(`fields=[{"name":"입력"}]`) | **해소(실측)** — 4 경로 모두 항목 이름을 짚음(§6) |
 | DEF-QA3-003 | 경미 | 아키텍트 (DB 역할) · 참고 개발2 · 개발3 (테스트 정리) | 앱이 superuser 로 DB 에 붙는다. 불변 이력 트리거를 `session_replication_role` 로 우회할 수 있고, 테스트 정리 코드가 이 우회에 기대고 있다 | **D-524 등재(가설) · W4** 에서 앱 역할 분리 — W1~W3 은 그대로. 열림 |
+| DEF-QA3-004 | 경미 | 개발3 (`routers/col.py` `_xlsx`) | **W2** — COL-040 엑셀 내려받기가 저장된 `=…` 글자(DDE · HYPERLINK)를 수식 셀로 쓴다 → 여는 사람의 엑셀에서 실행될 수 있다(§7) | **해소(실측)** — `_xlsx_text_cell` 로 글자 셀 `data_type="s"` 고정 · X-07 PASS 수식 셀 0(§7.1) |
 
 치명 0 · 중대 1 · 경미 2 (처음 보고). **재검증 뒤 남은 것: DEF-QA3-003 1건(경미 · D-524 · W4).** 표의 마지막 열은 2026-10-21 재검증(§6) 결과다.
 
@@ -124,3 +125,89 @@
 - `make gate-full` · `tools/gate.py` · 시드 멱등(`--run-seeds`) — 다른 QA 와 DB 를 같이 쓰므로 돌리지 않았다(오케스트레이터 몫).
 - E2E 캡처(`--e2e`)는 다시 찍지 않았다 — 이번 수정(NUL 라벨 · HOME-030 422)은 §3 의 화면 5 개 캡처와 무관하다. `outputs/e2e/` 는 처음 보고 그대로다.
 - Docker 실기동(G-24) — D-525.
+
+## 7. W2 수금 (2026-10-22)
+
+검증만 했다. 앱 코드는 고치지 않았다. 고친 것은 내 소유 `tools/check_security.py` · `tests/test_qa3_col.py`(새) · `outputs/e2e/` · 이 보고서뿐이다. 임시 계정(접두 `q3…`) · 거래처 · ERP 코드 · 파일 이름은 전부 내 접두이고 끝에 지웠다 — `sys_user` · `erp_upload_batch`(created_by / source_file) · `erp_customer_map` · `customer` 의 `q3%` 전부 **0**. **열 매핑(`erp_column_map`)은 바꾸지 않았다** — 지금 저장된 매핑(시드 7 · 거래처코드 · 일자 · 매출액 · 수금액 · 잔액 · 수단 · 어음 만기)의 열 이름으로 `(예시)` xlsx 를 openpyxl 로 만들어 올렸다(저장소에 바이너리 없음). 업로드 회차의 기준 기간은 1985년(개발3 테스트 1990~1993 · QA2 는 자기 접두)이다. QA1 이 같은 DB 에서 동시에 돌았다. Docker 는 켜지 않았다(D-525).
+
+### 7.1 결함
+| ID | 등급 | 담당 | 한 줄 | 상태 |
+|---|---|---|---|---|
+| DEF-QA3-004 | 경미 | 개발3 (`src/lcomfine/app/routers/col.py` `_xlsx` · F-COL-041) | COL-040 `?format=xlsx` 가 업로드 행에 저장된 `=CMD\|…` · `=HYPERLINK(…)` 글자를 **수식 셀**로 써서 내려준다 | **해소(실측)** 2026-10-22 |
+
+새 결함 1(경미) → 재검증 뒤 **해소**. 남은 것: W1 의 DEF-QA3-003(D-524 · W4)만 열림. 치명 0 · 중대 0.
+
+#### DEF-QA3-004 · 경미 · 수금 현황 엑셀 내려받기의 수식 주입 (CSV/Formula injection)
+- 재현(검사기 `check_col_upload_abuse` X-07 · 테스트 `tests/test_qa3_col.py::test_collections_xlsx_export_has_no_live_formula_cells`): 회계부 임시 계정으로 ① `POST /col/customer-map` 에 ERP 코드 `{접두}M` ↔ 임시 거래처 ② 수단 셀이 `=CMD|' /C calc'!A0` · `=HYPERLINK("http://evil.example/q3","클릭")` 인 **글자 셀**(ERP 가 값으로 내려준 꼴 · openpyxl `data_type="s"`)을 가진 xlsx 를 `POST /col/uploads action=apply` 로 반영(200 · 행 6 · 오류 1 = 미매핑 코드 행만) ③ `GET /col/collections?date_from=1985-03-01&date_to=1985-03-31&customer=<id>&format=xlsx`(200 · `application/vnd.openxmlformats-…sheet`) 를 openpyxl 로 다시 열면 **수단 열 `H2` · `H3` 가 `data_type == "f"`(수식 셀)** 이다.
+- 원인: `col.py:461~468 _xlsx()` 가 `ws.append([...])` 로 값을 넣는데 openpyxl 은 `=` 로 시작하는 글자를 수식으로 쓴다. 업로드 쪽(`erp_upload._sheet` · `data_only=True`)은 값만 읽어 저장하고 화면은 autoescape 로 안전하지만(X-06 PASS), **내려받기에서 글자가 수식으로 되살아난다**. 엑셀은 DDE(`=CMD|…`) 에 경고를 띄우고 보호 보기로 열지만 사용자가 「허용」하면 실행되고, `=HYPERLINK` 는 경고 없이 클릭 가능한 링크가 된다.
+- 기대: api-contract · CLAUDE.md 「조용한 실패 금지」 · 정본 COL-040 「엑셀」 = 화면과 같은 값. 내려받는 셀은 화면과 같은 **글자**여야 한다(수식 셀 0).
+- 경로: 공격자는 ERP 수금현황 파일의 셀 값을 넣을 수 있어야 한다(ERP 거래처명 · 수단 등은 ERP 에서 온다). 그래서 **경미**. 다만 수단 열은 어떤 글자든 받아 저장하므로(`parsed.method = text[:200]`) ERP 쪽 입력이 곧 MES 내려받기에 실린다.
+- 담당 개발3 참고(고치는 쪽의 선택 · QA 는 고치지 않는다): `_xlsx` 에서 글자 셀은 `cell.data_type = "s"` 로 고정하거나(openpyxl 은 `ws.cell(...).value = v; cell.data_type = "s"`), `=` `+` `-` `@` 로 시작하는 글자 앞에 `'` 를 붙인다. 고치면 검사기 X-07 과 위 테스트가 그대로 PASS 를 잰다.
+- **재검증(2026-10-22)**: 개발3 이 `col.py:461 _xlsx_text_cell(ws, row_no, col_no, value)` 로 글자 셀을 `data_type="s"` 로 고정했다(머리 행 포함 · `_xlsx` 가 셀마다 부른다). 같은 재현(DDE · HYPERLINK 글자 셀 업로드 → `GET /col/collections?…&format=xlsx` → openpyxl 로 다시 열기)을 임시 계정으로 다시 돌렸다 → **수식 셀 0**(`data_type == "f"` 인 셀 없음 · `H2` · `H3` 가 글자 셀). 검사기 X-07 PASS · `test_collections_xlsx_export_has_no_live_formula_cells` PASS. **해소(실측).**
+
+### 7.2 G-19 · G-20 · G-22 실측 (`uv run python tools/check_security.py` · 2026-10-22)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| G-19 쓰기 라우트 require_fn | PASS | POST **62**(W1 58 + COL 4) · GET 58 중 빠짐 0 |
+| G-19 세션 없음 401 | PASS | 쓰기 POST 62 · 화면 GET 67×2 중 어긋남 0 |
+| G-19 R·없음 부서 쓰기 403(전수) | PASS | 쓰기 기능 62 × 부서 8 — 403 기대 361 · 통과 기대 135 · 어긋남 0 |
+| G-19 칸 밖 화면 GET 403 · 메뉴 숨김(전수) | PASS | 화면 67 + 하위 조회·출력 2 × 부서 8 = GET 552 · 어긋남 0 |
+| **G-19 COL 화면 7 × 부서 8** (새) | PASS | 200 기대 30 · 403 기대 26 · 어긋남 0 · **R 칸(영업부 COL-010 · COL-030)에 쓰기 폼(multipart · 열 매핑 · erp_code) 없음** |
+| **G-19 COL 쓰기 4 × 부서 8** (새) | PASS | F-COL-011 · 031 · 032 · 033 × 8 — 403 기대 24(SL R · PR · SH · DS · ST · EX) · 통과 기대 8(AC · ADM → 빈 본문 422/404) · 어긋남 0 |
+| G-20 세션 8행(W1) | PASS | 중지 · 잠금 · 비활성 · 부서 변경 · 로그아웃 쿠키 · 비밀번호 · epoch · 삭제 · 서명 — 전부 기대대로 |
+| **G-20 COL 비활성 · 로그아웃 → 401** (새) | PASS | AC 전 200 · 비활성(F-SYS-013) 200 → COL-040 GET **401** · 매핑 POST **401** / 다른 AC 전 200 · 로그아웃 → COL-010 GET **401** · 업로드 POST **401** |
+| G-22 쓰기 성공 → 1행(W1 표본) | PASS | 표본 15(모듈 5) · 어긋남 0 |
+| **G-22 COL 쓰기 성공 → sys_change_log 1행** (새) | PASS | 표본 **8**(기능 4): 열 매핑 저장(같은 값 · 매핑 불변) · 업로드 apply 1회차(행 3 · 오류 3 · **AC 알림 1행**) · apply 2회차(행 4 · 오류 4 · 1회차 `교체` + `replaced_by`) · 매핑 등록(참조 있음 → 재해석 · 2회차 error_count 1 = 날짜 오류 행만) · 매핑 등록(참조 없음) · 매핑 수정 · 삭제(참조 → `use_yn=N`) · 삭제(참조 없음 → 행 삭제) — 각각 **정확히 1행** · function_id · screen_id(COL-010/COL-030) · method POST · path · target(`erp_upload_batch:<회차>` · `erp_customer_map:<코드>` · `erp_column_map:*`) 일치 |
+| **G-22 COL preview · 422 · 403 · 404 → 0행** (새) | PASS | 표본 10 — preview JSON 200 · preview HTML 200 · 파일 없음 422 · 텍스트 파일 422 · 헤더만 422 · map 필수 빠짐 422 · 매핑 중복(사용 중지 코드) 422 · 수정 없는 id 404 · SL apply 403 · SL 매핑 403 — 로그 0행 · **회차/행/알림 수 불변** · 열 매핑 불변 |
+| **G-22 COL 변경 로그 SYS-040** (새) | PASS | 8/8 이 `GET /sys/logs?tab=change&login=<AC>` 에 보임 |
+| G-22 정적 POST 마다 log_change | PASS | POST 62 중 없음 0 |
+
+### 7.3 G-21
+| 행 | 판정 | 실측 |
+|---|---|---|
+| 비밀 스캔 | PASS | 파일 **221**(`git ls-files -co --exclude-standard` — 미추적 새 파일 `erp_upload.py` · `routers/col.py` · `templates/col/*` · `seed_dev3.py` · `test_dev3_col.py` · `test_qa2_col.py` · `test_qa3_col.py` 포함) · 비밀 값 0 · 키 패턴 0 · `.env` gitignore · 미추적 |
+| 시드 (예시) | PASS | 시드 계정 8 · 채번 7 전부 `(예시)` |
+| 응답에 비밀 없음 · 시드 로그인 8/8 | PASS | — |
+| **seed_dev3 멱등 · (예시) (정적 · 새)** | PASS | `src/lcomfine/db/seed_dev3.py`: `insert … on conflict (field) do nothing` · delete/truncate 없음 · `created_by='seed'` · DB 의 `erp_column_map(created_by=seed)` **7행**. 열 이름(거래처코드 · 일자 · …)에는 `(예시)` 가 **없다** — 엑셀 열 이름과 글자 그대로 맞추는 매핑 키라 붙이면 매핑이 깨지고, 값은 정본 COL-010 문장의 낱말을 베낀 것이라 D-802 에 적혀 있다(모듈 docstring 에 `(예시)`). 결함으로 올리지 않는다. **2회 실행 diff 0 실측은 돌리지 않았다** — 오케스트레이터의 `make gate-full`(gate.py `--run-seeds`) 몫 |
+
+### 7.4 업로드 보안 · 조용한 실패 사냥 (X-행)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| X-01 · X-02 DB 끊김 | PASS | `/health` 503 · 화면 · 메인 · 쓰기 · 로그인 503 + **COL 업로드 POST(multipart) 503 · COL 화면 GET 503**(새) · 접속 문자열 노출 0 |
+| X-03 · X-04 이상한 입력(W1) | PASS | POST 26 · GET 8 · 500 0 |
+| **X-05 업로드 파일 수준** (새) | PASS | 텍스트(csv) · HTML · zip(엑셀 아님) · **0 바이트** · PNG 머리 · **20MB+1** · 헤더만 · **열 이름 중복** · 1행(열 이름) 비어 있음 · `__row_no` 열 · 매핑된 열이 파일에 없음 — **11 전부 422**(`fields[].name` = 파일 / 거래처코드) · 기준 기간 NUL · 99999년 · 동작 NUL → 422 · **500 = 0** |
+| **X-06 셀 내용** (새) | PASS | 행 6: 거래처코드 `<script>alert(1)</script>`(→ 미매핑 오류 행) · 수단 `=HYPERLINK(…)` · `=CMD\|' /C calc'!A0` · 10만 자 · `a_x0000_b` · `<img src=x onerror=…>` · 파일 이름 `../../../etc/{접두}<b>passwd</b>.xlsx` → apply 200 · DB 에 **글자 그대로**(raw = 원문 · parsed.method = 200자 · source_file = 올린 이름 그대로 · 디스크 경로로 쓰이지 않음) · 화면 5(COL-010 ?batch · COL-020 ?batch · COL-030 미매핑 목록 · COL-040 · HOME) 에 **이스케이프**(`&lt;script&gt;` · `&lt;img` · `&lt;b&gt;passwd`) · 원문 태그 · `href="http://evil…"` 0. 10만 자 셀은 엑셀 상한 **32,767자**로 파일에 담기고 raw 는 그 길이 그대로 |
+| **X-07 내려받기 수식 주입** (새) | PASS(재검증) | 처음 **FAIL** — DEF-QA3-004 수식 셀 2(`H2` DDE · `H3` HYPERLINK) → 개발3 수정 뒤 **수식 셀 0** |
+| **X-08 정적: 디스크 쓰기 없음** (새) | PASS | `erp_upload.py` · `routers/col.py` 의 `open(` · `.write(` · `Path(` · `os.` · `tempfile` **0** — `wb.save(buf)`(BytesIO) 만. 업로드 바이트는 메모리에서 읽고(`await file.read()`) DB `raw` jsonb 로만 간다 |
+
+참고(결함 아님): ① **진짜 수식 셀**(`=1+1` · 캐시 값 없음)은 `data_only=True` 로 읽어 **빈 칸**이 된다(preview 로 확인 · parsed 에 수금액 없음 · error 없음 — 조용히 0 이 되지는 않지만 값이 사라진다. ERP 가 내려준 파일은 캐시 값이 있어 영향 없음. 수식만 있고 값이 없는 셀을 경고로 보일지는 개발3 판단). ② 20MB 상한은 **본문을 전부 읽은 뒤** 잰다(`_file_bytes` · 스트리밍 제한 없음) — 운영 리버스 프록시의 본문 상한이 전제. ③ 수금 행의 `method` 는 어떤 글자든 200자까지 저장한다 — 수단 코드 값은 받은 적이 없어 계약대로.
+
+### 7.5 브라우저 한 바퀴 (E2E · `uv run --offline --with playwright python tools/check_security.py --e2e`)
+도구: W1 과 같은 Playwright(chromium headless · `result.json` 에 적힌 방식) · 앱을 8020 에 하위 프로세스로 띄움 · 1280 · 390 두 폭 · `full_page` 캡처. **32/32 PASS**(W1 16 + W2 16) · status 200 · `scrollWidth ≤ innerWidth`(390 폭 가로 스크롤 **0**) · 로그인으로 튕김 0. `outputs/e2e/*.png` 32 + `result.json`(갱신 · `action` · `flash_seen` 열 추가).
+
+회계부(`ac`)가 **실제로 폼으로** 올렸다: 열 매핑은 시드 그대로 두고, 그 열 이름의 `(예시)` xlsx(행 3 — `q3e2e-E` 2행 · 미매핑 `q3e2e-U` 1행)를 `input[name=file]` 에 넣고 기준 기간 1985-02-01~02-28 · 「반영」(data-confirm 승인) → 「회차 ERP-… 를 반영했습니다 — 3행 중 반영 0 · 오류·미매핑 3」 알림 · 오류 행 3 빨간색 · 미매핑 코드 2. 390 폭에서 다시 올려 **2회차 교체**도 화면에 남겼다.
+| 캡처(1280 · 390) | 화면 | 본 것 |
+|---|---|---|
+| `ac_col_uploads-upload-apply-*` | COL-010 업로드(apply 뒤) | 반영 알림 · 반영 회차 1 · 오류 행 3(빨강) · 미매핑 2 · 열 매핑 7 |
+| `ac_col_upload-history-*` | COL-020 | 회차 목록 · 390 에서 `교체됨` / `반영` 칩 |
+| `ac_col_customer-map-map-create-1280` · `ac_col_customer-map-390` | COL-030 | 1280 에서 미매핑 `q3e2e-U` · `q3e2e-E` 목록 → `q3e2e-E` ↔ EX-C01 **등록**(폼) → 「다시 해석한 행 2 · 그중 반영 2」 · 목록에 사용 칩 · 참조 행 2 |
+| `ac_col_collections-*` | COL-040 | 행 2 · 매출 1,000 · 수금 600 · 수단별 막대(인라인 SVG) · 어음 만기 |
+| `ac_col_receivables-*` · `ac_col_aging-*` | COL-050 · 060 | 기준일 1985-02-28 · 미수 400 · 연령 구간(D-803 표기) |
+| `ac_col_shipment-vs-collection-*` | COL-070 | 1984-09~1985-02 · 출하 0 ↔ ERP 1,000/600 |
+| `sl_trk_customers-*` | TRK-030 수금 칸(영업부) | **1280**: 계정 순서(sl 가 ac 보다 먼저)라 매핑 전 — 「미수 잔액 **미수집** · 이 거래처에 매핑된 ERP 거래처코드가 없다」(계약대로 글자). **390**: 매핑 뒤 — 「미수 잔액 **400** · ERP 업로드 기준일 1985-02-28 · 매출 1,000 · 수금 600 · 마지막 거래일 1985-02-20」 |
+
+눈으로 본 것: 390 폭의 COL-040 · TRK-030 표는 안쪽(`grid-wrap`) 가로 스크롤이고 문서 가로 스크롤은 0. 쓰기 성공 알림은 모달 「알림」 대화(`#popup-layer`)로 뜬다. 캡처 뒤 `q3e2e` 회차 · 행 · 알림 · 매핑을 지웠다(「남은 q3e2e 회차 0 · 매핑 0」). 시드 계정 `ac` 의 `sys_change_log` 행은 남는다(감사 로그는 지우지 않는다 — W1 과 같음).
+
+### 7.6 명령 · 결과
+| 명령 | 결과 |
+|---|---|
+| `uv run python tools/check_security.py` | 처음 **종료코드 4** = FAIL 4(G-16 · G-17 · G-18 W3/W4 미구현 + X-07 DEF-QA3-004) · PASS 48 → **재검증 종료코드 3** = FAIL 3(G-16 · G-17 · G-18 **W3/W4 미구현**만) · PASS **49**(W1 36 + W2 13) · WARN 0 · 10초 |
+| `uv run pytest -q tests/test_qa3_*.py` | 처음 21 passed · 1 failed(`test_qa3_col.py::test_collections_xlsx_export_has_no_live_formula_cells` = DEF-QA3-004) → **재검증 22 passed · 0 failed** · 11.3초 — W1 14 + W2 8 |
+| `uv run --offline --with playwright python tools/check_security.py --e2e` | 32/32 PASS · rc 0 |
+| 정리 확인 `psql -h /tmp lcomfine_db` | `sys_user` · `erp_upload_batch` · `erp_customer_map` · `customer` 의 `q3%` 0 · `erp_column_map` 시드 7 그대로 |
+
+### 7.7 하지 않은 것
+- `make gate-full` · 시드 멱등 실측(`--run-seeds`) — 다른 QA 와 DB 를 같이 쓰므로 오케스트레이터 몫.
+- Docker 실기동(G-24) — D-525. 정적 3행은 PASS.
+- zip 폭탄 · 수백 MB 업로드 — 지시대로 하지 않았다(20MB+1 까지).
+- G-16 · G-17 · G-18 — W3/W4.

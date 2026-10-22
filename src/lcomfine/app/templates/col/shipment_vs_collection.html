@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "shp/_f.html" as f %}
+{% import "col/_c.html" as c %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">월 · 거래처 단위로 MES 출하(확정 출하 건수 · 수량 — <a href="{{ nav.path_of('SHP-030') }}">출하 이력</a>)와 ERP 매출 · 수금을 나란히 놓는다.
+    <a href="{{ nav.path_of('COL-030') }}">거래처 코드 매핑</a>으로 두 쪽을 잇는다. 출하 한 건과 수금 한 건을 짝짓지는 않는다(ERP 수금이 거래처 단위이기 때문) — 두 쪽은 따로 집계한 값이다. 출하 월 = 출하 확정일 · ERP 월 = 일자. 열 구성은 {{ ui.undecided(decision) }}.</p>
+  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
+  {{ f.notice(notice) }}
+  <form class="search" method="get" role="search">
+    {{ f.input("ym_from", "시작 월", form.ym_from, type="month") }}
+    {{ f.input("ym_to", "끝 월", form.ym_to, type="month") }}
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+        {% for cu in customers %}<option value="{{ cu.id }}"{% if (cu.id | string) == form.customer %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
+      </select></label>
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+</section>
+{% if data %}
+<section class="panel">
+  <div class="kpis">
+    {{ ui.kpi("출하 건수 (MES)", data.total.shipments | num if data.total.shipments is not none else none) }}
+    {{ ui.kpi("출하 수량 (MES)", data.total.shipped_qty | num(3) if data.total.shipped_qty is not none else none) }}
+    {{ ui.kpi("매출액 (ERP)", data.total.sales_amount | num if data.total.sales_amount is not none else none, "" if data.fields.sales_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")") }}
+    {{ ui.kpi("수금액 (ERP)", data.total.collected_amount | num if data.total.collected_amount is not none else none) }}
+  </div>
+</section>
+<section class="panel">
+  <h2>월별 — 출하 수량 (MES)</h2>{{ ui.svg_bar(series_ship) }}
+  <h2>월별 — 수금액 (ERP)</h2>{{ ui.svg_bar(series_coll) }}
+  <div class="grid-wrap"><table class="grid">
+    <thead><tr><th>월</th><th class="num">출하 건수</th><th class="num">출하 수량</th><th class="num">매출액</th><th class="num">수금액</th></tr></thead>
+    <tbody>{% for m in data.monthly %}<tr data-month="{{ m.ym }}"><td>{{ m.ym }}</td><td class="num">{{ m.shipments | num }}</td><td class="num">{{ m.shipped_qty | num(3) }}</td><td class="num">{{ m.sales_amount | num }}</td><td class="num">{{ m.collected_amount | num }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+<section class="panel panel--grid">
+  {% if data.rows %}
+  <div class="grid-wrap grid-wrap--tall"><table class="grid">
+    <thead><tr><th>월</th><th>거래처</th><th class="num">출하 건수 (MES)</th><th class="num">출하 수량 (MES)</th><th class="num">매출액 (ERP)</th><th class="num">수금액 (ERP)</th><th class="num">ERP 행</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+    <tr data-month="{{ r.ym }}" data-customer="{{ r.customer_id }}">
+      <td>{{ r.ym }}</td><td>{{ r.customer_code }} · {{ r.customer_name }}</td>
+      <td class="num">{{ r.shipments | num }}</td><td class="num">{{ r.shipped_qty | num(3) }}</td>
+      <td class="num">{{ r.sales_amount | num }}</td><td class="num">{{ r.collected_amount | num }}</td><td class="num">{{ r.erp_rows | num }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

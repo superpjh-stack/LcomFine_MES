@@ -101,6 +101,76 @@ def login(login_id: str, password: str) -> TestClient:
     return c
 
 
+# ── W2 — ERP 수금 행 (예시) 올리기 · 지우기 (TRK-030 · HOME-010 이 stats 로 읽는 것) ─────────────────────────
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+ERP_FIELDS = ("customer_code", "txn_date", "sales_amount", "collected_amount")
+
+
+class Erp:
+    """`(예시)` ERP 수금현황 xlsx 를 openpyxl 로 만들어 `POST /col/uploads` 로 올리고, `close()` 가 회차 · 행 · 알림 · 거래처 매핑을 지운다
+    (test_dev3_col.py 의 정리 방식 — 단 **이 객체가 만든 회차 id 만** 지운다). 기준 기간은 1985년(개발3 테스트의 1990~1993 과 겹치지 않는다).
+    열 매핑은 전역 설정 — 지금 매핑(시드 7)을 그대로 쓰고, 필수 항목이 비어 있을 때만 기본 항목 이름으로 저장한 뒤 끝에 되돌린다."""
+
+    def __init__(self, prefix: str, customer_id: int) -> None:
+        from lcomfine.app import erp_upload
+
+        self.erp_upload = erp_upload
+        self.code = f"{prefix}E"
+        self.customer_id = customer_id
+        self.batches: list[int] = []
+        self.map_before: list[dict] | None = None
+        if not all(erp_upload.column_map().get(f) for f in ERP_FIELDS):
+            self.map_before = conn.q("select field, column_name, created_by from erp_column_map order by id")
+            r = client("ac").post("/col/uploads", data={"action": "map", **{f"map_{k}": v for k, v in erp_upload.FIELDS.items()}})
+            assert r.status_code == 200, r.text
+        self.cmap = erp_upload.column_map()
+
+    def xlsx(self, rows: list[tuple]) -> bytes:
+        import io
+
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        fields = [f for f in self.erp_upload.FIELDS if self.cmap.get(f)]       # 매핑된 열은 파일에 전부 있어야 한다(check_map)
+        ws.append([self.cmap[f] for f in fields])
+        for r in rows:
+            vals = dict(zip(ERP_FIELDS, r))
+            ws.append([vals.get(f) for f in fields])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    def map_code(self) -> None:
+        r = client("ac").post("/col/customer-map", data={"erp_code": self.code, "erp_name": f"{self.code} ERP 거래처 (예시)",
+                                                         "customer_id": str(self.customer_id)})
+        assert r.status_code == 200, r.text
+
+    def upload(self, period_from, period_to, rows: list[tuple]) -> dict:
+        """rows = (거래처코드, 일자, 매출액, 수금액). 반영 회차 id 를 기억한다."""
+        r = client("ac").post("/col/uploads", data={"action": "apply", "period_from": period_from.isoformat(),
+                                                    "period_to": period_to.isoformat()},
+                              files={"file": (f"{self.code} (예시).xlsx", self.xlsx(rows), XLSX)})
+        assert r.status_code == 200, r.text
+        j = r.json()
+        self.batches.append(j["id"])
+        return j
+
+    def close(self) -> None:
+        with conn.tx() as cur:
+            if self.batches:
+                cur.execute("delete from notification where dedupe_key like 'erp_upload_error:%%' and link = any(%s)",
+                            ([self.erp_upload.error_link(i) for i in self.batches],))
+                cur.execute("delete from erp_upload_row where batch_id = any(%s)", (self.batches,))
+                cur.execute("delete from erp_upload_batch where id = any(%s)", (self.batches,))
+            cur.execute("delete from erp_customer_map where erp_code = %s", (self.code,))
+            if self.map_before is not None:
+                cur.execute("delete from erp_column_map")
+                for b in self.map_before:
+                    cur.execute("insert into erp_column_map (field, column_name, created_by) values (%s, %s, %s)",
+                                (b["field"], b["column_name"], b["created_by"]))
+        assert conn.q1("select count(*) as n from erp_upload_batch where id = any(%s)", (self.batches or [0],))["n"] == 0
+
+
 def test_helpers_make_and_cleanup():
     p = uniq("h")
     it = make_item(p)

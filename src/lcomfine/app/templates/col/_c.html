@@ -1,0 +1,55 @@
+{# COL 공용 조각 — `{% import "col/_c.html" as c %}`. 스크립트 없음. 숫자 열은 .num · 오류 행은 빨간색(정본 COL-010). #}
+
+{# 업로드 행 표 — rows: [{row_no, raw|cells, parsed, error}] · 항목 7 을 매핑된 열로 보인다. 오류 행이 빨갛다 #}
+{% macro row_table(rows, fields, cmap, limit) -%}
+{% if not rows %}
+<p class="empty" role="status">오류 행 없음</p>
+{% else %}
+<div class="grid-wrap grid-wrap--tall"><table class="grid">
+  <thead><tr><th class="num">엑셀 행</th>{% for f, label in fields.items() %}<th>{{ label }}{% if cmap.get(f) %} <span class="muted">← {{ cmap[f] }}</span>{% endif %}</th>{% endfor %}<th>오류</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-row="{{ r.row_no }}"{% if r.error %} class="is-error"{% endif %}>
+    <td class="num">{{ r.row_no }}</td>
+    {% for f in fields %}
+      {% set v = (r.cells[f] if r.cells is defined else (r.raw.get(cmap[f]) if cmap.get(f) else none)) %}
+      <td>{{ v | txt }}</td>
+    {% endfor %}
+    <td class="wrap">{{ r.error | txt("") }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if rows | length >= limit %}<p class="muted">처음 {{ limit }}행만 보인다 — 전부 저장되어 있다.</p>{% endif %}
+{% endif %}
+{%- endmacro %}
+
+{# 회차 표 #}
+{% macro batch_table(rows, link_screen) -%}
+{% if not rows %}
+<p class="empty" role="status">미수집 — 올라온 회차가 없다</p>
+{% else %}
+<div class="grid-wrap"><table class="grid">
+  <thead><tr><th>회차 번호</th><th>상태</th><th>기준 기간</th><th class="num">회차</th><th class="num">읽은 행</th><th class="num">반영 행</th><th class="num">오류·미매핑</th><th class="num">미매핑</th><th>파일</th><th>올린 사람</th><th>업로드 일시</th><th>교체한 회차</th><th></th></tr></thead>
+  <tbody>
+  {% for b in rows %}
+  <tr data-batch="{{ b.id }}" data-status="{{ b.status }}">
+    <td><code>{{ b.batch_no }}</code></td>
+    <td>{% if b.status == "반영" %}<span class="chip chip--ok">반영</span>{% else %}<span class="chip chip--muted">교체됨</span>{% endif %}</td>
+    <td>{{ b.period_from | dt }} ~ {{ b.period_to | dt }}</td>
+    <td class="num">{{ b.round_no }}</td><td class="num">{{ b.row_count | num }}</td><td class="num">{{ b.applied_count | num }}</td>
+    <td class="num{% if b.error_count %} is-error{% endif %}">{{ b.error_count | num }}</td>
+    <td class="num">{{ b.unmapped_count | num }}</td>
+    <td>{{ b.source_file }}</td><td>{{ b.created_by | txt }}</td><td>{{ b.uploaded_at | dt }}</td>
+    <td>{% if b.replaced_by_no %}<code>{{ b.replaced_by_no }}</code>{% else %}-{% endif %}</td>
+    <td><a class="btn btn-sm" href="{{ link_screen }}?batch={{ b.id }}">오류 행</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{%- endmacro %}
+
+{% macro asof_line(asof) -%}
+<p class="muted">ERP 업로드 기준일: {% if asof %}<strong>{{ asof | dt }}</strong> (반영 회차의 마지막 기준 기간 끝){% else %}<strong>미수집</strong> — 반영된 회차가 없다{% endif %}</p>
+{%- endmacro %}

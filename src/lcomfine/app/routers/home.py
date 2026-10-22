@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
-from .. import nav, notify, rbac, templating
+from .. import nav, notify, rbac, stats, templating
 from ..util import audit, http, screen
 from .bas import bad, pk
 
@@ -26,8 +27,31 @@ class Card:
     title: str
     screen_id: str           # 누르면 여는 처리 화면
     query: str = ""          # 조건 (그 화면의 조회 인자)
-    sql: str | None = None   # count 한 칸을 내는 SELECT. None = 아직 셀 수 없음(note 로 이유)
+    sql: str | None = None   # count 한 칸을 내는 SELECT. None = 아직 셀 수 없음(note 로 이유) 또는 fn 이 센다
     note: str = ""
+    fn: Callable[[], tuple[int | str | None, str]] | None = None   # 집계가 stats 에 있는 카드 — (건수 | 미확정 글자 | None=미수집, note)
+
+
+def _over90() -> tuple[int | str | None, str]:
+    """회계부 「90일 초과 미수」 — 집계 SQL 은 stats 뿐: len(stats.aging(asof)["over90"]). 기준일 = ERP 업로드 기준일(없으면 오늘).
+    반영 회차가 없으면 None(미수집) · 매출액 열이 매핑되지 않았으면 `미확정 (D-516)` 글자 그대로."""
+    asof = stats.erp_asof()
+    if asof is None:
+        return None, "반영된 ERP 업로드 회차가 없다 — 미수집"
+    a = stats.aging(asof)
+    if a["undecided"]:
+        return screen.undecided(a["undecided"]), f"ERP 업로드 기준일 {screen.dt(asof)} · 매출액 열 미매핑"
+    return len(a["over90"]), f"ERP 업로드 기준일 {screen.dt(asof)} · 90일 초과 순액 > 0 인 거래처 수"
+
+
+def _upload_errors() -> tuple[int | str | None, str]:
+    """회계부 「업로드 오류 행」 — 반영 회차의 오류 · 미매핑 행 수. 같은 사실을 알리는 `erp_upload_error` 알림의 미처리 건수를 note 에 함께
+    적는다(카드를 따로 두면 오류 행 · 미매핑 거래처 카드와 겹친다)."""
+    n = conn.q1("""select count(*) as n from erp_upload_row r join erp_upload_batch b on b.id = r.batch_id
+                    where b.status = '반영' and r.error is not null""")["n"]
+    alerts = conn.q1("""select count(*) as n from notification
+                         where event_key = 'erp_upload_error' and to_role = 'AC' and handled_at is null""")["n"]
+    return n, f"미처리 알림 {alerts}건 (ERP 업로드 오류·미매핑)"
 
 
 # 출하 수량 = v_work_order_status.shipped_qty 를 의뢰로 합한 값 (확정 출하만 — 뷰 정의)
@@ -80,10 +104,8 @@ CARDS: dict[str, tuple[Card, ...]] = {
                  where r.parsed->>'customer_code' is not null
                    and not exists (select 1 from erp_customer_map m
                                     where m.erp_code = r.parsed->>'customer_code' and m.use_yn = 'Y')"""),
-        Card("ac_errors", "업로드 오류 행", "COL-020", "",
-             """select count(*) as n from erp_upload_row r join erp_upload_batch b on b.id = r.batch_id
-                 where b.status = '반영' and r.error is not null"""),
-        Card("ac_over90", "90일 초과 미수", "COL-060", "", None, "수금 집계(stats)는 W2 — 미수집"),
+        Card("ac_errors", "업로드 오류 행", "COL-020", "", fn=_upload_errors),
+        Card("ac_over90", "90일 초과 미수", "COL-060", "", fn=_over90),
     ),
     "ST": (
         Card("st_report", "확정 대기 리포트", "RPT-080", "", None, "리포트 초안·검토 화면 없음 (D-505)"),
@@ -109,10 +131,14 @@ def cards_for(user: rbac.User) -> list[dict]:
     for name, cards in groups:
         items = []
         for cd in cards:
-            n = conn.q1(cd.sql)["n"] if cd.sql else None
+            note = cd.note
+            if cd.fn:
+                n, note = cd.fn()
+            else:
+                n = conn.q1(cd.sql)["n"] if cd.sql else None
             allowed = rbac.can(user, cd.screen_id)
             sc = nav.by_id(cd.screen_id)
-            items.append({"title": cd.title, "count": n, "note": cd.note, "screen": sc,
+            items.append({"title": cd.title, "count": n, "note": note, "screen": sc,
                           "href": (sc.path + (f"?{cd.query}" if cd.query else "")) if allowed else None})
         out.append({"dept": name, "cards": items})
     return out

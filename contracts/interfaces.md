@@ -149,6 +149,7 @@ notify.emit(cur, event, *, link, dedupe_key, text) -> int   # 수신 부서마�
 notify.unread(user) -> list[dict]                           # 부서(role_code)의 미처리 알림 최신순 (id event_key link message dedupe_key created_at)
 notify.handle(cur, notification_id, user) -> None           # 그 행 처리. 다른 부서 · 없는 ID → LookupError(라우터 404) · 이미 처리 → 그대로
 notify.handle_by_link(cur, link, user) -> int               # 같은 부서 · 같은 link 의 미처리 알림 전부 처리 — 처리한 행 수
+notify.resolve_by_link(cur, link, user) -> int                 # 알림이 가리키던 사실이 사라졌을 때(회차 교체 · 오류 0) 수신 부서와 무관하게 닫는다 (DEF-QA1-006)
 notify.recipients(event) -> tuple[str, ...]                 # 모르는 이벤트 KeyError
 ```
 - `emit` · `handle` · `handle_by_link` 은 **쓰기 트랜잭션의 커서**를 받는다 — 자체 연결을 열지 않는다. 모르는 이벤트는 `KeyError`(조용히 무시하지 않는다).
@@ -164,15 +165,28 @@ trace.backward(shipment_no=None, product_lot_no=None) -> dict   # 단계별 노�
 trace.forward(material_lot_no) -> dict                          # 원자재 LOT → 불출 → 지시 → 제품 입고 → 출하
 
 # app.stats (개발3 · W1) — 집계 SQL (읽기만)
-stats.customer_receivable(customer_id)                          # TRK-030 의 수금 칸 (W2 공표 예정 · 개발1에게)
-stats.due_compliance(period)                                    # TRK-020 의 납기 준수율 (W2 공표 예정 · Ruling 23)
+stats.customer_receivable(customer_id: int) -> dict             # TRK-030 수금 칸 (W2 공표 · progress-dev3 §1.3) — {customer_id, asof, erp_codes, rows, sales_amount,
+                                                                #   collected_amount, receivable_amount, last_txn_date, status ∈ "ok"|"미수집"|"미확정 (D-516)", decision}
+stats.due_compliance(period) -> dict                            # TRK-020 납기 준수율 (Ruling 23 · D-804) — period "YYYY-MM" 또는 (시작일, 종료일) →
+                                                                #   {period, total, on_time, late_done, late_open, in_progress, rate | None(미수집), rows, formula}
+stats.erp_asof() -> date | None                                 # 반영 회차의 마지막 기간 끝 (COL · TRK-030 「ERP 업로드 기준일」)
+stats.collections(date_from, date_to, customer_id=None, method=None) -> dict      # COL-040
+stats.receivables(asof, include_zero=False) -> dict             # COL-050 (매출액 열 미매핑이면 미확정 (D-516))
+stats.aging(asof) -> dict                                       # COL-060 — 구간 30 · 60 · 90 · over90 (HOME 회계부 「90일 초과 미수」 = len(aging(...)["over90"]))
+stats.shipment_vs_collection(ym_from, ym_to, customer_id=None) -> dict           # COL-070 — MES 확정 출하 ↔ ERP 매출·수금 full outer join
 
 # app.erp_upload (개발3 · W2)
-erp_upload.read_xlsx(file: bytes) -> list[dict]
-erp_upload.column_map() -> dict[str, str]                       # MES 필드 → 엑셀 열 이름
-erp_upload.validate(rows, cmap) -> list[dict]                   # 행마다 parsed 또는 error
-erp_upload.apply(cur, period_from, period_to, rows, user) -> int
-erp_upload.remap(cur, batch_id) -> int
+erp_upload.read_xlsx(file: bytes) -> list[dict]                 # 첫 시트 · 1행 헤더 (D-802)
+erp_upload.headers(file: bytes) -> list[str]
+erp_upload.column_map() -> dict[str, str]                       # MES 필드 → 엑셀 열 이름 (erp_column_map · D-516 흡수)
+erp_upload.save_column_map(cur, mapping, user) -> int
+erp_upload.check_map(cmap, file_headers=None) -> None           # 필수 열 빠지면 422
+erp_upload.validate(rows, cmap, customer_map=None) -> list[dict]        # 행마다 parsed 또는 error (미매핑 = 오류 행)
+erp_upload.apply(cur, period_from, period_to, rows, user, *, source_file="") -> int   # 새 회차 id · 같은 기간 재업로드 = 회차 교체 · 오류 · 미매핑 있으면 notify.emit("erp_upload_error")
+erp_upload.remap(cur, batch_id=None, erp_code=None, user=None) -> dict  # 매핑 뒤 반영 회차 행 재해석 — {reviewed, changed, applied(error → None), still_error} (DEF-QA2-004)
+erp_upload.unmapped_codes() -> list[dict]                       # COL-030 미매핑 목록
+erp_upload.mapped_fields() -> dict[str, bool]
+erp_upload.error_link(batch_id) -> str                          # 알림 link = /col/upload-history?batch=<id>
 
 # app.dashboard (개발3 · W3) — 8 함수: orders production quality inventory shipment collection order_flow summary
 dashboard.<이름>(period, customer_id=None) -> {"kpis": [...], "series": {...}, "tables": {...}, "asof": date | None}

@@ -81,3 +81,14 @@ def handle_by_link(cur, link: str, user) -> int:
             where to_role = %s and link = %s and handled_at is null""",
         (user.login_id, user.role_code, link))
     return cur.rowcount
+
+
+def resolve_by_link(cur, link: str, user) -> int:
+    """알림이 가리키던 **사실이 사라졌을 때**(ERP 회차가 교체됨 · 재해석으로 오류 0) `link` 가 같은 미처리 알림을 **수신 부서와 무관하게** 전부 닫는다.
+    `handle_by_link` 는 「그 부서 사람이 처리 화면에서 처리했다」 — 이것은 「처리할 것이 없어졌다」 다(DEF-QA1-006 · D-802).
+    닫은 사람(handled_by)은 사실을 바꾼 사용자. 반환 = 닫은 행 수."""
+    cur.execute(
+        """update notification set handled_at = now(), handled_by = %s
+            where link = %s and handled_at is null""",
+        (user.login_id, link))
+    return cur.rowcount

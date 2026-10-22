@@ -183,6 +183,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .chip--ok { color: var(--ok); background: var(--ok-soft); }
 .chip--warn { color: var(--warn); background: var(--warn-soft); }
 .chip--bad { color: var(--bad); background: var(--bad-soft); }
+.is-error td, td.is-error { color: var(--bad); }   /* 오류 행 · 오류 건수 칸 (COL 업로드 — 정본 「오류 행은 빨간색」) */
 .chip--muted { color: var(--muted); background: var(--hover); }
 .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; color: var(--warn); background: var(--warn-soft); }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }

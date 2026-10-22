@@ -95,3 +95,87 @@ HOME-030 표본은 Ruling 24 뒤에도 맞았다(누락 → 422 「필수 항목
 - `uv run python tools/check_trace.py` — G-01 PASS 10/10 · G-02 FAIL 2/5(W2~W4 기능 27 — 라우트 · 표식 없음).
 - `uv run python tools/gate.py`(읽기 전용 · 2026-10-21 23:37 · **DEF-QA1-003 수정 전 실행**) — 빌드 전제 FAIL(pytest passed 248 · failed 1 = DEF-QA1-003 테스트 · `/health` 200) · PASS 12 · FAIL 9 · 미검증 2 · BLOCKED 1 · 종료코드 12. QA1 몫: **G-19 PASS**(`[check_security PASS] 6 / [check_screens PASS] 8` — 앞 실행의 「도구 종료코드 5」 FAIL 은 사라졌다) · **G-03** `[check_screens PASS] 3`(G-03 FAIL 은 check_routes 의 placeholder 18 = W2~W4) · **G-02** `[check_screens FAIL] 검사 4 · 통과 못한 1 — 오류 계약 §3 … F-SHP-011 · F-SHP-023`(+ check_trace 의 W2~W4 고아 27). 나머지 FAIL 은 W2~W4 몫(G-12~G-18) · QA2 G-11 미검증(erp_upload_error · W2).
 - 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from item where item_code like 'QA1-%'"` → 0 (`sys_user` · `notification` 도 0).
+
+---
+
+# W2 수금 (2026-10-22) — COL 7 화면 · 기능 11 을 범위에 넣어 120 기능
+
+검증만 했다. 코드는 고치지 않았다. 검사기 `tools/check_screens.py` 의 범위를 「대메뉴가 DOC · RPT 가 아닌 기능」으로 넓혔다(W1 109 + COL 11 = **120** · DOC 6 · RPT 10 은 W3 · W4 까지 placeholder 라 FAIL 로 세지 않는다 · placeholder 11). 기대값은 전부 계약(`function-list.md` F-COL-011~071 · F-TRK-021 · F-TRK-031 · F-HOME-011 W2 문장 · `permission-matrix.md` · `api-contract.md` · `ia.json` COL 7 화면 L3 · logic · `decisions.md` D-516 · D-608 · D-802~D-804)에서 끌어왔다.
+QA1 세계에 W2 몫을 더했다(admin · 화면이 부르는 HTTP): 거래처 코드 매핑 2(`QA1-<6자리>-E` · `-E2`) → (예시) xlsx(openpyxl · 지금 열 매핑 = 시드 7 의 열 이름 · 행 5 = 정상 3(현금 · 어음 만기 1980-02-15 · 어음 만기 2999-12-31) + 미매핑 코드 `-U` 1 + 일자 형식 오류 1) → `POST /col/uploads` **1회차** → 같은 기준 기간(1980-01 · 다른 테스트가 쓰지 않는 해) **2회차**(교체) → 사례 27 → 계약 문장 자동 확인 23(매핑 등록 → 재반영 · 사용 중지 · 삭제 2 · 매출액 · 잔액 열 매핑을 잠깐 지워 `미확정 (D-516)` 확인 뒤 스냅샷으로 복원) → 정리(자기 회차 id · 자기 매핑 접두만 · 알림은 그 회차의 link 만). 정리 후 `QA1-` 행 0(`erp_upload_batch.source_file` · `erp_customer_map.erp_code` 포함) · `erp_column_map` 7 = 시드 그대로. 시드 계정 · 다른 QA 의 회차는 건드리지 않았다(QA3 가 같은 DB 에서 동시에 돌았다).
+
+## W2-1. 결함
+
+| ID | 심각도 | 담당 | 상태 | 요약 |
+|---|---|---|---|---|
+| DEF-QA1-006 | 경미 | 개발3 (`erp_upload.py`) · 아키텍트 (`notify.resolve_by_link` 공표 · Ruling 27) | **해소(재실측)** | `erp_upload_error`(→ 회계부) 알림이 **업로더 · 매핑 등록자가 전산 관리자(ADM)이면 닫히지 않는다** — 회차가 교체되어도, 매핑 뒤 재해석으로 오류가 0 이 되어도 회계부 알림함에 교체된 회차 · 오류 0 회차의 알림이 남고 HOME 회계부 「업로드 오류 행」 note 「미처리 알림 n건」이 오류 행 0 인데 1 이상이다. D-802 「닫힘 = 그 기간을 다시 올려 교체되거나, 매핑 뒤 재해석으로 오류가 0 이 될 때」 · D-511 「한 사람이 처리하면 부서 전체 처리됨」 위반. 전산 관리자는 COL-010 · COL-030 의 W 부서다(permission-matrix) |
+
+치명 0 · 중대 0 · 경미 1(해소 1 · Ruling 27 재실측). **미해소 0.** W1 결함 5 는 재발하지 않았다(화면 GET 403 문장 276/276 「이 화면을 볼 권한이 없습니다」 · 빈 본문 200 0 · 일반 문장 422 0 · 5xx 0).
+
+### DEF-QA1-006 · 경미 · `erp_upload_error` 알림이 ADM 이 올리면 닫히지 않는다 — 해소(재실측)
+- 재현 1 (검사기 · admin 세션): `POST /col/customer-map {erp_code: QA1-…-E, customer_id}` → (예시) xlsx(행 5 · 오류 2) `POST /col/uploads action=apply period 1980-01-01~31` → 1회차 반영 · `notification(event_key erp_upload_error, to_role AC, link /col/upload-history?batch=<1회차>)` 1행 → 같은 파일 · 같은 기간 다시 `POST /col/uploads` → 2회차 반영 · 1회차 `교체`(replaced_by = 2회차 · 행 5 보존 — G-12 는 맞다). **실측**: 1회차 알림 `handled_at` null(미처리) · 2회차 알림 미처리 → 회계부 알림함에 두 줄. `check_screens` 행 `G-02  COL 계약 문장 … FAIL  항목 23 · 어긋남 1 — 알림 erp_upload_error … 2회차 [('AC', False)] · 1회차 [('AC', False)]`.
+- 재현 2 (따로 돌린 스크립트 · 기간 1981-01 · 끝에 지움): admin 업로드(미매핑 1행) → AC 알림 미처리 ✓ → **ac** 가 같은 기간 재업로드 → 1회차 알림 **처리됨**(업로더가 AC 면 닫힌다) · 2회차 알림 미처리 → **admin** 이 `POST /col/customer-map {erp_code: 그 미매핑 코드}` → `remapped 1` · 2회차 `error_count 0` — 그런데 2회차 알림 **미처리 그대로** · HOME(ac) 「업로드 오류 행」 카드 note 「미처리 알림 1건」(오류 행은 0).
+- 기대: D-802 · F-COL-011 계약 「오류·미매핑 행이 있으면 `notify.emit("erp_upload_error")` → 회계부」의 짝으로 D-802 「닫힘 = 그 기간을 다시 올려 교체되거나, 매핑 뒤 재해석으로 오류가 0 이 될 때(같은 쓰기 트랜잭션 · `handle_by_link`)」 — 누가 올렸든 **수신 부서(AC)** 의 그 link 알림이 닫혀야 한다.
+- 원인: `src/lcomfine/app/erp_upload.py` `apply()` · `remap()` 이 `notify.handle_by_link(cur, error_link(id), user)` 를 부르는데, `notify.handle_by_link` 는 `where to_role = user.role_code and link = …`(interfaces.md §8 「같은 부서의 미처리 알림」) 라서 user 가 ADM 이면 AC 행을 건드리지 않는다. 개발3 이 ac 로만 테스트해(`tests/test_dev3_col.py` 업로더 `c["ac"]`) 드러나지 않았다. `test_dev1_common.Erp` 도 `client("ac")` 다.
+- 고칠 곳(제안 · QA 는 고치지 않는다): `notify` 에 「이 link 의 미처리 알림을 부서 상관없이(또는 지정 부서로) 닫는다」 공표가 필요하면 아키텍트, 아니면 `erp_upload` 가 `notify.recipients("erp_upload_error")` 의 부서로 닫는다. 닫는 사람(`handled_by`)은 실제 행위자(ADM) 그대로 두면 감사에 맞다.
+- 수정(아키텍트 Ruling 27 · 2026-10-22): `notify.resolve_by_link(cur, link, user)` 추가 — 「알림이 가리키던 사실이 사라졌을 때(회차 교체 · 재해석으로 오류 0)」 수신 부서와 무관하게 닫는다(`interfaces.md` · D-511 갱신). `erp_upload.py` `apply()`(교체) · `remap()`(오류 0) 두 호출을 그것으로 바꿨다.
+- 재실측(같은 세계 · admin 업로드 2회차 · admin 매핑): `check_screens` 행 `G-02  COL 계약 문장 … PASS  항목 23 · 어긋남 0` · 요약 「알림 erp_upload_error — … OK — 2회차 [('AC', False)] · 1회차 [('AC', True)]」(교체된 1회차 알림 처리됨 · 2회차 AC 1행 미처리) · `tests/test_qa1_col.py::test_erp_upload_error_alert_closes_when_batch_replaced` PASS · 종료코드 1 → **0**.
+
+## W2-2. 게이트 판정 (QA1 몫)
+
+명령: `uv run python tools/check_screens.py` — 약 11초 · 종료코드 = FAIL 행 수. 실측(2026-10-22 · Ruling 27 반영 뒤 재실측) **종료코드 0**(반영 전 실행은 1 = DEF-QA1-006 행). 20MB 초과 사례 때문에 multipart 20MB 를 한 번 보낸다.
+
+| 게이트 | 판정 | 실측 (check_screens 행) |
+|---|---|---|
+| **G-02** 기능 ↔ 라우트 ↔ 표식 (W1·W2) | **PASS** (2/2) | 범위 기능 **120**(DOC · RPT 16 제외) — API 가 라우트에 글자 그대로 120/120 · `@pytest.mark.fn` 표식 120/120 · 읽지 못한 테스트 0. COL 11 전부 라우트 · 표식 있음 |
+| **G-02** 오류 계약 (api-contract §1 · §3 · goal §2.7) | **PASS** (1/1) | 쓰기 62 × 사례 **236**(W1 209 + COL 27) 어긋남 0 · 5xx 0 · 화면 GET 조회 칸 **163**(화면 56) NUL · 틀린 날짜 → 500 0 · 틀린 날짜를 200 으로 받은 칸 0 · 403 문장 다른 것 0 · 「미확정 (D-nn)」 안 보이는 화면 0/9(W1 6 + COL-010 · COL-050 · COL-060 D-516) · 세계 단계 33 실패 0 · 남은 행 0 |
+| **G-02** 오류 계약 §3 — 422 가 항목을 짚음 | **PASS** (1/1) | 422 사례 **160** 중 일반 문장 0 (COL 22 전부 항목 이름 — 「파일」 「기준 기간 시작」 「거래처코드」 「열 매핑 — 거래처코드」 「ERP 거래처코드」 「ERP 거래처명」 「MES 거래처」 「사용 여부」 「동작」) |
+| **G-02** COL 계약 문장 (정본 L3 · logic · D-516 · D-608 · 수정 경로 없음) — 자동 확인 | **PASS** (1/1) | 항목 23 · 어긋남 **0** (반영 전 실행: 어긋남 1 = DEF-QA1-006 알림 닫힘) — 아래 W2-4 |
+| **G-03** 화면 응답 | **PASS** (3/3) | 화면 67 × 계정 8: 칸 W/R 260 → 200 260/260 · 칸 없음 276 → 403 276/276 · 범위 화면 **56** placeholder 0(전체 placeholder 11 = DOC 2 · RPT 9). COL 7 × 8 = 56: 칸 30(W 4 · R 26) → 200 30/30 · 칸 없음 26 → 403 26/26 |
+| **G-19** 권한 403 전수 (QA1 몫) | **PASS** (8/8) | 정적: 쓰기 라우트 **62** 전부 `require_fn(<그 기능 ID>)` 하나(COL 4 = F-COL-011 · 031 · 032 · 033) · 조회 라우트 **58** 전부 `require_screen`(COL 7 화면 GET 전부 `require_screen` — DEF-QA1-001 재발 없음) / DB `sys_permission` 260 = 계약 260 / 칸 밖 화면 GET 276 → 403 / 메뉴 = 권한 칸(계정 8 어긋남 0 — COL 메뉴는 SL · AC · ST · EX · SH(070) · ADM 에게만) / 쓰기 62 × 계정 8: R · 칸 없음 **361** → 403 「이 기능을 실행할 권한이 없습니다」 361/361(COL 4 × 6 부서 = 24 포함) · W 부서 **135** → 401/403/5xx 아님 135/135(COL 4 × AC · ADM = 8: 빈 본문 422 · 없는 키 404) · 권한 예외 F-HOME-022 8/8 |
+
+- `uv run python tools/check_trace.py` G-02: 「라우트 없는 계약 **16** · 표식 없는 기능 **16** · 이어진 기능 **120/136**」 — 16 은 전부 DOC 6 · RPT 10(W3 · W4). W1 때 27 에서 COL 11 이 빠졌다. W4 까지 FAIL 로 남는 것이 맞다.
+- COL 화면 GET 의 403 문장 56 중 26 전부 「이 화면을 볼 권한이 없습니다」 — W1 DEF-QA1-001 재발 없음.
+
+## W2-3. 오류 계약 — COL 쓰기 4 사례 27 (전부 통과 · JSON 판정)
+
+| 기능 | 사례 → 실측 (message) |
+|---|---|
+| F-COL-011 `POST /col/uploads` | 누락(빈 본문 · 파일 없음) → **422** 「ERP 엑셀 파일을 올려 주세요」(fields 파일) · 기준 기간 누락 → 422 「기준 기간 시작을(를) 입력해 주세요」 · 엑셀 아닌 파일 → 422 「파일: 엑셀(.xlsx) 파일이 아닙니다 [BadZipFile]」 · 빈 파일 → 422 「파일: 빈 파일입니다」 · **20MB 초과**(20·1024·1024 + 1 bytes) → 422 「파일: 20MB 이하만 올릴 수 있습니다」 · **기준 기간 역순** → 422 「기준 기간의 시작일이 종료일보다 늦습니다」 · 날짜 형식(1980-13-45) → 422 「기준 기간 시작 형식이 올바르지 않습니다 (YYYY-MM-DD)」 · 매핑된 열이 파일에 없음 → 422 「파일에 매핑된 열이 없습니다 — 거래처코드 ← '거래처코드'」 · 데이터 행 0 → 422 「파일: 읽은 데이터 행이 없습니다 (열 이름 행만 있음)」 · 모르는 동작 → 422 「모르는 동작입니다 (apply · preview · map)」 · 열 매핑 NUL → 422 「열 매핑 — 거래처코드: 글자에 NUL(0x00)을 넣을 수 없습니다」(저장 안 됨 · 매핑 7 그대로) · 열 매핑 필수 누락 → 422 「열 매핑이 없습니다 — 거래처코드」(저장 안 됨) · 검증 미리보기 → **200** `applied false · rows 5 · errors 2` · 회차 · 행 · 알림 수 (2, 10, 15) → (2, 10, 15) 불변 |
+| F-COL-031 `POST /col/customer-map` | 누락 → 422 「ERP 거래처코드을(를) 입력해 주세요」 · NUL ERP 거래처명 → 422 「ERP 거래처명: 글자에 NUL(0x00)…」 · NUL ERP 거래처코드 → 422 · **코드 중복** → 422 「이미 있는 ERP 거래처코드입니다」 · 없는 거래처(본문 999999999) → 422 「없는 거래처입니다」(사용자가 고른 값 — api-contract 「422 와 404 의 경계」) · 거래처 값 틀림(abc) → 422 「MES 거래처 값이 올바르지 않습니다」 |
+| F-COL-032 `POST /col/customer-map/{id}` | 누락(빈 본문) → 422 「MES 거래처을(를) 골라 주세요」 · 사용 여부 X → 422 「사용 여부 값이 올바르지 않습니다 (Y · N)」 · NUL ERP 거래처명 → 422 · 없는 거래처(본문) → 422 · 없는 경로 키 999999999 → **404** 「대상을 찾을 수 없습니다」 · 숫자 아닌 키 abc → 404 |
+| F-COL-033 `POST /col/customer-map/{id}/delete` | 없는 경로 키 → 404 · 숫자 아닌 키 → 404 (빈 본문은 경로 키만 받는 삭제라 누락 사례가 없다 — W1 과 같은 규칙) |
+
+- 화면 GET 조회 칸(COL 7 + TRK-020 `period`) 24 요청: NUL · 틀린 날짜(`2026-13-45`) → 422 **23** · 500 **0** · 200 1 = `COL-050 ?show_zero=<NUL>`(토글 칸 — 값이 있으면 「보임」으로 읽는다 · 날짜 아님 · 결함 아님). TRK-020 `?period=` 형식 오류 5(`1980-13` · `1980-1` · `abcd-ef` · `1980/01` · NUL) → 전부 **422** 「조회 기간: YYYY-MM 형식으로 입력해 주세요 — …」 · `?period=1980-01` → 200 `data-period="1980-01"` · `data-compliance`.
+- 사람이 읽는 문장(`을(를)`)은 라우터 `_text` · `_date` · `_opt_id` 가 먼저 낸다 — 핸들러의 「입력」 한 줄 0.
+
+## W2-4. 계약 문장 — COL 7 · TRK-020 · TRK-030 · HOME 회계부 (사람 판정)
+
+자동 확인 23 항목(`check_screens` 요약 표 「COL 계약 문장 — …」 · `tests/test_qa1_col.py`) 23 OK(반영 전 실행은 22 OK · 1 어긋남 = DEF-QA1-006 · 해소). 자동 대조가 못 찾은 L3 낱말은 세계가 있는 동안(행이 있는 상태 · COL-010 `?batch=` · COL-020 `?batch=` · COL-040 `?date_from=&date_to=` · COL-050 · 060 `?asof=` · COL-070 `?ym_from=&ym_to=` · TRK-030 `?customer=`) 화면을 열어 봤다. **진짜 빠진 것 0.**
+
+| 화면 | 정본 L3 · logic | 자동 확인 실측 | 사람 판정 — 화면에 있는 것 |
+|---|---|---|---|
+| COL-010 | 기준 기간 선택 · ERP 엑셀 파일 올리기 · 검증 결과 미리보기 · 반영 / 양식 변환 없이 그대로 · **처음 한 번 열 이름 매핑 저장, 다음부터 자동** · 검증: 필수 열 · 숫자·날짜 형식 · 거래처 코드 매핑 여부 · **오류 행은 빨간색** · 반영에서 뺀다 · 같은 기준 기간 재업로드 = 새 회차 · 이전 회차 이력 · MES 는 고치지 않는다 | 2회차가 매핑 동작 없이 올라감 · 오류 행 `class="is-error"` 2(`.is-error td { color: var(--bad) }` style.css · 아키텍트 반영) · 본문에 `미확정 (D-516)` · 미매핑 코드 · 미리보기 200 · 회차 · 행 · 알림 불변 · 수정 POST 없음(`/col/*` POST 4 = 업로드 1 · 매핑 3) | 열 매핑 폼(항목 7 · 필수 표시 · 파일 열 이름 datalist) · 업로드 폼(기준 기간 시작 · 끝 `type=date` · `.xlsx` 파일 · 「검증 미리보기 (반영 안 함)」 · 「반영」 확인 대화) · 미리보기 패널(읽은 행 · 반영될 행 · 오류·미매핑 행 KPI + 오류 행 먼저 빨간 표) · 현재 반영 회차 표(기간마다 하나) · 오류 행 표(엑셀 행 · 항목 7 ← 열 이름 · 오류 문장). 자동 대조가 못 찾은 「ERP 엑셀 파일 올리기」 「검증 결과 미리보기」 는 폼 라벨 「ERP 엑셀 파일 (.xlsx)」 · 버튼 「검증 미리보기」 로 있다 |
+| COL-020 | 회차 목록(기간 · 건수 · 오류 건 · 올린 사람) · 회차별 오류 행 보기 / 현재 반영된 회차와 교체된 회차 구분 | `data-status="교체"`(1회차) · `data-status="반영"`(2회차) · 「교체됨」 칩 · `?batch=` 오류 행 `is-error` 2 · `?status=` 필터 422(틀린 값) | 회차 표(회차 번호 · 상태 칩 반영/교체됨 · 기준 기간 · 회차 · 읽은 행 · 반영 행 · 오류·미매핑 · 미매핑 · 파일 · 올린 사람 · 업로드 일시 · 교체한 회차 · 「오류 행」 버튼) · 회차 패널(교체됨 → 새 회차 번호 · 미매핑 행 수 · 매핑 안내). 「회차별 오류 행 보기」 = 행마다 「오류 행」 버튼 |
+| COL-030 | ERP 거래처코드 ↔ MES 거래처 · 미매핑 코드 목록 / **처음 보는 ERP 코드는 미매핑 목록에 쌓인다** · **매핑하면 해당 오류 행을 다시 반영** · 유일한 키 | 미매핑 표 `data-unmapped="QA1-…-U"` → 매핑 등록 → `remapped 1` · 2회차 그 행 `error null` · `error_count 2→1` · 1회차(교체) 행은 그대로 · 미매핑 표에서 사라짐 → 사용 중지(`use_yn N`) → 미매핑 표에 다시 · 행 불변 → 삭제: 참조 없음(E2) 삭제 `disabled false` · 참조 있음(E · refs 8) `disabled true` 사용 중지 | 미매핑 표(코드 · 행 · 회차 · 처음 · 마지막 기간 · 「매핑하기」 → `?code=` 등록 폼 채움) · 등록 폼(ERP 거래처코드 · ERP 거래처명 · MES 거래처 select — BAS-020 링크) · 수정 폼(`?edit=` · 코드는 키라 고정 · 사용 여부) · 매핑 표(참조 행 · 수정 · 삭제 확인 대화) |
+| COL-040 | 기간 · 거래처 · 수단 조건 · 일자별 수금 목록 · 엑셀 / **어음은 만기일과 만기 도래 여부를 함께** | 어음 만기 1980-02-15 → 「도래」 칩 · 2999-12-31 → 「예정」 칩 · 매출 1,000 · 수금 400 · `?format=xlsx` 200 `application/vnd.openxmlformats-…sheet` 5,238 bytes | 조회 폼(시작일 · 종료일 · 거래처 · 수단 select = 공통코드 ∪ 반영 행의 수단) · KPI(행 · 매출액 합 · 수금액 합 — 열 미매핑이면 「열 미매핑 — 미확정 (D-516)」 note) · 수단별 수금액 막대 + 표 · 일자별 표(일자 · ERP 코드 · 거래처 · 매출 · 수금 · 잔액 · 수단 · 어음 만기 · 만기 도래 · 회차) · 「엑셀」 링크. 「수단 조건」 「일자별 수금 목록」 낱말은 select 라벨 「수단」 · 표로 있다 |
+| COL-050 | 기준일 · 거래처별 매출·수금·미수 잔액 / 매출(청구)액 · 잔액 열이 있다는 가정(확인 필요) · **미수 0 인 거래처는 기본으로 숨긴다** | `?asof=1980-01-31` 행 `data-customer` 매출 1,000 · 수금 400 · 미수 600 · 본문 「ERP 업로드 기준일」 · 매출 열 매핑 제거 → KPI · 열 · 안내 `미확정 (D-516)` · 수금 합 400 수치 유지 | 기준일 `type=date`(기본 = ERP 업로드 기준일) · 「미수 0 거래처 숨김/보임」 select · KPI(거래처 · 매출 합 · 수금 합 · 미수 잔액 합) · 거래처별 미수 막대 · 표(ERP 코드 · 행 · 매출 · 수금 · 미수 잔액 · ERP 잔액(마지막 행 · 잔액 열 미매핑이면 미확정) · 마지막 일자) · 산식 「= Σ매출 − Σ수금」 문장(D-803) · 정본 「확인 필요」 문장 그대로. 미수 0 숨김은 `stats.receivables(include_zero)` 기본 False(개발3 테스트가 보임/숨김 둘 다 확인) |
+| COL-060 | 기준일 · **구간별 금액 (30·60·90일, 90일 초과)** / 매출일 기준 경과일 · 90일 초과는 AI 리포트가 따로 | 구간 머리 「0~30일」 「31~60일」 「61~90일」 「90일 초과」 4 · 행 `data-customer` · 산식 문장 D-803 · 매출 열 매핑 제거 → `미확정 (D-516)`(구간별 수금 합만) | 기준일 · 구간 KPI 4(순액 + 수금 note) · 막대 · 거래처 × 구간 표(`data-over90`) · 「90일 초과 거래처」 목록 · RPT-060 링크(W3) · 「매출일 기준 경과일」 문장. 「구간별 금액」 낱말은 구간 머리 4 로 있다 |
+| COL-070 | 월 · 거래처 선택 · **MES 출하 수량·건수와 ERP 매출·수금 나란히** / 거래처 코드 매핑으로 월·거래처 단위 · 건 단위 짝짓기 없음 | 열 「출하 건수 (MES)」 「출하 수량 (MES)」 「매출액 (ERP)」 「수금액 (ERP)」 · 행 `data-month="1980-01" data-customer` · 「짝짓지는 않는다」 문장 · 조회 칸 `ym_from` 형식 오류 422 | 시작 월 · 끝 월 `type=month` · 거래처 select · KPI 4 · 월별 막대 2(출하 수량 · 수금액) + 월별 표 · 월 × 거래처 표(출하 건수 · 수량 · 매출 · 수금 · ERP 행) · SHP-030 · COL-030 링크. QA1 세계의 1980-01 은 출하가 없어 MES 쪽 0 · ERP 1,000 / 400 — 수치 일치는 QA2 G-14 몫 |
+| TRK-020 | 납기 준수율(수치 = `stats.due_compliance(period)` · `period=YYYY-MM` · 기본 이번 달 · 분모 0 = 미수집 · D-804 산식) | `?period=1980-01` 200 `data-period` · `data-compliance="미수집"`(그 달 의뢰 없음 — 0 % 로 적지 않음) · 산식 문장 D-804 · 형식 오류 5 → 422 | 「준수율 기간」 `type=month` 칸 · KPI(납기 안 완료 · 지연 완료 · 지연 · 진행 · 의뢰 수) · 「판정할 수 있는 의뢰가 없다 — 0 % 로 적지 않는다」 문장 |
+| TRK-030 | 수금·미수 (**ERP 업로드 기준일 표시**) · 미수는 회계부가 올린 ERP 데이터 그대로 | `?customer=` → `data-receivable="ok" data-asof="1980-01-31"` · 미수 잔액 600 · 「ERP 업로드 기준일」 KPI note + 패널 제목 · 매출 열 매핑 제거 → `data-receivable="미확정 (D-516)"` + 본문 `미확정 (D-516)` · 매핑 전부 사용 중지 → `data-receivable="미수집"` | 수금·미수 패널(ERP 거래처코드 · 반영 행 · 매출 · 수금 · 미수 잔액 · 마지막 거래일 · ERP 업로드 기준일 표). 자동 대조의 「표시」 낱말은 없고 「ERP 업로드 기준일」 + 날짜가 있다 |
+| HOME-010 (회계부) | 미매핑 ERP 거래처 · 업로드 오류 행 · 90일 초과 미수 | ac 로 열면 카드 3 + COL-060 링크 · 매출 열 매핑 제거 → 「90일 초과 미수」 `미확정 (D-516)` 글자 | 「90일 초과 미수」 = `len(stats.aging(asof)["over90"])` · 회차 없으면 「미수집」(D-608). 「업로드 오류 행」 note 의 「미처리 알림 n건」 — DEF-QA1-006 해소 뒤 교체 · 오류 0 회차의 알림은 닫혀 오류 행과 맞는다 |
+
+관찰(결함으로 올리지 않음 — 계약에 기준 없음):
+- `COL-050 ?show_zero=<아무 글자>` 는 「보임」으로 읽힌다(값 유무만 본다). 토글이라 422 대상이 아니다.
+- 매출액 · 잔액 열 매핑을 지우는 동안(약 1초) 다른 검사기가 업로드하면 그 회차의 `parsed` 에 매출액이 빠진다 — QA1 은 스냅샷으로 되돌린 뒤 `erp_column_map` 7 = 시드와 같음을 확인했다(`select field, column_name from erp_column_map` 대조).
+- `erp_upload_batch.source_file` 에 QA1 접두를 넣어 정리 · 남은 행 확인의 키로 쓴다(자기 회차 id 목록과 합집합).
+
+## W2-5. 검증 명령 · 산출물
+
+- `uv run python tools/check_screens.py [--json <파일>]` — 2026-10-22 재실측(Ruling 27 뒤): **G-02 5/5 · G-03 3/3 · G-19 8/8 · 종료코드 0**(반영 전 실행: G-02 4/5 · 종료코드 1 = DEF-QA1-006). 약 11초. `--cleanup-all` 은 앞 실행이 죽어 남은 `QA1-` 행(회차 · 매핑 포함) 정리.
+- `uv run pytest -q tests/test_qa1_screens.py tests/test_qa1_errors.py tests/test_qa1_contract_text.py tests/test_qa1_col.py` — 2026-10-22 재실측 **31 passed · 0 failed**(약 13초 · 반영 전 실행: 30 passed · 1 failed = `tests/test_qa1_col.py::test_erp_upload_error_alert_closes_when_batch_replaced` · DEF-QA1-006). W1 테스트 16 은 범위가 120 으로 넓어진 채 그대로 통과(`test_qa1_errors.py` 사례 236 · `test_qa1_contract_text.py` 미확정 화면 9).
+  - `tests/test_qa1_col.py`(새) — 표식 `F-COL-011` · `012` · `021` · `031` · `032` · `033` · `034` · `041` · `051` · `061` · `071` · `F-TRK-021` · `F-TRK-031` · `F-HOME-011`: 오류 계약 27 사례 · 미리보기 무쓰기 · 회차 교체 · 알림 닫힘(수정 전 FAIL → 재실측 PASS) · 오류 행 빨간색 · 미매핑 목록 → 재반영 → 사용 중지 → 삭제 · 어음 만기 · xlsx · 30/60/90 · 출하 대비 · `미확정 (D-516)` 토글 · TRK-030 ok/미수집 · TRK-020 `?period=` · HOME 회계부 카드 · 수정 엔드포인트 없음.
+  - `tests/test_qa1_screens.py` · `test_qa1_contract_text.py` — 문서 문장만 범위 120 · 화면 56 으로 고침(검사는 `check_screens` 상수를 따른다).
+- `uv run python tools/check_trace.py` — G-01 10/10 PASS · G-02 3/5(고아 16 = DOC · RPT).
+- 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from erp_upload_batch where source_file like 'QA1-%'; select count(*) from erp_customer_map where erp_code like 'QA1-%'; select count(*) from item where item_code like 'QA1-%'"` → 0 · 0 · 0 · `erp_column_map` 7 = 시드(거래처코드 · 일자 · 매출액 · 수금액 · 잔액 · 수단 · 어음 만기).
+- 쓴 파일: `tools/check_screens.py` · `tests/test_qa1_col.py`(새) · `tests/test_qa1_screens.py` · `tests/test_qa1_contract_text.py`(문장만) · `outputs/qa1-기능계약.md`(이 절). 앱 코드 · 계약 · 결정 · 다른 QA 파일은 건드리지 않았다. 커밋 없음.
