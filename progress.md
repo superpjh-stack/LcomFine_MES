@@ -3,14 +3,33 @@
 검증된 것만 적는다. 여기 없는 숫자는 화면에 지어내지 않는다. 형식: `| 항목 | 실측 | 검증 방법 |`.
 옛 판(설계도 기준 · 대메뉴 12)의 기록은 `progress-v1.md` 에 있다 — v2 의 실측이 아니다.
 
-## 지금 해야 할 것: W3 대시보드 (개발3 + 개발1 → QA 3 → gate-full → 커밋)
+## 지금 해야 할 것: W4 문서 SSO (개발1 → QA 3 → gate-full → 최종 보고)
 
-W2 끝(아래 실측 · 커밋). 다음 회전은 `goal.md` §3.1 **W3 대시보드** — 개발3 을 §5 프롬프트로 기동한다:
-RPT 9 화면(RPT-010~080 대시보드 8 + RPT-130 데이터 질의 · 대메뉴 이름 「대시보드」 D-505) · `dashboard.py`(8 함수 · 화면을 열 때 집계 · 캐시 테이블 없음 · D-512) · `ai.py`(키 없으면 `ai.NotConfigured` → 화면에 명시 · 호출마다 `sys_ai_call_log` · G-17) · `dataquery.py`(D-513 검증 — SELECT 한 문장 · 허용 뷰 `v_dq_*` 만 · 부서 제한 · 로그 `data_query_log` · G-16). 차트는 인라인 SVG + 같은 숫자의 표(`dataviz` 규칙 · 색은 CSS 토큰).
-개발1 은 W3 에서 공통코드 · 로그 화면 보강(SYS-030 · SYS-040 에 AI 호출 로그 · 데이터 질의 로그 탭) — 개발3 공표 뒤.
-끝나면 QA1 · QA2(G-15 독립 재계산) · QA3(G-16 · G-17 우회 시도) → 결함 수정 → `make gate-full` → 커밋. 그 뒤 W4 문서 SSO(DOC 2 · `sso.py` · G-18 · D-524 앱 DB 역할 · G-24 D-525).
+W3 끝(아래 실측 · 커밋). 남은 FAIL 3 은 전부 W4 몫이다 — G-02(DOC 고아 6) · G-03(DOC placeholder 2) · G-18(SSO 토큰).
+다음 회전은 `goal.md` §3.1 **W4** — 개발1 을 §5 프롬프트로 기동한다: DOC-010 문서관리 바로가기 · DOC-020 문서관리 계정 매핑 · `app/sso.py`(`sso.issue` · `sso.consume` · `sso.NotMapped` — interfaces.md §9 · D-514 규격 · 서명 · 만료 · 1회 사용 · 비활성 · 미매핑 거부) · SSO 진입 로그(`sys_access_log` 구분 SSO · SYS-040 SSO 탭은 W3 에 이미 있다). 주소 `LCOMFINE_DOC_SSO_URL` 이 없으면 `미확정 (D-517)`.
+아키텍트 W4 몫: **D-524 앱 DB 역할 분리**(superuser 아님 · 불변 이력 INSERT 만 · 테스트 정리는 소유자 역할) · DEF-QA3-003 해소 · G-24 는 D-525(사람이 Docker 를 켜야 잰다).
+끝나면 QA 3 → `make gate-full` → §4.4 종료 조건 확인 → `progress.md` 맨 위에 최종 보고.
 
-사람이 할 것(루프는 기다리지 않는다): **D-525** Docker Desktop → `docker compose up -d --build` → `/health` 200 · **D-526** HOME-030 「개인 추가 알림」 · **D-516** ERP 엑셀 열 구성(지금은 COL-010 열 매핑이 흡수) · D-517~D-520 · `LCOMFINE_OPENAI_API_KEY`(없으면 RPT-130 은 「키 없음」을 그대로 보인다 — G-17).
+사람이 할 것: **D-525** Docker Desktop → `docker compose up -d --build` → `/health` 200 · **D-517** 문서관리 SSO 주소 · 방식 · 사번 동일 여부 · **D-526** · **D-516** · D-518~D-520.
+
+## 2026-10-22 W3 대시보드 실측 (개발3 · 개발1 → QA 3 → 결함 수정 → gate-full)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| W3 화면 · 기능 | RPT 9 화면(대시보드 8 + 데이터 질의) · 기능 10 → 라우트 · 표식 **130/136** · placeholder **2**(DOC) · SYS-040 로그 탭 6(접속 · 변경 · ERP 업로드 · AI 호출 · 데이터 질의 · SSO) | `make check-trace` · `make check-routes` |
+| 대시보드 8 수치 (G-15) | 8 화면마다 `dashboard.<함수>` 반환 = QA2 독립 SQL = 화면 KPI 글자 = SVG `<title>` = 표 · 어긋남 0 · 0건은 `미수집` · 로스율 `미확정 (D-519)` · 병목 `미확정 (D-520)` · RPT-060 · 070 에 ERP 업로드 기준일 · 거래처 필터는 010 · 050 · 060 · 070 · 080 만 · 화면 GET 전후 업무 테이블 diff 0(캐시 없음) | `tools/check_data.py` G-15 (검사 11) · `tests/test_qa2_rpt.py` |
+| 데이터 질의 (G-16) | 우회 54건(쓰기 · 다중 문장 · 주석 · 허용 밖 뷰 · 카탈로그 · 함수 · CTE · NUL · 유니코드 공백 등) 전부 422 「허용되지 않는 질의 — 이유」 + 질의 로그 1행 · 실행 0 · 읽기 전용 연결 · statement_timeout 5s · 행 상한 200 · 수금 뷰는 SL · AC · ADM · EX 만 | `make check-security` G-16 (검사 7) · `tests/test_qa3_rpt.py` |
+| 키 없음 (G-17) | 키 없는 하위 프로세스에서 RPT-130 → 422 「AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY」 화면에 그대로 · AI 호출 로그 1행 · 하드코딩 결과 0 · 호출 실패 문장에서도 키 글자 가림 | `make check-security` G-17 (검사 5) |
+| 권한 · 감사 | RPT 9 × 8 계정 200/403 전수 · F-RPT-132 칸 없는 5 부서 403(권한 예외 = 칸 없으면 403) · 성공 질의 변경 로그 1행 · 거부 0행 · 오류 계약 사례 240 어긋남 0 · 5xx 0 | `tools/check_screens.py`(rc 0) · `make check-security` G-19 · G-22 |
+| 실제 OpenAI 호출 | QA · 테스트 0회(fake 주입 · urlopen 차단) | QA3 보고서 §8 |
+| QA 리포트 | 「W3」 절 3종 — QA1 결함 3 · QA2 결함 1 · QA3 결함 3 · 전부 해소 · **치명 0** · 열림 1 = DEF-QA3-003(경미 · D-524 · W4) · E2E 캡처 **50** | `outputs/qa{1,2,3}-*.md` · `outputs/e2e/` |
+| 계약 · 결정 | `interfaces.md` §9(dashboard · ai · dataquery) · `api-contract.md` §2 예외 2(F-RPT-132 브라우저 200 · RPT 422 재렌더 · Ruling 28) · F-RPT-071 기준일 명시(Ruling 29) · nav 묶음 설명 「대시보드」 · D-609 · D-805 · D-806 | `contracts/` · `decisions.md` |
+| pytest | **402 passed · 0 failed** | `uv run pytest -q` |
+| 시드 멱등 · 백업 | 시드 재실행 diff 0 · 백업 → 복구 테이블 48 · 행 83,998 일치 | `make gate-full` G-21 · G-23 |
+| 게이트 판정표 | **PASS 20 · FAIL 3 · BLOCKED 1** / 24 — W1~W3 범위 전부 PASS. FAIL 3 = G-02 · 03(DOC 몫) · G-18(W4) · BLOCKED G-24(D-525). gate-full 종료코드 3 | `make gate-full` |
+| 커밋 | `W3 대시보드 끝: …` (이 커밋) | `git log --oneline -1` |
+
+알아둘 것(W3): QA 와 개발을 같은 DB 에서 동시에 돌리면 전 DB 집계 대조가 흔들린다 — QA2 는 REPEATABLE READ 한 트랜잭션에서 함수 · 독립 SQL · 화면을 같은 순간에 읽어 풀었다. 결함 테스트는 xfail 로 가리지 않고 실패 상태로 둔다. 테스트에 가짜 키를 쓸 때는 글자를 실행 때 합친다(비밀 스캔).
 
 ## 2026-10-22 W2 수금 실측 (개발3 · 개발1 → QA 3 → 결함 수정 → gate-full)
 

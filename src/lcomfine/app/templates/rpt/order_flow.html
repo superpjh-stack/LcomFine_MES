@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% import "_macros.html" as ui %}
+{% import "col/_c.html" as c %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "생산의뢰 번호를 키로 의뢰 → 지시 → 생산 완료 → 제품 입고 → 출하의 날짜를 잇는다(기간 = 의뢰일). 병목 기준일 수는 미확정 (D-520) — 단계 소요일만 보인다. 수금은 거래처 · 월 단위.", data, [(nav.path_of("WO-010"), nav.by_id("WO-010").name), (nav.path_of("WO-020"), nav.by_id("WO-020").name), (nav.path_of("MAT-030"), nav.by_id("MAT-030").name), (nav.path_of("SHP-030"), nav.by_id("SHP-030").name), (nav.path_of("COL-070"), nav.by_id("COL-070").name)]) }}
+  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("avg_days", "단계별 평균 소요일", data.series.avg_days, "단계", "평균(일)", 1) }}
+{{ d.table("stages", "단계 소요일 요약", [("stage", "단계", none), ("count", "건수", 0), ("avg_days", "평균(일)", 1), ("max_days", "최대(일)", 0)], data.tables.stages) }}
+<section class="panel panel--grid" data-table="rows">
+  <h2>의뢰별 단계 날짜 · 소요일</h2>
+  {% if data.tables.rows %}
+  <div class="grid-wrap grid-wrap--tall"><table class="grid">
+    <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th>의뢰일</th><th>지시일</th><th>생산 완료</th><th>제품 입고</th><th>출하</th>
+      {% for s in data.tables.stages %}<th class="num">{{ s.stage }}</th>{% endfor %}<th>병목</th></tr></thead>
+    <tbody>
+    {% for r in data.tables.rows %}
+    <tr data-request="{{ r.request_no }}">
+      <td><code>{{ r.request_no }}</code></td><td>{{ r.customer_name }}</td><td>{{ r.item_name }}</td>
+      <td>{{ r.request_date | dt }}</td><td>{{ r.ordered_on | dt("%Y-%m-%d", "미수집") }}</td><td>{{ r.produced_on | dt("%Y-%m-%d", "미수집") }}</td>
+      <td>{{ r.received_on | dt("%Y-%m-%d", "미수집") }}</td><td>{{ r.shipped_on | dt("%Y-%m-%d", "미수집") }}</td>
+      {% for s in data.tables.stages %}<td class="num">{{ r.days[s.stage] | num(0, "미수집") }}</td>{% endfor %}
+      <td>{{ ui.undecided("D-520") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ ui.empty() }}{% endif %}
+</section>
+{{ d.chart_table("collected", "거래처·월별 수금 — 월 합(건 단위로 짝짓지 않음)", data.series.collected, "월", "수금액") }}
+{{ d.table("collection_by_customer", "거래처·월별 수금", [("ym", "월", none), ("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "매출", 0), ("collected_amount", "수금", 0)], data.tables.collection_by_customer) }}
+{% endif %}
+{% endblock %}

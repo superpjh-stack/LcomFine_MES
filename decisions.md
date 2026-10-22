@@ -321,3 +321,33 @@
   `납기 안 완료`(완료일 ≤ 납기) · `지연 완료`(완료일 > 납기) · `지연`(미완료 · 납기 < 오늘) · `진행`(미완료 · 납기 ≥ 오늘).
 - **준수율(%) = 납기 안 완료 ÷ (납기 안 완료 + 지연 완료 + 지연) × 100**, 소수 1자리. 진행 중은 분모에 넣지 않는다(아직 판정할 수 없다). 분모 0 이면 None = `미수집`(0 % 로 지어내지 않는다). 반품 · 정정은 빼지 않는다(D-515).
 - 바뀌면 고칠 곳: `stats.due_compliance` · `DUE_COMPLIANCE_FORMULA` 한 곳.
+
+## D-609 SYS-040 로그 탭의 전개 (W3 · 업로드·AI 호출 로그 · SSO) · 상태: 가설 (개발1)
+- 정본 SYS-040 의 L3 는 「접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그」 셋이고 logic 은 ERP 업로드 회차·교체 · AI 호출 건수·실패·응답 시간 · 문서관리 SSO 호출의 사용자·시각·성공 여부를 「남긴다」 고만 적는다 — 어느 표를 어떻게 보이는지는 주지 않는다.
+- 탭 6 = `access`(sys_access_log) · `change`(sys_change_log) · `erp`(erp_upload_batch — 회차 · 반영/교체 · 교체한 회차 번호 · 올린 사람 `created_by` · 읽은 행 · 오류·미매핑 행) · `ai`(sys_ai_call_log — 머리 건수 · 실패 · 평균 ms) · `dq`(data_query_log — 거부 포함 · 머리 건수 · 거부 · 평균 ms · D-513) · `sso`(sys_access_log 의 `log_type = 'SSO'` 행 — W4 F-DOC-011 이 남긴다 · D-514). 「업로드·AI 호출 로그」 L3 하나를 표 셋(erp · ai · dq)으로 펼쳤다.
+- 열 = `contracts/db-schema.md` 의 컬럼만(새 열 · 캐시 없음). 화면이 표 밑에 원본 표 이름과 컬럼 이름을 적는다. `ok` 는 AI 탭 「성공/실패」, 질의 탭 「허용/거부」 글자로 보인다(값은 그대로 boolean).
+- 필터는 탭 공통 — 사용자(`login` · AI · 질의는 `sys_user.login_id` 로 이어서, ERP 는 `created_by`) · 기간(`date_from` · `date_to` — 각 표의 일시 열) · 구분 `log_type` 하나(접속 구분 · 기능 ID · 회차 상태 · 호출 용도 · 허용/거부 · 성공/실패 — 선택지 밖은 422). 머리 수치는 **같은 필터**로 센다. 행 0 = `미수집`(0 으로 지어내지 않는다).
+- 전부 읽기만(쓰기 0 · `sys_access_log` 의 조회 로그 한 행은 `templating.render` 가 남긴다). 바뀌면 고칠 곳: `routers/sys.py` `LOG_TABS` · `LOG_SOURCES` · `templates/sys/logs.html`.
+- 공통코드 그룹 3(설비 · 불량유형 · 수금수단)의 기본 행은 공통 시드 `seed.py` `COMMON_CODES`(아키텍트) 가 넣는다. `seed_dev1.run()` 은 **빈 그룹에만** `(예시)` 코드 하나를 더해 다른 라우터의 선택지가 비지 않게 한다(멱등 · 반환 `code_group` · `code_added`).
+
+## D-805 대시보드 8 의 집계 세부 정의 (`dashboard.py` · D-512 의 빈칸) · 상태: 가설 (개발3)
+- 정본 RPT-010~080 은 항목 이름(L3)과 원천(logic)만 주고 모집단 · 날짜 기준 · 구간 · 상위 N 을 주지 않는다. D-512 표의 빈칸을 아래로 채운다 — QA2 의 G-15 독립 재계산은 이 정의로 센다.
+- **공통**: `period` = `"YYYY-MM"` 또는 `(시작일, 종료일)`(양끝 포함). 구간(series) = 기간이 31일 이하면 **일**, 넘으면 **월**(`to_char` `YYYY-MM-DD` / `YYYY-MM`). 행이 없는 구간은 **None = 미수집**(0 으로 지어내지 않는다). KPI 도 0건이면 None. 상위 N = 10. 거래처 필터는 정본에 「기간·거래처」가 있는 RPT-010 · 050 · 060 · 070 에만 적용(020 · 030 · 040 은 기간만).
+- **RPT-010 수주**: 모집단 = `request_date` 가 기간 안 · `status <> '취소'`. 미착수 = 취소 아닌 `work_order` 가 없는 의뢰. 납기 분포 = 납기 **월**별 건수. 거래처 상위 = 건수 → 수량 내림차순.
+- **RPT-020 생산**: 모집단 = `production_daily.work_date` 가 기간 안. 지시 수량 = 일보가 있는 지시의 `work_order.qty` 합. 가동률 = D-801(Σ가동 ÷ (Σ가동 + Σ정지)). 기계별 = `stats.machine_stats`(같은 SQL). 로스율 = `미확정 (D-519)` 글자.
+- **RPT-030 품질**: 검사일보(`work_date` 기간 안) 검사 · 불량 수량 · 불량유형(`defects` jsonb 키 합). 판정 = 입고검사 ∪ 제품검사의 `inspected_at` 기간 안 행. 불합격 LOT = 그 기간 `불합격` 판정이 있는 (종류, LOT) 수. 재판정 = `seq > 1` 행(이전 판정 `lag`). 검사 로스율 = `미확정 (D-519)`.
+- **RPT-040 재고·창고**: 원자재 입고 = `material_receipt.received_on` 기간 안 · 취소 아님 · 분할 아닌(`parent_lot_id is null`) LOT 수량 합. 불출 = `material_issue.issued_on` 기간 안 · 취소 아님 · 행 수량 합. 제품 입고 = `product_receipt` 취소 아님. 재고 변동 상위 = `stock_move.moved_at` 기간 안 LOT 별 수량 합 상위 10. **장기 체류 LOT = 현재고 > 0 인 LOT 의 체류일(오늘 − LOT 생성일) 내림차순 상위 10 — 「장기」 기준일 수는 정본에 없어 정하지 않는다**(기간과 무관). 실사 차이 = `stock_adjust.adjusted_at` 기간 안 · 차이 합 = Σ(실사 − 장부).
+- **RPT-050 출하**: 모집단 = `status='확정'` · `confirmed_at` 기간 안. 수량 = `shipment_line.qty` 합(반품·정정은 빼지 않는다 D-515). 납기 준수율 = `stats.due_compliance((f, t))`(D-804 · 납기가 기간 안인 의뢰 · 의뢰번호 있는 출하만) — 거래처 필터는 그 행을 거른 뒤 다시 센다.
+- **RPT-060 수금**: `asof = stats.erp_asof()`(반영 회차의 마지막 기준 기간 끝)을 화면 머리와 KPI 에 명시 · 없으면 `미수집`. 월별 수금 · 출하 대비 수금 = `stats.shipment_vs_collection(첫 달, 끝 달, 거래처)`. 미수 연령 · 90일 초과 = `stats.aging(asof)`(D-803). 매출 열 미매핑 → `미확정 (D-516)`.
+- **RPT-070 주문 흐름**: 모집단 = RPT-010 과 같다. 지시일 = 취소 아닌 지시의 첫 `created_at` · 생산 완료일 = 그 지시들의 마지막 일보 `work_date` · 제품 입고일 = 취소 아닌 제품 입고의 마지막 `received_on` · 출하일 = 확정 출하의 마지막 `confirmed_at`. 단계 5(의뢰→지시 · 지시→생산 완료 · 생산 완료→제품 입고 · 제품 입고→출하 · 의뢰→출하) 소요일 = 뒤 − 앞(하나라도 없으면 None). 병목 = `미확정 (D-520)` 글자. 수금 = 거래처 · 월(`stats.shipment_vs_collection`).
+- **RPT-080 경영 요약**: 탭 일일 = 기준일 하루 · 주간 = 기준일까지 7일 · 월간 = 기준일의 달 1일~기준일. 일일 = RPT-040 + RPT-050 핵심 KPI, 주간·월간 = + RPT-010 · 020 · 060. 해설 문장 없음(D-505).
+- 바뀌면 고칠 곳: `app/dashboard.py` 의 그 함수 한 곳(`TOP_N` · `DAY_BUCKET_MAX_DAYS` · `FLOW_STAGES`).
+
+## D-806 데이터 질의의 검증 · 실행 · 응답 규칙 (`dataquery.py` · `ai.py` · D-513 의 세부) · 상태: 가설 (개발3)
+- **검증(`validate_sql`) — 전부 거부(422 「허용되지 않는 질의 — 이유」 · 실행하지 않는다)**: 빈 질의 · NUL · 4000자 초과 / 끝의 세미콜론 하나는 떼고 그 밖의 세미콜론 = 다중 문장 / 주석(`--` `/*`) · 달러 따옴표 · 큰따옴표 식별자 · 닫히지 않은 문자열 / `SELECT` 로 시작하지 않는 문장 · **CTE(`with`) 금지**(뷰 이름 검사를 단순하게) · 쓰기 · DDL · 세션 명령(`set` `show` …) · `into` · `for`(update/share) · `lateral` / 카탈로그(`pg_*` · `information_schema` · `current_setting` · `version()` · `lo_*` …) / **함수는 허용 목록만**(집계 · 날짜 · 글자 · 수 함수 — `pg_sleep` · `md5` 등 거부) / `from` · `join` 뒤의 대상(쉼표 조인 · 별칭 포함)이 허용 뷰 `v_dq_*` 가 아니면 거부(스키마 한정 `public.x` 도) · 허용 뷰를 하나도 읽지 않는 질의도 거부. 문자열 리터럴 속 글자는 검사에서 비운다(`'%;--%'` 는 문장이 아니다).
+- **부서 제한**: `v_dq_collections` · `v_dq_receivables` 는 SL · AC · ADM · EX 만(`dataquery.VIEWS` · D-513). 그 밖 부서의 수금 뷰 질의는 검증에서 거부(422 「이 부서가 질의할 수 없는 뷰」). AI 에 주는 스키마 설명도 그 부서의 허용 뷰만.
+- **실행**: 별도 연결 · `set transaction read only` · `statement_timeout` 5초 · 행 상한 200(넘으면 잘림 표시) · 끝에 rollback. 읽기 전용 **DB 역할**은 D-524(W4) 가 정한다 — 그때까지는 트랜잭션 읽기 전용으로 막는다. DB 오류(없는 열 등)는 422 「실행 실패 — 사유」.
+- **로그**: 질의마다 `data_query_log` 1행(거부 · 실패 · 키 없음 포함 · `numbering.next("DQ")`) · AI 호출마다 `sys_ai_call_log` 1행(키 없음도 실패로 1행 · 키 값은 적지 않는다). 둘 다 F-RPT-132 의 쓰기 트랜잭션 안. 실행 결과 행은 저장하지 않는다(row_count 만).
+- **응답**: JSON(테스트)은 `http.saved` 200 + `{query_no, sql, columns, rows, row_count, truncated, ms}`. **브라우저는 같은 화면(RPT-130)을 200 으로 다시 그려 SQL 과 결과 표를 보인다**(결과 행을 저장하지 않아 303 뒤에 다시 보일 수 없다 — api-contract §2 「쓰기 성공 = 303」의 예외 · 변경 로그 `sys_change_log` 는 그대로 1행). 거부 · 실패는 422(브라우저는 303 + 알림 · `fields` 에 질의 번호 · SQL) — 사유는 최근 질의 목록에도 남는다.
+- **AI**(`ai.complete(system, user, *, kind, cur=None, user_id=None)`): 계약 §9 시그니처에 `user_id`(로그의 사용자) 를 더했다 · `cur` 없으면 자체 연결로 로그. 키 없음 → `ai.NotConfigured("AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY")` · 호출 실패 → `ai.CallFailed(사유)` · 둘 다 로그 뒤 올린다. OpenAI 호출은 표준 라이브러리 `urllib`(Chat Completions · temperature 0 · 30초) — 새 패키지 없음. 테스트는 `ai.set_client(fake)`.
+- 바뀌면 고칠 곳: `dataquery.ALLOWED_FUNCTIONS · FORBIDDEN · CATALOG_PATTERNS · MAX_ROWS · STATEMENT_TIMEOUT_MS · VIEWS` · `ai.OPENAI_URL · TIMEOUT_SECONDS` · 라우터 `run_query` 의 HTML 분기.

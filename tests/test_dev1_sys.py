@@ -158,3 +158,188 @@ def test_logs_three_tabs(p):
         assert "미수집" in r.text
     assert c.get("/sys/logs", params={"tab": "x"}).status_code == 422
     assert client("pr").get("/sys/logs").status_code == 403
+
+
+# ── SYS-040 로그 — W3 보강 (ERP 업로드 · AI 호출 · 데이터 질의 · SSO 탭 — 전부 읽기만) ──
+LOG_TABS_W3 = ("erp", "ai", "dq", "sso")
+
+
+def _admin_uid() -> int:
+    return rbac.load_user("admin").id
+
+
+def _purge_logs(p: str) -> None:
+    with conn.tx() as cur:
+        cur.execute("delete from sys_ai_call_log where kind like %s", (p + "%",))
+        cur.execute("delete from data_query_log where query_no like %s", (p + "%",))
+        cur.execute("delete from erp_upload_batch where batch_no like %s", (p + "%",))
+        cur.execute("delete from sys_access_log where log_type = 'SSO' and login_id like %s", (p + "%",))
+
+
+@pytest.fixture
+def lp():
+    """로그 행 접두 — 이 테스트가 넣은 로그 행만 끝에 지운다(개발3 의 행은 건드리지 않는다)."""
+    prefix = uniq("log")
+    yield prefix
+    _purge_logs(prefix)
+    for t, col in (("sys_ai_call_log", "kind"), ("data_query_log", "query_no"), ("erp_upload_batch", "batch_no")):
+        assert conn.q1(f"select count(*) as n from {t} where {col} like %s", (prefix + "%",))["n"] == 0
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_six_tabs_200_and_empty_is_uncollected(lp):
+    """탭 6 전부 200 · 내 접두로 거르면 행 0 → 「미수집」 · 원본 표 이름이 화면에 적힌다 · 틀린 구분값 422."""
+    c = client("admin")
+    for tab, table in (("access", "sys_access_log"), ("change", "sys_change_log"), ("erp", "erp_upload_batch"),
+                       ("ai", "sys_ai_call_log"), ("dq", "data_query_log"), ("sso", "sys_access_log")):
+        r = c.get("/sys/logs", params={"tab": tab, "login": lp})
+        assert r.status_code == 200, (tab, r.text[:300])
+        assert "미수집" in r.text and f"<code>{table}" in r.text
+    assert c.get("/sys/logs", params={"tab": "erp", "log_type": "삭제"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "dq", "log_type": "보류"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "sso", "log_type": "모름"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "ai", "date_from": "2026-13-45"}).status_code == 422
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_erp_tab_shows_batches_and_replacement(lp):
+    """ERP 업로드 탭 — 회차 · 반영/교체 · 교체한 회차 번호 · 올린 사람 · 건수 · 오류 건. 기간 1979(다른 테스트와 겹치지 않는다)."""
+    with conn.tx() as cur:
+        cur.execute("""insert into erp_upload_batch (batch_no, period_from, period_to, round_no, status, source_file, row_count,
+                                                     error_count, created_by)
+                       values (%s, '1979-01-01', '1979-01-31', 2, '반영', %s, 12, 2, %s) returning id""",
+                    (lp + "B2", f"{lp} (예시).xlsx", lp + "ac"))
+        new_id = cur.fetchone()["id"]
+        cur.execute("""insert into erp_upload_batch (batch_no, period_from, period_to, round_no, status, replaced_by, source_file,
+                                                     row_count, error_count, created_by)
+                       values (%s, '1979-01-01', '1979-01-31', 1, '교체', %s, %s, 10, 0, %s)""",
+                    (lp + "B1", new_id, f"{lp} 이전 (예시).xlsx", lp + "ac"))
+    c = client("admin")
+    r = c.get("/sys/logs", params={"tab": "erp", "login": lp})
+    assert r.status_code == 200
+    assert f"{lp}B2" in r.text and f"{lp}B1" in r.text and f"{lp} (예시).xlsx" in r.text and f"{lp}ac" in r.text
+    assert 'data-log-tab="erp" data-n="2" data-live="1" data-replaced="1" data-errors="2"' in r.text
+    # 교체 회차만 — 교체한 회차 열에 새 회차 번호
+    r = c.get("/sys/logs", params={"tab": "erp", "login": lp, "log_type": "교체"})
+    assert f"{lp}B1" in r.text and f">{lp}B2<" in r.text and 'data-n="1"' in r.text
+    r = c.get("/sys/logs", params={"tab": "erp", "login": lp, "log_type": "반영"})
+    assert f"{lp}B1" not in r.text and f"{lp}B2" in r.text
+    # 기간 필터 — 업로드 일시(오늘) 밖이면 0
+    r = c.get("/sys/logs", params={"tab": "erp", "login": lp, "date_to": "1979-12-31"})
+    assert "미수집" in r.text and f"{lp}B2" not in r.text
+    # 화면은 쓰지 않는다 — 회차 상태 그대로
+    assert conn.q("select status from erp_upload_batch where batch_no like %s order by round_no", (lp + "%",)) == \
+        [{"status": "교체"}, {"status": "반영"}]
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_ai_tab_counts_failures_and_avg_ms(lp):
+    """AI 호출 탭 — 머리에 건수 · 실패 수 · 평균 응답(ms). 실패 행의 사유가 보인다(키 값은 적지 않는다)."""
+    uid = _admin_uid()
+    with conn.tx() as cur:
+        cur.execute("insert into sys_ai_call_log (kind, model, ok, ms, user_id) values (%s, 'gpt-4.1 (예시)', true, 100, %s)",
+                    (lp + "K", uid))
+        cur.execute("insert into sys_ai_call_log (kind, model, ok, ms, error, user_id) values (%s, 'gpt-4.1 (예시)', false, 300, %s, %s)",
+                    (lp + "K", "LCOMFINE_OPENAI_API_KEY 없음 (예시)", uid))
+    c = client("admin")
+    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K"})
+    assert r.status_code == 200
+    assert 'data-log-tab="ai" data-n="2" data-failed="1" data-avg-ms="200"' in r.text
+    assert "LCOMFINE_OPENAI_API_KEY 없음 (예시)" in r.text and ">실패<" in r.text and ">성공<" in r.text
+    assert r.text.count("gpt-4.1 (예시)") == 2
+    # 사용자 필터 — 부른 사용자 = admin
+    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K", "login": "admin"})
+    assert 'data-n="2"' in r.text
+    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K", "login": lp + "nobody"})
+    assert "미수집" in r.text and 'data-n="0"' in r.text
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_dq_tab_includes_rejected_queries(lp):
+    """데이터 질의 탭 — 질문 · 생성 SQL · 허용/거부 · 이유 · 행 수 · 사용자. 거부(ok=false) 행도 보이고 거부 수를 센다(D-513)."""
+    uid = _admin_uid()
+    with conn.tx() as cur:
+        cur.execute("""insert into data_query_log (query_no, user_id, role_code, question, sql_text, ok, row_count, ms)
+                       values (%s, %s, 'ADM', %s, 'select request_no from v_dq_orders limit 5', true, 5, 40)""",
+                    (lp + "Q1", uid, f"{lp} 이번 달 수주 (예시)"))
+        cur.execute("""insert into data_query_log (query_no, user_id, role_code, question, sql_text, ok, error, ms)
+                       values (%s, %s, 'ADM', %s, 'delete from item', false, %s, 3)""",
+                    (lp + "Q2", uid, f"{lp} 품목을 지워 (예시)", "SELECT 한 문장만 허용 (예시)"))
+    c = client("admin")
+    r = c.get("/sys/logs", params={"tab": "dq", "login": "admin", "date_from": "1970-01-01"})
+    assert r.status_code == 200
+    assert f"{lp}Q1" in r.text and f"{lp}Q2" in r.text and "SELECT 한 문장만 허용 (예시)" in r.text
+    assert ">허용<" in r.text and ">거부<" in r.text and "select request_no from v_dq_orders limit 5" in r.text
+    r = c.get("/sys/logs", params={"tab": "dq", "log_type": "거부", "login": "admin"})
+    assert f"{lp}Q2" in r.text and f"{lp}Q1" not in r.text
+    r = c.get("/sys/logs", params={"tab": "dq", "log_type": "허용", "login": "admin"})
+    assert f"{lp}Q1" in r.text and f"{lp}Q2" not in r.text
+    n = conn.q1("select count(*) as n, count(*) filter (where not ok) as rejected from data_query_log d "
+                "join sys_user u on u.user_id = d.user_id where u.login_id = 'admin'")
+    assert f'data-log-tab="dq" data-n="{n["n"]}" data-rejected="{n["rejected"]}"' in \
+        c.get("/sys/logs", params={"tab": "dq", "login": "admin"}).text
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_sso_tab_uncollected_until_w4(lp):
+    """SSO 탭 — `sys_access_log` 구분 SSO 행만. W4 전엔 행 0 = 「미수집」(0 으로 지어내지 않는다) · 행을 넣으면 사용자·시각·성공 여부가 보인다."""
+    c = client("admin")
+    r = c.get("/sys/logs", params={"tab": "sso", "login": lp})
+    assert r.status_code == 200 and "미수집" in r.text and 'data-log-tab="sso" data-n="0"' in r.text
+    if not conn.q1("select count(*) as n from sys_access_log where log_type = 'SSO'")["n"]:
+        assert "미수집" in c.get("/sys/logs", params={"tab": "sso"}).text
+    with conn.tx() as cur:
+        cur.execute("""insert into sys_access_log (log_type, login_id, role_code, method, path, screen_id, function_id, result, detail)
+                       values ('SSO', %s, 'SL', 'GET', '/doc/go', 'DOC-010', 'F-DOC-011', '성공', 'SSO 토큰 발급 (예시)'),
+                              ('SSO', %s, 'SL', 'GET', '/doc/go', 'DOC-010', 'F-DOC-011', '실패', '계정 매핑 없음 (예시)')""",
+                    (lp + "S", lp + "S"))
+    r = c.get("/sys/logs", params={"tab": "sso", "login": lp})
+    assert 'data-n="2" data-failed="1"' in r.text and "계정 매핑 없음 (예시)" in r.text and f"{lp}S" in r.text
+    r = c.get("/sys/logs", params={"tab": "sso", "login": lp, "log_type": "실패"})
+    assert "계정 매핑 없음 (예시)" in r.text and "SSO 토큰 발급 (예시)" not in r.text
+    # 접속 로그 탭의 구분 SSO 와 같은 행
+    assert "계정 매핑 없음 (예시)" in c.get("/sys/logs", params={"tab": "access", "login": lp, "log_type": "SSO"}).text
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_tabs_permission_cells(lp):
+    """권한 칸 그대로 — SYS-040 은 전산 관리자 R 만(permission-matrix). 다른 부서는 탭마다 403."""
+    for lid in ("pr", "sl", "ac", "ex"):
+        for tab in ("access", "change") + LOG_TABS_W3:
+            assert client(lid).get("/sys/logs", params={"tab": tab}).status_code == 403, (lid, tab)
+    for tab in LOG_TABS_W3:
+        assert client("admin").get("/sys/logs", params={"tab": tab}).status_code == 200
+
+
+# ── SYS-030 공통코드 — 그룹 3 시드 (W3) ──
+@pytest.mark.fn("F-SYS-032")
+def test_code_groups_seeded_and_idempotent(p):
+    """계약 「설비 · 불량유형 · 수금수단 코드를 여기서 관리한다」 — 그룹 3 에 사용 중 코드가 있고 화면이 그룹별로 보인다.
+    `seed_dev1.run()` 은 빈 그룹에만 (예시) 코드를 더하고 두 번 돌려도 행 수가 같다."""
+    from lcomfine.db import seed_dev1
+    before = conn.q1("select count(*) as n from sys_common_code")["n"]
+    out = seed_dev1.run()
+    assert out["code_group"] == 3 and out["code_added"] == 0, out
+    assert seed_dev1.run() == out
+    assert conn.q1("select count(*) as n from sys_common_code")["n"] == before
+    rows = conn.q("select group_code, count(*) filter (where use_yn = 'Y') as live from sys_common_code group by 1")
+    assert {r["group_code"] for r in rows} >= {"설비", "불량유형", "수금수단"} and all(r["live"] >= 1 for r in rows)
+    c = client("admin")
+    for g in ("설비", "불량유형", "수금수단"):
+        r = c.get("/sys/codes", params={"group": g})
+        assert r.status_code == 200 and "(예시)" in r.text
+    assert client("ex").get("/sys/codes").status_code == 403
+
+
+@pytest.mark.fn("F-SYS-041")
+def test_logs_access_and_change_filter_outside_choices_422(lp):
+    """DEF-QA1-008 — 접속 탭 구분은 db-schema 값 집합(로그인·조회·변경·오류·SSO) 밖이면 422, 변경 탭 기능 ID 는 계약에 없으면 422.
+    값 집합 안은 200 (erp · dq · sso 와 같은 `choice()` 규칙 · D-609)."""
+    c = client("admin")
+    assert c.get("/sys/logs", params={"tab": "access", "log_type": "XYZ"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "change", "log_type": "F-ZZ-999"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "change", "log_type": "XYZ"}).status_code == 422
+    for lt in ("로그인", "조회", "변경", "오류", "SSO"):
+        assert c.get("/sys/logs", params={"tab": "access", "log_type": lt, "login": lp}).status_code == 200, lt
+    assert c.get("/sys/logs", params={"tab": "change", "log_type": "F-SYS-041", "login": lp}).status_code == 200
+    assert c.get("/sys/logs", params={"tab": "access"}).status_code == 200

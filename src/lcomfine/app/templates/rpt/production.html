@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "원천: 생산일보 · 생산 로스율 · 월별 가동률 · 기계별통계. 기간 = 일보 일자. 로스율 산식은 미확정 (D-519) — 원 수량만 보인다.", data, [(nav.path_of("PRD-040"), nav.by_id("PRD-040").name), (nav.path_of("PRP-010"), nav.by_id("PRP-010").name)]) }}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("good_qty", "기간별 양품 수량", data.series.good_qty, "구간", "양품 수량", 3) }}
+{{ d.chart_table("produced_qty", "기간별 생산 수량", data.series.produced_qty, "구간", "생산 수량", 3, "line") }}
+{{ d.chart_table("by_equipment", "기계별 양품 수량", data.series.by_equipment, "설비", "양품 수량", 3) }}
+{{ d.table("by_work_order", "지시 대비 생산 실적", [("work_order_no", "지시번호", none), ("item_name", "제품", none), ("equipment_code", "설비", none), ("order_qty", "지시 수량", 3), ("produced_qty", "생산", 3), ("good_qty", "양품", 3), ("loss_qty", "로스", 3), ("run_minutes", "가동(분)", 0), ("stop_minutes", "정지(분)", 0)], data.tables.by_work_order) }}
+{{ d.table("by_equipment", "기계별통계(설비별 · 로스율 미확정 D-519)", [("equipment_code", "설비 코드", none), ("equipment_name", "설비", none), ("work_orders", "지시 수", 0), ("entries", "일보 행", 0), ("produced_qty", "생산", 3), ("good_qty", "양품", 3), ("loss_qty", "로스", 3), ("run_minutes", "가동(분)", 0), ("stop_minutes", "정지(분)", 0)], data.tables.by_equipment) }}
+{% endif %}
+{% endblock %}

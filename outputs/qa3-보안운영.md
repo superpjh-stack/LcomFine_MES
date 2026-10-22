@@ -10,8 +10,11 @@
 | DEF-QA3-002 | 경미 | 개발1 (bas · wo · sys) | NUL 이 든 입력의 422 가 어느 항목인지 짚지 않는다(`fields=[{"name":"입력"}]`) | **해소(실측)** — 4 경로 모두 항목 이름을 짚음(§6) |
 | DEF-QA3-003 | 경미 | 아키텍트 (DB 역할) · 참고 개발2 · 개발3 (테스트 정리) | 앱이 superuser 로 DB 에 붙는다. 불변 이력 트리거를 `session_replication_role` 로 우회할 수 있고, 테스트 정리 코드가 이 우회에 기대고 있다 | **D-524 등재(가설) · W4** 에서 앱 역할 분리 — W1~W3 은 그대로. 열림 |
 | DEF-QA3-004 | 경미 | 개발3 (`routers/col.py` `_xlsx`) | **W2** — COL-040 엑셀 내려받기가 저장된 `=…` 글자(DDE · HYPERLINK)를 수식 셀로 쓴다 → 여는 사람의 엑셀에서 실행될 수 있다(§7) | **해소(실측)** — `_xlsx_text_cell` 로 글자 셀 `data_type="s"` 고정 · X-07 PASS 수식 셀 0(§7.1) |
+| DEF-QA3-005 | 경미 | 개발3 (`dataquery.py` `ask` · F-RPT-132) | **W3** — AI 가 돌려준 SQL 에 NUL 이 들면 검증은 거부하지만 `data_query_log` 에 그 SQL 을 넣다가 DataError → 트랜잭션이 통째로 풀려 **질의 로그 0행 · AI 호출 로그 0행** · 422 가 「입력값을 확인해 주세요 / 입력」(사유 없음)(§8.1) | **해소(실측)** 2026-10-22 — `dataquery.NUL_GLYPH` 치환 · 54/54 거부 + 로그 1행 |
+| DEF-QA3-006 | 경미 | 개발3 (`ai.py` `complete` · `dataquery.py` `ask`) | **W3** — 실제 호출(`_openai`) 의 `CallFailed` 문장은 `sys_ai_call_log` 에만 키를 가리고(`_mask`) 그대로 다시 올라가 **`data_query_log.error` · 422 본문 · RPT-130 최근 질의에 키 글자가 실린다**(HTTP 오류 본문이 키를 되비추는 경우 · §8.1) | **해소(실측)** 2026-10-22 — `_mask` 가 키 · `Bearer …` · `sk-…` 을 가리고 가린 문장을 올림 · 세 곳 전부 가림 |
+| DEF-QA3-007 | 경미 | 개발3 (`tests/test_dev3_rpt.py:652`) | **W3 재검증에서 새로 드러남** — 개발3 의 가림 테스트가 가짜 글자 `sk-abcdefghijklmnop1234` 를 담아 **G-21 비밀 스캔(`gate.KEY_RE` · `sk-` 16자 이상)에 걸린다** → `check_security` G-21 FAIL · `make gate` G-21 FAIL. 비밀 값은 아니다(가짜 · 실제 키와 무관)(§8.1) | 열림 |
 
-치명 0 · 중대 1 · 경미 2 (처음 보고). **재검증 뒤 남은 것: DEF-QA3-003 1건(경미 · D-524 · W4).** 표의 마지막 열은 2026-10-21 재검증(§6) 결과다.
+치명 0 · 중대 1 · 경미 2 (처음 보고). **재검증 뒤 남은 것: DEF-QA3-003 1건(경미 · D-524 · W4).** 표의 마지막 열은 2026-10-21 재검증(§6) 결과다. **W3(§8)에서 경미 2 추가(DEF-QA3-005 · 006) → 개발3 수정 뒤 둘 다 해소(실측) · 재검증에서 경미 1(DEF-QA3-007 · 스캔 패턴) 새로 열림.**
 
 ### DEF-QA3-001 · 중대 · Dockerfile COPY 원본 없음 → `docker compose build` 실패
 - 재현(정적): `Dockerfile` 의 `COPY tools/backup.py tools/sample_data.py tools/docker_init.py ./tools/` 중 `ls tools/sample_data.py` → `No such file or directory`. 이 파일은 커밋 `2db6bd3`(Phase 0: 옛 도메인 삭제)에서 지워졌다. `.dockerignore` 에 걸린 것도 아니다. 파일이 아예 없다.
@@ -211,3 +214,106 @@
 - Docker 실기동(G-24) — D-525. 정적 3행은 PASS.
 - zip 폭탄 · 수백 MB 업로드 — 지시대로 하지 않았다(20MB+1 까지).
 - G-16 · G-17 · G-18 — W3/W4.
+
+## 8. W3 대시보드 · 데이터 질의 (2026-10-22)
+
+검증만 했다. 앱 코드는 고치지 않았다. 고친 것은 내 소유 `tools/check_security.py` · `tests/test_qa3_rpt.py`(새) · `outputs/e2e/` · 이 보고서뿐이다. **실제 OpenAI 호출은 0회** — 모든 질의는 `ai.set_client(fake)` 로 내가 정한 SQL 을 돌려주고, 검사 구간 전체를 `no_real_ai()` 가 감싸 `urllib.request.urlopen` 을 막아 둔다(막힌 호출이 있으면 422 「AI 호출 실패 — _NoNetwork」 로 드러나 FAIL — §8.3 의 「차단기」 행이 그 길이 실제로 막히는 것을 증명한다). 키 없음은 ① 프로세스 안에서 `ai._config` 를 비우고 ② 하위 프로세스를 `LCOMFINE_OPENAI_API_KEY=`(빈 값) 로 띄워 settings 의 실제 경로로 잰다(하위 프로세스는 키가 비지 않으면 요청을 보내지 않고 끝난다 — 실측 `key_empty True`). E2E 서버도 같은 빈 키 + urlopen 차단으로 띄웠다. **키 값은 어디에도 찍지 않았다** — 가짜 키(`q3sentinel…`)로 가림을 재고, 실제 키는 `.env` 값으로 DB 로그를 검색해 「든 행 0」만 센다. 임시 계정(접두 `q3…`) · 거래처 · 품목 · 의뢰는 끝에 지웠고, 임시 계정의 `data_query_log` · `sys_ai_call_log` 행은 `sys_user` FK 라 계정과 함께 지웠다(다른 사용자의 행은 그대로 · `sys_change_log` · `sys_access_log` 는 W1 과 같이 남긴다). 정리 확인: `sys_user` · `customer` · `item` · `production_request` 의 `q3%` **0**. QA1 · QA2 가 같은 DB 에서 동시에 돌았다 — 업무 테이블 diff 는 내 행(거래처 · 의뢰 4 · 계정 · 주입 대상 · 테이블 존재)으로 판정하고 전수 43 테이블 diff 는 참고로 적었다(이번 실측 전부 0).
+
+### 8.0 먼저 — 검사기 274행 기대값 수정 (progress-dev3 §3-12)
+`check_write_403` 의 `expect_403 = (r.code not in f.roles_w) and not f.permission_exception` 이 권한 예외 기능을 전 부서 통과로 봐서 F-RPT-132 × SL · PR · SH · DS · AC 의 **403 을 어긋남으로 찍었다(내 검사기 결함 · `test_g19_write_403_full_sweep` 1 failed)**. 계약 api-contract §4 「권한 예외 쓰기 기능 … 칸이 없으면 403 (R 이면 통과)」 대로 `expect_403 = rbac.level(r.code, f.screen_id) is None` (권한 예외일 때) 로 고쳤다. 실측: **쓰기 기능 63 × 부서 8 — 403 기대 366 · 통과 기대 138 · 어긋남 0** · PASS. (HOME-020 · DOC-010 은 전 부서 칸이 있어 옛 기대값이 드러나지 않았다.)
+
+### 8.1 결함
+| ID | 등급 | 담당 | 한 줄 | 상태 |
+|---|---|---|---|---|
+| DEF-QA3-005 | 경미 | 개발3 (`src/lcomfine/app/dataquery.py` `ask` · F-RPT-132) | AI 가 돌려준 SQL 에 NUL → 검증 거부는 되지만 거부 로그 insert 가 DataError → **로그 0행(질의 · 호출 둘 다)** · 사유 없는 422 | **해소(실측)** 2026-10-22 |
+| DEF-QA3-006 | 경미 | 개발3 (`src/lcomfine/app/ai.py` `complete` · `dataquery.py` `ask`) | `_openai` 의 `CallFailed` 문장을 `sys_ai_call_log` 에만 가리고(`_mask`) 그대로 다시 올려 **`data_query_log.error` · 422 본문 · 화면에 키 글자**가 실릴 수 있다 | **해소(실측)** 2026-10-22 |
+| DEF-QA3-007 | 경미 | 개발3 (`tests/test_dev3_rpt.py:652`) | 가림 테스트의 가짜 글자 `sk-abcdefghijklmnop1234`(sk- 뒤 20자)가 **G-21 비밀 스캔 `gate.KEY_RE`(`sk-` 16자 이상)** 에 걸려 `check_security` G-21 「비밀 스캔(추적 파일)」 FAIL · `make gate` 의 G-21 도 같은 스캔이라 FAIL. 비밀 값 아님(가짜) — 스캔 결과는 실측대로 적는다 | 열림 |
+
+새 결함 2(경미) → 개발3 수정 뒤 **둘 다 해소(실측)**. 재검증에서 **DEF-QA3-007(경미 · 스캔 패턴) 새로 열림**. 치명 0 · 중대 0. 열린 것: DEF-QA3-003(W4) · 007.
+
+#### 2026-10-22 재검증 — 오케스트레이터 실측 (QA3 세션이 사용 한도로 끊겨 대신 기록)
+- DEF-QA3-007 **해소(실측)** — `tests/test_dev3_rpt.py` 의 가짜 키 글자를 실행 때 합치는 꼴(`"sk-" + "…"`)로 바꿨다. 비밀 스캔 키 패턴 줄 0.
+- `uv run python tools/check_security.py` → **종료코드 1** = FAIL 1(G-18 W4 미구현만) · G-21 PASS.
+- `uv run pytest -q tests/test_qa3_*.py` → **38 passed · 0 failed**.
+- 열린 것: DEF-QA3-003(경미 · D-524 · W4) 하나.
+
+#### DEF-QA3-007 · 경미 · 개발3 테스트의 가짜 `sk-…` 글자가 G-21 비밀 스캔에 걸린다
+- 재현: `uv run python tools/check_security.py` → `G-21  비밀 스캔(추적 파일)  FAIL  파일 273 · 비밀 값이 든 파일 0 · 키 패턴 줄 1 ['tests/test_dev3_rpt.py:652']`. 줄 652 = `raise ai.CallFailed(f"HTTP 401 … (Authorization: Bearer {key}) sk-abcdefghijklmnop1234")` — DEF-QA3-006 수정을 재는 테스트의 가짜 본문.
+- 판정: 비밀 값이 아니다(실제 키와 무관 · 난수 sentinel 도 따로 씀). 하지만 스캐너(`tools/gate.py` `KEY_RE = sk-[A-Za-z0-9_-]{16,}` · 아키텍트 소유)는 글자 꼴로만 보고, `check_security` · `gate.py` 둘 다 같은 함수(`gate.secret_scan`)를 쓰므로 **G-21 이 FAIL 로 남는다**. 게이트를 낮추지 않는다(스캔 예외를 넣지 않았다).
+- 고치는 쪽 참고(둘 중 하나): 개발3 이 가짜 글자를 패턴 밖으로(예 `sk-` 뒤 15자 이하 · 또는 `"sk-" + "x" * 20` 처럼 이어 붙여 소스에 한 덩어리로 안 보이게) 바꾸거나, 아키텍트가 스캔 예외를 정한다. 고치면 G-21 행과 `test_g21_no_secrets_and_seed_examples` 가 그대로 PASS 를 잰다.
+
+#### DEF-QA3-005 · 경미 · AI SQL 속 NUL → 거부가 로그에 남지 않고 사유 없는 422
+- 재현(검사기 G-16 「우회 SQL」 의 `SQL 속 NUL` 사례 · `tests/test_qa3_rpt.py::test_g16_bypass_sql_is_rejected_not_executed_and_logged`): 경영진 임시 계정 · `ai.set_client(lambda m, s, u: "select * from v_dq_orders\x00")` · `POST /rpt/query question=q3 우회 SQL 속 NUL`.
+- 실측: **422** 이지만 message `입력값을 확인해 주세요` · `fields [{"name": "입력", "reason": "쓸 수 없는 글자(NUL)가 들어 있습니다"}]` — 「허용되지 않는 질의 — NUL 글자」 가 아니다. `data_query_log` **0행** · `sys_ai_call_log` **0행**(둘 다 같은 `conn.tx()` 라 함께 풀렸다). 다른 우회 53건은 전부 `허용되지 않는 질의 — …` + 로그 1행이다.
+- 원인: `dataquery.py:94` 가 NUL 을 거부(`QueryRejected("NUL 글자")`)하지만 `ask` 는 `out["sql"] = sql`(231~232) 을 그대로 `data_query_log.sql_text` 에 넣는다(252). PostgreSQL `text` 는 NUL 을 담지 못해 `psycopg.DataError` → `main.py` 의 `on_data_error` 핸들러(마지막 방어선)가 422 를 만들고 트랜잭션은 롤백 — `ai.complete` 가 같은 커서에 쓴 호출 로그까지 사라진다.
+- 기대: D-513 · db-schema `data_query_log` 「거부를 포함한 모든 질의 한 행」 · interfaces §9 「호출마다 `sys_ai_call_log` 1행」 · api-contract §3 「사람이 읽을 문장은 라우터가 먼저」. 모델이 NUL 을 돌려줄 가능성은 낮아 **경미**.
+- 고치는 쪽 참고(QA 는 고치지 않는다): 로그에 넣기 전에 `sql_text` 의 NUL 을 치환(예 `\x00` → `\\x00` 글자)하거나 NUL 거부일 때 `sql_text` 를 `None` + error 에 사유를 남긴다. 고치면 검사기 G-16 첫 행과 위 테스트가 그대로 PASS 를 잰다.
+- **재검증(2026-10-22)**: 개발3 이 `dataquery.py:187` `NUL_GLYPH = "\\x00"` 을 두고 `_strip_fence` 에서 NUL 을 그 글자로 치환했다(193). 같은 재현(fake → `select * from v_dq_orders\x00`)을 다시 돌리니 **422 「허용되지 않는 질의 — …」 + `data_query_log` 1행(ok false) + `sys_ai_call_log` 1행**. 검사기 G-16 「우회 SQL」 **54/54 PASS** · `test_g16_bypass_sql_is_rejected_not_executed_and_logged` PASS. **해소(실측).**
+
+#### DEF-QA3-006 · 경미 · HTTP 오류 경로의 키 글자가 질의 로그 · 화면에 남는다
+- 재현(검사기 G-17 「키 값이 로그 · 예외 문장 · 응답에 없다」 · `test_g17_key_value_never_in_logs_or_messages`): `ai._config = lambda: ("q3sentinel<난수>", "gpt-4.1")`(가짜 키 · 실제 키 아님) · `ai.set_client(None)` · `ai._openai` 를 「`CallFailed("HTTP 401 Unauthorized Incorrect API key provided: <key>")` 를 올리는 함수」로 바꿔(OpenAI 401 본문이 키를 되비추는 상황을 흉내 · 네트워크 없음) `POST /rpt/query`.
+- 실측: `sys_ai_call_log.error` 는 **가려짐(`***`)**. 그러나 `data_query_log.error` = `AI 호출 실패 — HTTP 401 … q3sentinel…` 로 **노출** · 422 본문 message 에도 **노출** → RPT-130 「최근 질의」 와 SYS-040 dq 탭에 그대로 보인다. 비교: 주입 클라이언트가 던진 일반 예외(`RuntimeError("Bearer <key>")`)는 세 곳 모두 가려진다(`ai.py` 가 `CallFailed(_mask(...))` 로 다시 만들기 때문).
+- 원인: `ai.py:115~117` `except CallFailed as exc: _log(... error=_mask(str(exc), key)); raise` — 로그만 가리고 예외 문장은 원문 그대로 다시 올린다. `ai.py:90` 의 HTTPError 분기가 응답 본문 300자를 문장에 넣으므로, 본문에 키가 되비치면 `dataquery.py:236` `f"AI 호출 실패 — {exc}"` 로 그대로 흐른다.
+- 기대: D-806 · interfaces §9 「키 값은 어디에도 적지 않는다 — 로그의 실패 사유에서 키 글자는 가린다」 · G-21. 실제 OpenAI 401 본문은 키를 일부 가려 보내므로(`sk-…****`) 지금 당장 전체 키가 새는 길은 아니고, 프록시 · 다른 엔드포인트가 되비추는 경우의 심층 방어 구멍이라 **경미**. 이번 실측에서 **실제 키 값이 든 로그 행은 0** 이다.
+- 고치는 쪽 참고: `except CallFailed as exc:` 에서 `raise CallFailed(_mask(str(exc), key)) from None` 으로 가린 문장을 올리거나 `_openai` 안에서 `detail` 을 `_mask` 한다.
+- **재검증(2026-10-22)**: 개발3 이 `ai.py:61` `_KEY_PATTERNS`(`Bearer …` · `sk-…` 꼴)을 `_mask` 에 더하고, `ai.py:124` 에서 `CallFailed` 를 가린 문장으로 다시 올린다. 같은 재현(가짜 키 sentinel · `_openai` 가 키를 되비추는 `CallFailed`)을 다시 돌리니 **`sys_ai_call_log.error` · `data_query_log.error` · 422 본문 세 곳 모두 가림**(sentinel 없음 · `***`) · 실제 키 값이 든 로그 행 0 · 정적 `key` 사용 1줄(Authorization 헤더만). 검사기 G-17 「키 값이 로그 · 예외 문장 · 응답에 없다」 PASS · `test_g17_key_value_never_in_logs_or_messages` PASS. **해소(실측).**
+
+### 8.2 G-16 데이터 질의 검증 (`uv run python tools/check_security.py` · 2026-10-22)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| 우회 SQL → 422 · 실행 0 · 거부도 로그 1행 | 처음 **FAIL (1/54 = DEF-QA3-005)** → 재검증 **PASS 54/54** | 우회 **54건** — 쓰기 5(update · delete · insert · drop · truncate) · 다중 문장 `;` · `--` 뒤 · `/* */` · 허용 밖 뷰 `v_work_order_status` · 업무 테이블 `customer` · 계정 테이블 `sys_user` · `pg_tables` · `pg_catalog.pg_class` · `information_schema` · `pg_sleep(10)` · `PG_SLEEP` · `pg_read_file` · `current_setting` · `lo_import` · `query_to_xml` · `version()` · `md5` · `pg_is_in_recovery()` · CTE · `select … into` · `for update` · `copy` · `set` · `show` · `explain` · `\copy` · NBSP 공백 · ZWSP 로 낱말 쪼개기 2 · 대소문자 혼합 · 큰따옴표 · `public.v_dq_orders` · `public.customer` · union · 하위 질의 · exists · join · 쉼표 조인 · cross join · 파생 테이블 · lateral · returning · `$$` · 닫히지 않은 문자열 · `select 1` · 빈 SQL · NUL · 4001자 · 코드 펜스 속 delete → **422 54/54** · 53 이 `허용되지 않는 질의 — <이유>` + `fields` 질의 번호 · SQL + `data_query_log` 1행(ok false · sql_text 원문 · error 사유 · question) + `sys_ai_call_log` 1행(fake 성공) + 변경 로그 0 · **내 행 불변**(거래처 · 의뢰 4 · 계정 수 · 주입 거래처 0 · `customer` 존재 · `q3…tmp` 없음) · `pg_sleep` 요청 최대 **10ms**(안 돎) · 업무 테이블 43 전수 diff **0**. 어긋난 1 = NUL(로그 0행 · 사유 없음) |
+| 허용 질의 → 200 · 결과 · 로그 ok · 변경 로그 1행 · 브라우저 같은 화면 | PASS | 코드 펜스 ` ```sql … ``` ` 속 `SELECT request_no, qty FROM v_dq_orders WHERE customer_code = '<내 거래처>'` → **200** `ok · row_count 4 · columns · truncated false · query_no DQ-…` · `data_query_log` ok true 행 4 · `sys_ai_call_log` ok true(kind 데이터 질의) · `sys_change_log` **1행**(F-RPT-132 · `data_query_log:DQ-…`) · 리터럴 속 `'a;b--'` 는 문장이 아니다(200) · 대문자 `V_DQ_ORDERS` 200 · 브라우저(Accept html) **같은 화면 200** 에 SQL · `data-result="DQ-…"` · 결과 표(의뢰 번호 보임) · 변경 로그 1행 (api-contract §2 예외 · D-806) |
+| 행 상한 200 · statement_timeout 5000ms | PASS | 5중 교차 조인 `limit 5000` → 200 · `row_count 200 · truncated true` · 로그 row_count 200 / **12중 교차 조인(뷰 7행 ≈ 7^12)** → **422 「실행 실패 — canceling statement due to statement timeout」** · 걸린 시간 **5,090ms** · 로그 ok false |
+| 실행 계층(검증 우회 가정) 읽기 전용 · 제한 시간 | PASS | `dataquery._run_readonly` 를 직접 불러(검증을 건너뛴 가정) `transaction_read_only=on` · `statement_timeout=5s` · `insert into customer …` → **`ReadOnlySqlTransaction`**(주입 행 0) · `pg_is_in_recovery()=False` — 읽기 전용은 **트랜잭션 수준**이고 DB 역할은 여전히 superuser(DEF-QA3-003 · D-524 W4) |
+| 수금 뷰 부서 제한(D-513) | PASS | 전략부 ST `v_dq_collections` · `v_dq_receivables` → **422 「… 이 부서가 질의할 수 없는 뷰다 (영업부 · 회계부 · 전산 관리자 · 경영진만)」** + 로그 1행 · PR · DS · SL · AC · SH → **403**(RPT-130 칸 없음 · **AI 호출 0 · 로그 0**) · EX · ADM → 200. 참고: SL · AC 는 D-513 의 수금 뷰 허용 부서지만 정본 RPT-130 칸이 없어 403 이 먼저다(계약대로 · 결함 아님) |
+| 질문 NUL · 10만 자 → 422(AI 호출 0) · `<script>` 질문 이스케이프 | PASS | 질문 NUL · 10만 자 · 1001자 → 422(`fields[].name` = 질문) · **AI 호출 전** 이라 로그 0 / 질문 `<script>alert(1)</script> " onfocus=…` → 200 · DB 에 원문 · RPT-130 GET · POST(브라우저) 화면에 `&lt;script&gt;` · 원문 태그 0 |
+| SYS-040 dq · ai 탭에 거부 질의가 보인다 | PASS | ADM `GET /sys/logs?tab=dq&login=<EX>` 에 거부 질의 번호 · 사유 보임 · `tab=ai` 에 「데이터 질의」 행 보임 — 「거부 포함」이 눈에 보인다 |
+
+### 8.3 G-17 키 없음 · 호출 실패
+| 행 | 판정 | 실측 |
+|---|---|---|
+| 키 없음(프로세스 안 · settings 비움) → 422 문장 그대로 · 로그 1·1 · 결과 0 | PASS | `ai._config → ("", "gpt-4.1")` · fake 없음 → JSON **422** message = `AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY`(글자 그대로) · fields = 질의 번호만 · 결과 열·행 없음 · `sys_ai_call_log` **1행**(ok false · error = 그 문장 · model gpt-4.1 · kind 데이터 질의) · `data_query_log` **1행**(ok false · sql_text NULL · error = 문장) · `sys_change_log` 0 · 내 행 불변 · 업무 테이블 43 diff 0 / 브라우저 폼 POST → **303 /rpt/query** → 화면 200 에 **문장이 그대로**(알림 + 최근 질의 빨간 행 `거부·실패`) · 결과 표(`data-result`) 없음 |
+| 키 없음(하위 프로세스 `LCOMFINE_OPENAI_API_KEY=` · settings 실제 경로) | PASS | `key_empty True`(`.env` 의 값을 빈 환경변수가 덮는다 — `settings.load_dotenv` 는 셸 값 우선) · urlopen 차단 · JSON 422 문장 · 브라우저 POST 303 → GET 200 문장 보임 · 로그 dq 2 · ai 2(둘 다 ok false) · 변경 0 |
+| 호출 실패(예외 · 글자 아닌 응답 · 빈 응답 · 네트워크 차단) → 422 「AI 호출 실패 — …」 · 로그 ok false | PASS | fake `RuntimeError("연결 거부 (예시)")` → 422 `AI 호출 실패 — RuntimeError: 연결 거부 (예시)` · ai 로그 ok false(ms 있음) · dq 로그 ok false sql 없음 · 변경 0 / fake 가 dict 반환 → 422 「… 응답이 글자가 아니다」 / 빈 글자 → 422 「허용되지 않는 질의 — 질의가 비어 있다」 / **차단기**: 가짜 키 + fake 없음 → 실제 호출 함수가 urlopen 까지 가서 `_NoNetwork` 에 막힘 → 422 `AI 호출 실패 — 연결 실패 — … _NoNetwork …` · 로그 1행 — 바깥으로 나가는 길이 하나뿐이고 그 길이 막혀 있음을 실측 |
+| 키 값이 로그 · 예외 문장 · 응답에 없다 | 처음 **FAIL (DEF-QA3-006)** → 재검증 **PASS** | 처음: 주입 예외의 키는 세 곳 가림 / **HTTP 오류 경로의 키: ai 로그 가림 · dq 로그 노출 · 422 본문 노출**. 재검증: HTTP 오류 경로도 **ai 로그 · dq 로그 · 422 본문 전부 가림** · 실제 키 값이 든 로그 행 0 · 정적 `ai.py` 의 `key` 사용 1줄(Authorization 헤더뿐) |
+| 정적: 하드코딩 결과 · 예외 삼키기 없음 | PASS | `dataquery.py` · `rpt.py` · `ai.py` — 결과 행 리터럴 0 · `except: pass` 0 · 빈 `except Exception:` 0 (ai.py 의 `except Exception as exc` 는 기록 뒤 다시 올린다) |
+
+### 8.4 G-19 · G-20 · G-22 (RPT)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| G-19 RPT 화면 9 × 부서 8 (200/403 · 메뉴 숨김) | PASS | 200 기대 **40** · 403 기대 **32** · 어긋남 0 · 칸 없는 화면 링크 0 (SL 4 · PR 4 · SH 1 · DS 0 · AC 4 · ST 9 · EX 9 · ADM 9) |
+| G-19 F-RPT-132 × 부서 8 (권한 예외) · 미로그인 | PASS | 빈 본문 POST — SL · PR · SH · DS · AC(칸 없음) **403** · ST · EX · ADM(R) **422**(질문 누락 · AI 호출 전 · 로그 0) · 미로그인 POST 401 · GET 401 · GET(html) 303 /login |
+| G-19 쓰기 403 전수(§8.0 수정 뒤) | PASS | 63 × 8 — 403 기대 366 · 통과 기대 138 · 어긋남 0 |
+| G-20 RPT 비활성 · 로그아웃 → 401 | PASS | EX 전 200 · 비활성(F-SYS-013) 200 → RPT-080 GET **401** · 질의 POST **401** / ST 전 200 · 로그아웃 → RPT-010 GET **401** · 질의 POST **401** |
+| G-22 질의 성공 → `sys_change_log` 1행 · 거부/키 없음/403/422 → 0행 · SYS-040 | PASS | 성공 1 → **정확히 1행**(function_id F-RPT-132 · screen_id RPT-130 · POST `/rpt/query` · target `data_query_log:DQ-…` · login_id · role EX) · 거부(쓰기 SQL) 422 → 0행 · 키 없음 422 → 0행 · PR 403 → 0행 · 빈 질문 422 → 0행 — **거부는 변경이 아니다(D-806 「변경 로그는 성공만」 실측 일치)** · SYS-040 변경 탭에 target 보임 |
+| G-22 대시보드 8 조회 → `sys_access_log` 1행씩 | PASS | RPT-010~080 GET 각 200 · 조회 로그 +1 |
+
+### 8.5 조용한 실패 사냥 (X-행)
+| 행 | 판정 | 실측 |
+|---|---|---|
+| X-02 DB 끊김 RPT (새 3) | PASS | 없는 DB 의 하위 프로세스(키 빈 값 · urlopen 차단) — RPT-010 GET(JSON) **503** · GET(브라우저) **503** · RPT-130 질의 POST **503** · 접속 문자열 노출 0 · 「미수집」 거짓 화면 0 |
+| **X-09 대시보드 이스케이프 · 쓰기 없음** (새) | PASS | 거래처 이름 `<script>alert(1)</script> <img src=x onerror=alert(2)>` + 오늘 의뢰 1 → RPT-010(표 · 거래처 선택) · RPT-050 · 060 · 070 · 080(거래처 선택) · RPT-010 `?customer=` **6 화면 전부 `&lt;script&gt;`** · 원문 태그 0 · 인라인 SVG `svg_bar` · `svg_line` 의 `<title>` 도 이스케이프(같은 Jinja 환경 · autoescape) · 대시보드 8 GET 뒤 업무 테이블 43 전수 diff **0** |
+| **X-10 정적: 대시보드 · RPT 라우터 쓰기 SQL 0** (새) | PASS | `dashboard.py` · `rpt.py` 의 insert/update…set/delete from/truncate/create/alter/drop **0** · `conn.x/tx` 는 `rpt.py` 의 `dataquery.ask` 트랜잭션 1 뿐 · `dataquery.py` · `ai.py` 의 insert 대상 = `data_query_log` · `sys_ai_call_log` 둘 뿐(db-schema F-RPT-132 쓰기 경계와 일치 · 캐시 테이블 없음) |
+
+관찰(결함 아님): ① 읽기 전용은 `set transaction read only` 트랜잭션 수준이고 DB 역할은 superuser 그대로(DEF-QA3-003 · D-524 W4) — 역할이 분리되면 `pg_is_in_recovery` 가 아니라 `rolsuper = f` 로 다시 잰다. ② `pg_sleep` · `pg_read_file` 류는 함수 허용 목록 이전에 카탈로그 패턴 `pg_\w*` 에서 먼저 거부된다. ③ 질문 1000자 상한 · SQL 4000자 상한은 D-806(가설)의 값이다.
+
+### 8.6 E2E 캡처 (`uv run --offline --with playwright python tools/check_security.py --e2e`)
+W1 · W2 와 같은 Playwright(chromium headless · 1280 · 390 · `full_page`). 서버는 **키 빈 값(`LCOMFINE_OPENAI_API_KEY=`) + `urllib.request.urlopen` 차단**의 하위 프로세스로 띄웠다 — 실제 호출 불가. **50/50 PASS**(W1 16 + W2 16 + **W3 18**) · status 200 · `scrollWidth ≤ innerWidth`(390 가로 스크롤 0) · 로그인 튕김 0. `outputs/e2e/ex_rpt_*.png` 18 + `result.json`(50행 · 갱신).
+
+경영진(`ex`) 으로 RPT-010 수주 → 020 생산 → 030 품질 → 040 재고·창고 → 050 출하 → 060 수금 → 070 주문 흐름 → 080 경영 요약(기본 기간 = 이번 달 1일 ~ 오늘 · 지금 DB 에 이 달 데이터가 없어 KPI 「미수집」 · 구간 표 · 빈 차트 자리) → **RPT-130 에서 질문 「이번 달 거래처별 출하 수량 (예시)」 을 실제로 입력하고 「질의 실행」(data-confirm 승인)** → 303 → 같은 화면에 알림 「입력값을 확인해 주세요 — **AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY** · 질의 번호: DQ-…」 와 최근 질의의 빨간 행(`ex_rpt_query-query-nokey-1280/390.png`). 로그 실측: 그 질문의 `data_query_log` 2행(1280 · 390) · 전부 ok=false(남긴다 — 시드 계정 `ex` 의 감사 로그). 눈으로 본 것: 390 폭의 RPT-010 은 KPI 카드 2열 · 구간 표는 쪽 넘김(1/3 쪽 · 22행) · 문서 가로 스크롤 0 · 1280 의 RPT-130 은 우측 계약 패널에 F-RPT-131 · 132 문장.
+
+### 8.7 명령 · 결과
+| 명령 | 결과 |
+|---|---|
+| `uv run python tools/check_security.py` (처음) | **종료코드 3** = FAIL 3(G-18 **W4 미구현** · G-16 우회 SQL 1/54 = **DEF-QA3-005** · G-17 키 가림 = **DEF-QA3-006**) · PASS **69**(W1 36 + W2 13 + **W3 20**) · WARN 0 · 20초. 그 전 한 번은 FAIL 4 — 내 정적 검사 둘(`_mask` 본문의 `"***"` 줄 · `rpt.py` 의 `"rows": [{k: … for …}]` 직렬화 컴프리헨션)이 거짓 양성이라 검사기만 고쳤다(앱 결함 아님) |
+| `uv run python tools/check_security.py` (**재검증** · 개발3 수정 뒤) | **종료코드 2** = FAIL 2(G-18 **W4 미구현** · **G-21 비밀 스캔 = DEF-QA3-007** `tests/test_dev3_rpt.py:652` 키 패턴 줄 1) · PASS **70** · WARN 0 · 22초. G-16 우회 54/54 PASS · G-17 키 가림 PASS |
+| `uv run pytest -q tests/test_qa3_*.py` (처음) | **36 passed · 2 failed** · 25.6초 — 실패 2 = `test_qa3_rpt.py::test_g16_bypass_sql_is_rejected_not_executed_and_logged`(DEF-QA3-005) · `test_g17_key_value_never_in_logs_or_messages`(DEF-QA3-006). W1 14 + W2 8 + **W3 16**(`test_g19_write_403_full_sweep` 는 §8.0 수정 뒤 PASS) |
+| `uv run pytest -q tests/test_qa3_*.py` (**재검증**) | **37 passed · 1 failed** · 23.9초 — 실패 1 = `test_qa3_audit.py::test_g21_no_secrets_and_seed_examples`(DEF-QA3-007 · 스캔 패턴). W3 의 두 결함 테스트는 PASS. 실패 상태로 둔다(게이트를 낮추지 않는다) |
+| `uv run --offline --with playwright python tools/check_security.py --e2e` | 50/50 PASS · rc 0 · 정리 — 남은 `q3e2e` 회차 0 · 매핑 0 |
+| 정리 확인 `psql -h /tmp lcomfine_db` | `sys_user` · `customer` · `item` · `production_request` 의 `q3%` **0** |
+
+### 8.8 하지 않은 것
+- 실제 OpenAI 호출 — 지시대로 0회(fake · 빈 키 · urlopen 차단). 실제 모델이 돌려주는 SQL 의 품질 · 실제 401/429 응답은 재지 않았다.
+- `make gate-full` · 시드 멱등 실측 · Docker 실기동(D-525) — 오케스트레이터 몫.
+- 읽기 전용 **DB 역할** — D-524(W4). 지금은 트랜잭션 읽기 전용만 실측.
+- G-18 SSO — W4.

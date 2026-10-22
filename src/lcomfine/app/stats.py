@@ -16,6 +16,7 @@ W2 수금 (COL · 공표 `progress-dev3.md` §1 · ERP 원천 = 반영 회차의
     shipment_vs_collection(ym_from, ym_to, customer_id=None) -> dict   COL-070 MES 출하 ↔ ERP 매출·수금 (월 · 거래처 · 독립 집계 · G-14)
     customer_receivable(customer_id) -> dict                   TRK-030 수금 칸 (개발1)
     due_compliance(period) -> dict                             TRK-020 납기 준수율 (개발1 · Ruling 23 · 가설 D-804)
+    period_bounds(period) -> (시작일, 종료일)                    "YYYY-MM" 또는 (시작일, 종료일) 해석 (W3 `dashboard` 가 쓴다)
 """
 
 from __future__ import annotations
@@ -445,6 +446,10 @@ def _period_arg(period) -> tuple[date, date]:
     if not isinstance(f, date) or not isinstance(t, date) or f > t:
         raise ValueError(f"기간은 (시작일 ≤ 종료일) — {period!r}")
     return f, t
+
+
+#: `_period_arg` 의 공개 이름 — `dashboard` 가 같은 기간 해석을 쓴다 (W3)
+period_bounds = _period_arg
 
 
 def due_compliance(period) -> dict:

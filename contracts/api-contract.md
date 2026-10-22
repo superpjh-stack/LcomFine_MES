@@ -29,11 +29,12 @@
 | 화면 GET | 200 HTML | 200 HTML (화면은 HTML 뿐이다) |
 | 쓰기 성공 | **303** → 원래 화면 + 알림 한 번 | **200** `{"ok": true, "message": "…", …}` (`http.saved(request, msg, data={…})`) |
 | 422 (폼 POST) | **303** → 원래 화면 + 알림(메시지·항목별 사유). 원래 화면 = `Referer`, 없으면 요청 경로의 앞부분에 해당하는 **화면 경로**(`/shp/confirm/7/confirm` → `/shp/confirm`), 그것도 없으면 메인 — POST 전용 주소로 보내지 않는다 | **422** `{"code": "validation_error", "message": "…", "fields": [{"name": …, "reason": …}]}` |
-| 422 (브라우저 GET — 조회 조건의 형식 오류 등) | 422 오류 화면(`_error.html`) | **422** `validation_error` |
+| 422 (브라우저 GET — 조회 조건의 형식 오류 등) | 422 오류 화면(`_error.html`) — **대시보드 RPT-010~080 은 같은 화면을 422 로 다시 그려 조건 칸 옆에 사유를 보인다**(Ruling 28 · DEF-QA1-007) | **422** `validation_error` (RPT 도 같다 — `Accept` 에 text/html 이 없으면 JSON) |
 | 401 | GET 은 **303** → `/login?next=…` · POST 는 401 오류 화면 | **401** `{"code": "unauthorized", "message": "로그인이 필요합니다"}` |
 | 403 · 404 · 501 · 503 · 500 | 그 상태코드의 오류 화면(`_error.html`) | 그 상태코드 + `{"code": …, "message": …}` (501 은 `decision` 포함) |
 
 - 로그인: `POST /login`(`login_id` · `password` · `next`) — 성공 **303**, 실패 **401**(브라우저는 로그인 화면을 401 로 다시 그린다).
+- 예외 — **F-RPT-132 데이터 질의 실행**의 브라우저 성공 응답은 303 이 아니라 **같은 화면 200**(생성 SQL · 결과 표 — 결과 행을 저장하지 않아 303 뒤에 보일 수 없다 · D-806). JSON 은 `http.saved` 200 그대로 · 거부 · 키 없음 · 실패는 422(`fields` 에 질의 번호 · SQL).
 - **테스트는 JSON 쪽으로 판정한다.** `TestClient` 는 기본 `Accept: */*` 라 쓰기 성공 200 · 검증 실패 422 가 그대로 보인다.
 - `/health` 는 인증 없이 200(DB 가 끊기면 503) — **상태값과 건수만 싣는다**: `status` · `system` · `db.ok` · `db.reason`(고정 문장) · `groups` · `menus` · `screens` · `functions` · `batch_functions` · `placeholders` · `router_include_errors`(모듈과 예외 종류만). 접속 문자열·호스트·사용자·DB 이름은 가리는 것이 아니라 **싣지 않는다**(D-32). `/static/*` 도 인증 없음. **인증 없이 열리는 것은 이 둘과 로그인 화면(`/login`) · 오류 안내(`/error`)뿐이다.**
   API 문서 화면(`/docs` · `/redoc`)은 두지 않는다(404). 명세 `/openapi.json` 은 로그인한, 시스템 관리 화면(SYS-010)을 볼 수 있는 부서에게만 준다(미로그인 401 · 그 밖 403).

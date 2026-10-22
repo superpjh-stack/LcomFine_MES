@@ -2,7 +2,10 @@
 """G-16~G-22 보안 · 운영 판정 (QA3) — `make check-security`. 서버를 띄우지 않고 TestClient 로 앱을 직접 부른다.
 
 출력은 `G-nn  항목  PASS|FAIL  실측` 행이다(gate.py `_ROW_RE`). 종료코드 = FAIL 행 수.
-  · G-16 데이터 질의 · G-17 키 없음 · G-18 SSO 는 W3/W4 범위 — 아직 기능이 없으므로 FAIL 「W3/W4」 로 찍는다(게이트를 낮추지 않는다).
+  · G-16 데이터 질의 검증 · G-17 키 없음 (W3): fake AI 를 `ai.set_client` 로 주입해 우회 SQL 50여 건을 보내고(422 · 실행 0 · 로그 1행), 키 없음은
+    프로세스 안(`ai._config` 비움)과 하위 프로세스(`LCOMFINE_OPENAI_API_KEY=` 빈 값 · settings 실제 경로) 둘로 잰다. **실제 OpenAI 는 절대 부르지 않는다** —
+    `no_real_ai()` 가 `urllib.request.urlopen` 을 막아 두고, 막힌 호출이 있으면 그 자체가 FAIL 로 보인다. 키 값은 어디에도 찍지 않는다.
+  · G-18 SSO 는 W4 범위 — 아직 기능이 없으므로 FAIL 「W4」 로 찍는다(게이트를 낮추지 않는다).
   · G-19 권한 403 전수 · G-20 세션 상태 · G-21 비밀 · G-22 변경 감사 로그 를 실제 요청으로 잰다.
   · G-24 는 compose 문법 · Dockerfile 정적 검사만(컨테이너는 띄우지 않는다 — gate.py 가 G-24 를 따로 판정한다).
   · `X-nn` 행은 조용한 실패 사냥(DB 끊김 · 이상한 입력)이다 — 게이트 번호가 아니라 gate.py 는 읽지 않지만 FAIL 이면 종료코드에 센다.
@@ -176,6 +179,10 @@ class Lab:
             cur.execute("delete from sys_common_code where code ilike %s or group_code ilike %s", (like, like))
             cur.execute("delete from notification_setting where user_id in (select user_id from sys_user where login_id ilike %s)",
                         (like,))
+            # W3 — 임시 계정의 데이터 질의 · AI 호출 로그는 sys_user FK 라 계정을 지우기 전에 같이 지운다(내 시험 질의만 · 다른 사용자 행은 그대로).
+            # sys_change_log · sys_access_log(login_id 글자) 는 W1 과 같이 남긴다.
+            cur.execute("delete from data_query_log where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
+            cur.execute("delete from sys_ai_call_log where user_id in (select user_id from sys_user where login_id ilike %s)", (like,))
             cur.execute("delete from sys_user where login_id ilike %s", (like,))
 
 
@@ -264,14 +271,19 @@ def check_no_session_401() -> Result:
 
 
 def check_write_403(lab: Lab) -> Result:
-    """쓰기 기능 × 부서 8 전수 — 계약(function-list 권한 열)에 W 가 없는 부서는 403, W 부서는 403·401 이 아니다(본문이 비어 422/404)."""
+    """쓰기 기능 × 부서 8 전수 — 계약(function-list 권한 열)에 W 가 없는 부서는 403, W 부서는 403·401 이 아니다(본문이 비어 422/404).
+    권한 예외 기능(`R 이상(권한 예외)` — F-RPT-132 · F-DOC-011 · F-HOME-022)은 api-contract §4 「칸이 없으면 403 · R 이면 통과」 —
+    기대값은 그 화면의 권한 칸(`rbac.level`)이다(W3 수정 · progress-dev3 §3-12: 옛 기대값은 권한 예외를 전 부서 통과로 봤다)."""
     from lcomfine.app import rbac
 
     fns = write_functions_routed()
     bad, n403, nother = [], 0, 0
     for f in fns:
         for r in rbac.roles():
-            expect_403 = (r.code not in f.roles_w) and not f.permission_exception
+            if f.permission_exception:
+                expect_403 = rbac.level(r.code, f.screen_id) is None
+            else:
+                expect_403 = r.code not in f.roles_w
             got = lab.client(r.code).post(concrete(f.path), data={}).status_code
             if expect_403:
                 n403 += 1
@@ -677,17 +689,26 @@ def check_static_log_change() -> Result:
 
 # ── 조용한 실패 (X) ──────────────────────────────────────────────────────
 _DB_DOWN_SCRIPT = r"""
-import json, os, sys, warnings
+import json, os, sys, warnings, urllib.request
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.join(os.environ["QA3_ROOT"], "src"))
+def _blocked(*a, **k):
+    raise RuntimeError("QA3 — 실제 OpenAI 호출 차단")
+urllib.request.urlopen = _blocked          # DB 끊김 재현 중에도 바깥으로 나가는 호출은 없다(키도 빈 값으로 넘긴다)
 from fastapi.testclient import TestClient
 from lcomfine.app.main import app
 c = TestClient(app, raise_server_exceptions=False)
 for k, v in json.loads(os.environ["QA3_COOKIE"]).items():
     c.cookies.set(k, v)
+ex = TestClient(app, raise_server_exceptions=False)   # 경영진 세션 — RPT 화면 · 데이터 질의
+for k, v in json.loads(os.environ["QA3_COOKIE_EX"]).items():
+    ex.cookies.set(k, v)
 out = {}
 def grab(name, r):
     out[name] = {"status": r.status_code, "body": r.text[:4000]}
+grab("rpt_screen", ex.get("/rpt/orders"))
+grab("rpt_screen_html", ex.get("/rpt/orders", headers={"accept": "text/html"}, follow_redirects=False))
+grab("rpt_query", ex.post("/rpt/query", data={"question": "q3 DB 끊김 (예시)"}))
 grab("health", c.get("/health"))
 grab("screen_json", c.get("/bas/items"))
 grab("screen_html", c.get("/bas/items", headers={"accept": "text/html"}, follow_redirects=False))
@@ -708,7 +729,9 @@ print("QA3JSON" + json.dumps(out, ensure_ascii=False))
 
 def db_down_probe(lab: Lab) -> dict:
     cookie = dict(lab.fresh("PR").cookies)
-    env = dict(os.environ, LCOMFINE_PG_DSN=ABSENT_DB_DSN, QA3_ROOT=str(ROOT), QA3_COOKIE=json.dumps(cookie))
+    cookie_ex = dict(lab.fresh("EX").cookies)
+    env = dict(os.environ, LCOMFINE_PG_DSN=ABSENT_DB_DSN, LCOMFINE_OPENAI_API_KEY="", QA3_ROOT=str(ROOT),
+               QA3_COOKIE=json.dumps(cookie), QA3_COOKIE_EX=json.dumps(cookie_ex))
     p = subprocess.run([sys.executable, "-c", _DB_DOWN_SCRIPT], cwd=ROOT, env=env, capture_output=True, text=True, timeout=180)
     m = re.search(r"QA3JSON(.*)$", p.stdout, re.S)
     if not m:
@@ -726,7 +749,9 @@ def check_db_down(lab: Lab) -> list[Result]:
                    f"/health {h['status']} · 본문에 접속 문자열 {'있음' if any(v in h['body'] for v in values) else '없음'}"))
     for key, label in (("screen_json", "화면 GET(JSON)"), ("screen_html", "화면 GET(브라우저)"), ("home_html", "메인 GET(브라우저)"),
                        ("write", "쓰기 POST"), ("login_page", "로그인 화면"), ("login_post", "로그인 POST"),
-                       ("col_upload", "COL 업로드 POST(multipart)"), ("col_screen", "COL 화면 GET")):
+                       ("col_upload", "COL 업로드 POST(multipart)"), ("col_screen", "COL 화면 GET"),
+                       ("rpt_screen", "RPT 대시보드 GET(JSON)"), ("rpt_screen_html", "RPT 대시보드 GET(브라우저)"),
+                       ("rpt_query", "RPT-130 질의 POST")):
         g = got[key]
         silent = g["status"] < 400 and key != "login_page"
         if key == "login_page":   # 퀵 로그인 패널이 DB 를 읽는다 — 200 이면 DB 를 읽지 않은 것이므로 「미수집」 류 거짓 값이 없어야 한다
@@ -863,6 +888,19 @@ E2E_PERIOD = ("1985-02-01", "1985-02-28")          # 다른 테스트와 겹치�
 E2E_W2_AC = ("/col/uploads", "/col/upload-history", "/col/customer-map",
              f"/col/collections?date_from={E2E_PERIOD[0]}&date_to={E2E_PERIOD[1]}", f"/col/receivables?asof={E2E_PERIOD[1]}",
              f"/col/aging?asof={E2E_PERIOD[1]}", "/col/shipment-vs-collection?ym_from=1984-09&ym_to=1985-02")
+#: W3 — 경영진(ex)이 대시보드 8 + 데이터 질의. RPT-130 은 **키 없는 서버**에서 질의를 실제로 눌러 「AI 키가 설정되지 않았습니다」 가 화면에 보이는지 본다.
+E2E_W3_EX = ("/rpt/orders", "/rpt/production", "/rpt/quality", "/rpt/inventory", "/rpt/shipment", "/rpt/collection",
+             "/rpt/order-flow", "/rpt/summary", "/rpt/query")
+E2E_QUESTION = "이번 달 거래처별 출하 수량 (예시)"
+#: E2E 서버 — 키 빈 값(환경) + `urllib.request.urlopen` 차단(이중 안전장치) 뒤 uvicorn. 실제 OpenAI 호출은 일어날 수 없다.
+_E2E_SERVER = r"""
+import sys, urllib.request
+def _blocked(*a, **k):
+    raise RuntimeError("QA3 — 실제 OpenAI 호출 차단")
+urllib.request.urlopen = _blocked
+import uvicorn
+uvicorn.run("lcomfine.app.main:app", host="127.0.0.1", port=int(sys.argv[1]), log_level="warning")
+"""
 
 
 def _e2e_xlsx(tmp_dir: Path) -> tuple[Path, str, str]:
@@ -905,9 +943,9 @@ def e2e(port: int = 8020) -> int:
     if cust is None:
         print("E2E  거래처가 없다 — 시드를 먼저 돌린다")
         return 1
-    server = subprocess.Popen([sys.executable, "-m", "uvicorn", "lcomfine.app.main:app", "--host", "127.0.0.1", "--port", str(port)],
-                              cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src")), stdout=subprocess.DEVNULL,
-                              stderr=subprocess.DEVNULL)
+    server = subprocess.Popen([sys.executable, "-c", _E2E_SERVER, str(port)],
+                              cwd=ROOT, env=dict(os.environ, PYTHONPATH=str(ROOT / "src"), LCOMFINE_OPENAI_API_KEY=""),
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{port}"
     results, fails = [], 0
     try:
@@ -922,7 +960,8 @@ def e2e(port: int = 8020) -> int:
             return 1
         pw = get_settings().seed_password or ""
         plan = ([("admin", p) for p in E2E_PATHS] + [("sl", "/wo/requests"), ("sh", "/shp/orders"), ("pr", "/lot/backward")]
-                + [("ac", p) for p in E2E_W2_AC] + [("sl", f"/trk/customers?customer={cust['id']}")])
+                + [("ac", p) for p in E2E_W2_AC] + [("sl", f"/trk/customers?customer={cust['id']}")]
+                + [("ex", p) for p in E2E_W3_EX])
         with sync_playwright() as play:
             browser = play.chromium.launch()
             for width in E2E_WIDTHS:
@@ -956,6 +995,11 @@ def e2e(port: int = 8020) -> int:
                             form.locator("select[name=customer_id]").select_option(str(cust["id"]))
                             form.locator("button[type=submit]").click()
                             page.wait_for_load_state("networkidle")
+                        elif account == "ex" and path == "/rpt/query":                        # RPT-130 질의 실행 — 키 없는 서버 → 422 문장이 화면에
+                            action, want_text = "query-nokey", "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY"
+                            page.fill("input[name=question]", E2E_QUESTION)
+                            page.locator("form.search button[type=submit]").click()
+                            page.wait_for_load_state("networkidle")
                         sw, iw = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
                         clean = path.split("?")[0]
                         name = f"{account}{clean.replace('/', '_') if clean != '/' else '_home'}{'-' + action if action else ''}-{width}.png"
@@ -980,6 +1024,9 @@ def e2e(port: int = 8020) -> int:
         left = conn.q1("select (select count(*) from erp_upload_batch where source_file ilike %s) as b, "
                        "(select count(*) from erp_customer_map where erp_code ilike %s) as m", (E2E_TAG + "%", E2E_TAG + "%"))
         print(f"E2E  정리 — 남은 {E2E_TAG} 회차 {left['b']} · 매핑 {left['m']}")
+        # W3 — 키 없는 서버에서 ex 가 누른 질의의 로그(data_query_log · sys_ai_call_log · 둘 다 ok=false)는 남긴다(감사 로그 · 시드 계정 행).
+        dq = conn.q1("select count(*) as n, bool_and(not ok) as all_fail from data_query_log where question = %s", (E2E_QUESTION,))
+        print(f"E2E  RPT-130 키 없음 질의 로그 — data_query_log {dq['n']}행 · 전부 ok=false {dq['all_fail']}")
     (E2E_DIR / "result.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     return fails
 
@@ -1408,15 +1455,755 @@ def check_seed_dev3_static() -> Result:
                f"erp_column_map(created_by=seed) {seeded}행 · 열 이름은 정본 낱말이라 (예시) 표식 없음(문서에만 — D-802) · 실측 멱등은 gate-full")
 
 
+# ── W3 대시보드 · 데이터 질의 (RPT) ─────────────────────────────────────
+# AI 는 **절대 실제로 부르지 않는다** — `ai.set_client(fake)` 로 SQL 을 내가 정해 넣고, `no_real_ai()` 가 ai.py 가 쓰는 `urllib.request.urlopen` 을
+# 막아 둔다(막힌 호출이 있으면 422 「AI 호출 실패 — _NoNetwork」 로 드러나 FAIL). 키 없음은 ① 프로세스 안에서 `ai._config` 를 비우고 ② 하위
+# 프로세스 `LCOMFINE_OPENAI_API_KEY=`(빈 값 · settings 실제 경로)로 잰다. 키 값은 어디에도 찍지 않는다(응답 · 로그에 실리지 않는 것만 센다).
+RPT_SCREENS = ("RPT-010", "RPT-020", "RPT-030", "RPT-040", "RPT-050", "RPT-060", "RPT-070", "RPT-080", "RPT-130")
+QUERY_PATH = "/rpt/query"
+#: 질의 · 호출 · 변경 · 조회 로그와 채번 — 업무 테이블 diff 에서 뺀다(데이터 질의가 써도 되는 것 · D-513)
+LOG_TABLES = ("data_query_log", "sys_ai_call_log", "sys_access_log", "sys_change_log", "sys_number_seq")
+_NBSP, _ZWSP = " ", "​"
+
+
+class _NoNetwork(RuntimeError):
+    """QA3 — 실제 OpenAI 호출 차단. 이 예외가 응답에 보이면 검사가 바깥으로 나가려 한 것이다(= FAIL)."""
+
+
+@contextmanager
+def no_real_ai():
+    """ai.py 의 바깥 호출을 막고 `_config` · `_openai` · 주입 클라이언트를 끝에 원래대로 돌린다."""
+    import urllib.request as _ur
+
+    from lcomfine.app import ai
+
+    orig_open, orig_cfg, orig_openai = _ur.urlopen, ai._config, ai._openai
+
+    def blocked(*a, **k):
+        raise _NoNetwork("QA3 — 실제 OpenAI 호출 차단")
+
+    _ur.urlopen = blocked          # ai.py 는 호출 시점에 urllib.request.urlopen 을 찾는다
+    try:
+        yield ai
+    finally:
+        _ur.urlopen = orig_open
+        ai._config = orig_cfg
+        ai._openai = orig_openai
+        ai.set_client(None)
+
+
+def _marks() -> dict:
+    from lcomfine.db import conn
+
+    return conn.q1("select (select coalesce(max(id), 0) from data_query_log) as dq, (select coalesce(max(id), 0) from sys_ai_call_log) as ai, "
+                   "(select coalesce(max(id), 0) from sys_change_log) as ch")
+
+
+def _logs_since(lab: Lab, m: dict) -> tuple[list[dict], list[dict], list[dict]]:
+    """이 Lab 의 임시 계정이 남긴 새 행만 — (data_query_log, sys_ai_call_log, sys_change_log). 다른 QA 가 동시에 돌아도 섞이지 않는다."""
+    from lcomfine.db import conn
+
+    like = lab.prefix + "%"
+    dq = conn.q("select d.* from data_query_log d join sys_user u on u.user_id = d.user_id where d.id > %s and u.login_id ilike %s order by d.id",
+                (m["dq"], like))
+    ai = conn.q("select a.* from sys_ai_call_log a join sys_user u on u.user_id = a.user_id where a.id > %s and u.login_id ilike %s order by a.id",
+                (m["ai"], like))
+    ch = conn.q("select * from sys_change_log where id > %s and login_id ilike %s order by id", (m["ch"], like))
+    return dq, ai, ch
+
+
+def _ask(lab: Lab, role: str, fake, question: str, *, html: bool = False):
+    """fake(SQL 글자 · 호출형 · None=실제 경로) 를 주입하고 POST /rpt/query. → (응답, dq 새 행, ai 새 행, 변경 로그 새 행, 경과 ms)."""
+    from lcomfine.app import ai
+
+    if fake is None or callable(fake):
+        ai.set_client(fake)
+    else:
+        ai.set_client(lambda m, s, u, _sql=fake: _sql)
+    m = _marks()
+    t0 = time.monotonic()
+    headers = {"accept": "text/html", "referer": QUERY_PATH} if html else {}
+    r = lab.client(role).post(QUERY_PATH, data={"question": question}, headers=headers, follow_redirects=False)
+    ms = int((time.monotonic() - t0) * 1000)
+    dq, ai_rows, ch = _logs_since(lab, m)
+    return r, dq, ai_rows, ch, ms
+
+
+def business_counts() -> dict[str, int]:
+    from lcomfine.db import conn
+
+    names = [r["tablename"] for r in conn.q("select tablename from pg_tables where schemaname = 'public' order by 1")]
+    return {t: conn.q1(f"select count(*) as n from {t}")["n"] for t in names if t not in LOG_TABLES}
+
+
+def _dq_fixture(lab: Lab) -> dict:
+    """내 거래처 · 품목 · 생산의뢰 4(오늘 · v_dq_orders 에 보인다) + 이스케이프 시험용 `<script>` 거래처 1 — Lab 에 캐시 · cleanup 이 지운다."""
+    from lcomfine.db import conn
+
+    cached = getattr(lab, "_dq_fixture", None)
+    if cached is not None:
+        return cached
+    p = lab.prefix
+    cu = conn.q1("insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id",
+                 (f"{p}dq", f"{p} 질의 거래처 (예시)"))["id"]
+    xs = conn.q1("insert into customer (customer_code, customer_name, created_by) values (%s, %s, 'qa3') returning id",
+                 (f"{p}xs", f"{p} <script>alert(1)</script> <img src=x onerror=alert(2)> (예시)"))["id"]
+    it = conn.q1("insert into item (item_code, item_name, item_type, created_by) values (%s, %s, '제품', 'qa3') returning id",
+                 (f"{p}dqi", f"{p} 질의 품목 (예시)"))["id"]
+    for i in range(4):
+        conn.x("insert into production_request (request_no, customer_id, item_id, qty, due_date, status, created_by) "
+               "values (%s, %s, %s, %s, current_date + 7, '확인대기', 'qa3')", (f"{p}DQ{i}", cu, it, 10 + i))
+    conn.x("insert into production_request (request_no, customer_id, item_id, qty, due_date, status, created_by) "
+           "values (%s, %s, %s, 7, current_date + 7, '확인대기', 'qa3')", (f"{p}XS", xs, it))
+    lab._dq_fixture = {"cu": cu, "xs": xs, "it": it, "code": f"{p}dq"}
+    return lab._dq_fixture
+
+
+def _dq_invariants(lab: Lab) -> dict:
+    """우회 SQL 이 노리는 자리 — 내 거래처 행 · 내 의뢰 4 · 내 계정 수 · 주입 거래처 0 · customer 테이블 존재 · `{p}tmp` 테이블 없음."""
+    from lcomfine.db import conn
+
+    p = lab.prefix
+    return conn.q1(
+        """select (select count(*) from customer where customer_code = %s) as cu,
+                  (select string_agg(r.request_no || ':' || r.qty::text, ',' order by r.request_no) from production_request r
+                     join customer c on c.id = r.customer_id where c.customer_code = %s) as reqs,
+                  (select count(*) from sys_user where login_id ilike %s) as users,
+                  (select count(*) from customer where customer_code = %s) as injected,
+                  (to_regclass('customer') is not null) as customer_table,
+                  (to_regclass(%s) is null) as no_tmp_table""",
+        (f"{p}dq", f"{p}dq", f"{p}%", f"{p}inj", f"{p}tmp"))
+
+
+def bypass_cases(lab: Lab) -> list[tuple[str, str]]:
+    """(라벨, fake 가 돌려줄 SQL) — 전부 422 「허용되지 않는 질의 — …」 · 실행 0 이어야 한다."""
+    p = lab.prefix
+    return [
+        ("쓰기 update", "update customer set customer_name = 'q3' where customer_code = '%sdq'" % p),
+        ("쓰기 delete", "delete from v_dq_orders"),
+        ("쓰기 insert", f"insert into customer (customer_code, customer_name, created_by) values ('{p}inj', 'q3 (예시)', 'qa3')"),
+        ("DDL drop", "drop table customer"),
+        ("DDL truncate", "truncate customer"),
+        ("다중 문장 ;", "select * from v_dq_orders; delete from customer"),
+        ("다중 문장 주석 --", "select * from v_dq_orders -- ; delete from customer"),
+        ("블록 주석 /* */", "select * from v_dq_orders /* x */"),
+        ("허용 밖 뷰", "select * from v_work_order_status"),
+        ("업무 테이블 직접", "select * from customer"),
+        ("계정 테이블 직접", "select login_id, password_hash from sys_user"),
+        ("카탈로그 pg_tables", "select * from pg_tables"),
+        ("카탈로그 pg_catalog.", "select * from pg_catalog.pg_class"),
+        ("카탈로그 information_schema", "select * from information_schema.tables"),
+        ("함수 pg_sleep(10)", "select pg_sleep(10) from v_dq_orders"),
+        ("함수 PG_SLEEP 대문자", "select PG_SLEEP(10) from v_dq_orders"),
+        ("함수 pg_read_file", "select pg_read_file('/etc/passwd')"),
+        ("함수 current_setting", "select current_setting('data_directory')"),
+        ("함수 lo_import", "select lo_import('/etc/passwd')"),
+        ("함수 query_to_xml", "select query_to_xml('select * from sys_user', true, false, '')"),
+        ("함수 version()", "select version()"),
+        ("함수 md5 (허용 밖)", "select md5(request_no) from v_dq_orders"),
+        ("읽기 전용 확인 pg_is_in_recovery", "select pg_is_in_recovery()"),
+        ("CTE with", "with x as (select * from v_dq_orders) select * from x"),
+        ("select … into", f"select * into {p}tmp from v_dq_orders"),
+        ("for update", "select * from v_dq_orders for update"),
+        ("copy", "copy (select * from v_dq_orders) to '/tmp/q3'"),
+        ("set", "set statement_timeout = 0"),
+        ("show", "show data_directory"),
+        ("explain", "explain select * from v_dq_orders"),
+        ("백슬래시 \\copy", "\\copy v_dq_orders to '/tmp/q3'"),
+        ("유니코드 공백 NBSP", f"select{_NBSP}*{_NBSP}from{_NBSP}customer"),
+        ("유니코드 ZWSP 낱말 쪼개기", f"select * from cust{_ZWSP}omer"),
+        ("유니코드 ZWSP select", f"sel{_ZWSP}ect * from v_dq_orders"),
+        ("대소문자 혼합 테이블", "SeLeCt * FrOm CuStOmEr"),
+        ("큰따옴표 식별자", 'select * from "customer"'),
+        ("스키마 한정 허용 뷰", "select * from public.v_dq_orders"),
+        ("스키마 한정 업무 테이블", "select * from public.customer"),
+        ("union 으로 업무 테이블", "select request_no from v_dq_orders union all select customer_code from customer"),
+        ("하위 질의 계정 테이블", "select (select count(*) from sys_user) from v_dq_orders"),
+        ("exists 하위 질의", "select * from v_dq_orders where exists (select 1 from sys_user)"),
+        ("join 업무 테이블", "select * from v_dq_orders o join customer c on true"),
+        ("쉼표 조인 업무 테이블", "select * from v_dq_orders, customer"),
+        ("cross join 계정 테이블", "select * from v_dq_orders cross join sys_user"),
+        ("파생 테이블 안 업무 테이블", "select * from (select * from customer) x"),
+        ("lateral", "select * from v_dq_orders o, lateral (select * from customer) c"),
+        ("returning", "select * from v_dq_orders returning *"),
+        ("달러 따옴표", "select $$x$$ from v_dq_orders"),
+        ("닫히지 않은 문자열", "select * from v_dq_orders where status = 'open"),
+        ("허용 뷰 없음 select 1", "select 1"),
+        ("빈 SQL", ""),
+        ("SQL 속 NUL", "select * from v_dq_orders\x00"),
+        ("SQL 4001자", "select * from v_dq_orders where request_no = '" + "x" * 3960 + "'"),
+        ("코드 펜스 속 쓰기", "```sql\ndelete from customer\n```"),
+    ]
+
+
+def check_dataquery_bypass(lab: Lab) -> list[Result]:
+    """G-16 — fake AI 가 돌려주는 SQL 로 우회 시도 → 전부 422 「허용되지 않는 질의 — 이유」 · 실행 0 · 거부도 data_query_log 1행(ok false) ·
+    허용 질의 200 · 행 상한 · statement_timeout · 읽기 전용 · 수금 뷰 부서 제한 · 질문의 NUL/10만 자/<script>."""
+    from lcomfine.app import dataquery
+    from lcomfine.db import conn
+
+    fx = _dq_fixture(lab)
+    out: list[Result] = []
+    with no_real_ai():
+        inv0 = _dq_invariants(lab)
+        counts0 = business_counts()
+        cases = bypass_cases(lab)
+        bad, slow, sleep_ms, n422 = [], [], [0], 0
+        for label, sql in cases:
+            r, dq, ai_rows, ch, ms = _ask(lab, "EX", sql, f"q3 우회 {label}")
+            want_sql = dataquery._strip_fence(sql)
+            why = []
+            if "sleep" in label.lower():
+                sleep_ms.append(ms)
+            if r.status_code != 422:
+                why.append(f"{r.status_code} (422 기대)")
+            else:
+                n422 += 1
+                body = r.json()
+                if not str(body.get("message", "")).startswith(dataquery.REJECT_PREFIX + " — "):
+                    why.append(f"message {body.get('message')!r}")
+                names = [f["name"] for f in body.get("fields", [])]
+                if "질의 번호" not in names or (want_sql and "SQL" not in names):
+                    why.append(f"fields {names}")
+                if "rows" in body or "columns" in body:
+                    why.append("422 에 결과 열·행이 실렸다")
+            if len(dq) != 1:
+                why.append(f"data_query_log {len(dq)}행 (1 기대)")
+            else:
+                d = dq[0]
+                if d["ok"] or (d["sql_text"] or "") != want_sql or not (d["error"] or "").startswith(dataquery.REJECT_PREFIX) \
+                        or d["question"] != f"q3 우회 {label}" or d["role_code"] != "EX" or d["row_count"] is not None:
+                    why.append(f"로그 값 ok={d['ok']} sql={d['sql_text']!r:.40} error={d['error']!r:.60} rows={d['row_count']}")
+            if len(ai_rows) != 1 or not ai_rows[0]["ok"]:
+                why.append(f"sys_ai_call_log {len(ai_rows)}행 / ok {[a['ok'] for a in ai_rows]} (fake 성공 1행 기대)")
+            if ch:
+                why.append(f"sys_change_log {len(ch)}행 (거부는 변경 아님 · 0 기대)")
+            if "sleep" in label.lower() and ms > 3000:
+                slow.append(f"{label} {ms}ms")
+            if why:
+                bad.append(f"{label}: " + " · ".join(why))
+        inv1 = _dq_invariants(lab)
+        if inv1 != inv0 or inv1["injected"] != 0 or not inv1["customer_table"] or not inv1["no_tmp_table"]:
+            bad.append(f"대상 행이 바뀌었다 — 전 {inv0} 후 {inv1}")
+        if slow:
+            bad.append("pg_sleep 이 돌았다(3초 초과): " + " · ".join(slow))
+        diff = {t: (counts0.get(t), n) for t, n in business_counts().items() if counts0.get(t) != n}
+        out.append(res("G-16", "우회 SQL → 422 · 실행 0 · 거부도 로그 1행", not bad,
+                       f"우회 {len(cases)}건(쓰기 5 · 다중 문장·주석 3 · 허용 밖 뷰/테이블/카탈로그 6 · 함수 9 · CTE·into·for·copy·set·show·explain·\\ 8 · "
+                       f"유니코드 3 · 대소문자·따옴표·스키마 4 · 하위 질의·조인 8 · 그 밖 7) · 422 {n422} · "
+                       f"내 행 불변 {inv1 == inv0} · pg_sleep 요청 최대 {max(sleep_ms)}ms · 업무 테이블 {len(counts0)} 전수 diff {len(diff)}"
+                       f"{' ' + str(diff)[:120] if diff else ''}", bad))
+        # 허용 질의 — 200 · 결과 · 로그 ok · 변경 로그 1행 (JSON) / 브라우저는 같은 화면 200 에 SQL · 결과 표 (api-contract §2 예외)
+        bad2 = []
+        good_sql = f"```sql\nSELECT request_no, qty FROM v_dq_orders WHERE customer_code = '{fx['code']}' ORDER BY request_no;\n```"
+        r, dq, ai_rows, ch, _ = _ask(lab, "EX", good_sql, "q3 허용 질의 (예시)")
+        if r.status_code != 200:
+            bad2.append(f"허용 질의 {r.status_code} {r.text[:120]}")
+        else:
+            b = r.json()
+            if not (b.get("ok") and b.get("row_count") == 4 and b.get("columns") == ["request_no", "qty"] and b.get("truncated") is False
+                    and str(b.get("sql", "")).startswith("SELECT request_no") and str(b.get("query_no", "")).startswith("DQ-")):
+                bad2.append(f"허용 질의 응답 {str(b)[:160]}")
+            if len(dq) != 1 or not dq[0]["ok"] or dq[0]["row_count"] != 4 or dq[0]["sql_text"] != b.get("sql") or dq[0]["error"]:
+                bad2.append(f"허용 질의 로그 {dq and {k: dq[0][k] for k in ('ok', 'row_count', 'error')}}")
+            if len(ai_rows) != 1 or not ai_rows[0]["ok"] or ai_rows[0]["kind"] != dataquery.AI_KIND:
+                bad2.append(f"허용 질의 ai 로그 {[(a['ok'], a['kind']) for a in ai_rows]}")
+            if len(ch) != 1 or ch[0]["function_id"] != "F-RPT-132" or ch[0]["target"] != f"data_query_log:{b.get('query_no')}":
+                bad2.append(f"허용 질의 변경 로그 {[(c['function_id'], c['target']) for c in ch]} (F-RPT-132 · data_query_log:<번호> 1행 기대)")
+        r, dq, _, _, _ = _ask(lab, "ST", f"select * from v_dq_orders where customer_code = '{fx['code']}' and status <> 'a;b--'", "q3 리터럴 속 ; -- (예시)")
+        if r.status_code != 200 or not dq or not dq[0]["ok"]:
+            bad2.append(f"문자열 리터럴 속 ;-- 는 문장이 아니다 — {r.status_code} (200 기대)")
+        r, dq, _, _, _ = _ask(lab, "ST", "select count(*) from V_DQ_ORDERS", "q3 대문자 허용 뷰 (예시)")
+        if r.status_code != 200:
+            bad2.append(f"대문자 허용 뷰 {r.status_code} (200 기대)")
+        hr, dq, _, ch, _ = _ask(lab, "EX", good_sql, "q3 브라우저 허용 질의 (예시)", html=True)
+        if hr.status_code != 200 or "SELECT request_no" not in hr.text or f'data-result="{dq[0]["query_no"] if dq else ""}"' not in hr.text \
+                or f"{lab.prefix}DQ0" not in hr.text or len(ch) != 1:
+            bad2.append(f"브라우저 허용 질의 {hr.status_code} · 결과 표/SQL/변경 로그 {len(ch)} (같은 화면 200 기대 · D-806)")
+        out.append(res("G-16", "허용 질의 → 200 · 결과 · 로그 ok · 변경 로그 1행 · 브라우저 같은 화면", not bad2,
+                       f"JSON 허용 1(행 4) · 리터럴 ;-- 1 · 대문자 뷰 1 · 브라우저 1 · 어긋남 {len(bad2)}", bad2))
+        # 행 상한 · statement_timeout
+        bad3 = []
+        r, dq, _, _, _ = _ask(lab, "EX", "select a.request_no from v_dq_orders a, v_dq_orders b, v_dq_orders c, v_dq_orders d, v_dq_orders e limit 5000",
+                              "q3 행 상한 (예시)")
+        if r.status_code != 200 or r.json().get("row_count") != dataquery.MAX_ROWS or r.json().get("truncated") is not True \
+                or len(r.json().get("rows", [])) != dataquery.MAX_ROWS or not dq or dq[0]["row_count"] != dataquery.MAX_ROWS:
+            bad3.append(f"행 상한 {r.status_code} row_count={r.json().get('row_count') if r.status_code == 200 else '-'} truncated={r.json().get('truncated') if r.status_code == 200 else '-'} "
+                        f"(200 · {dataquery.MAX_ROWS} · True 기대)")
+        n = conn.q1("select count(*) as n from v_dq_orders")["n"]
+        k = 32 if n < 2 else min(40, max(3, int(__import__('math').ceil(__import__('math').log(3e9) / __import__('math').log(n)))))
+        heavy = "select count(*) from " + ", ".join(f"v_dq_orders a{i}" for i in range(k))
+        r, dq, _, _, ms = _ask(lab, "EX", heavy, "q3 느린 조인 (예시)")
+        timeout_ok = (r.status_code == 422 and str(r.json().get("message", "")).startswith("실행 실패 — ") and "timeout" in r.json().get("message", "").lower()
+                      and dq and not dq[0]["ok"] and str(dq[0]["error"]).startswith("실행 실패"))
+        if not timeout_ok:
+            bad3.append(f"느린 조인({k}중 · 뷰 {n}행) {r.status_code} {str(r.json().get('message', ''))[:80]} · {ms}ms (422 「실행 실패 — … timeout」 기대)")
+        elif ms > dataquery.STATEMENT_TIMEOUT_MS + 6000:
+            bad3.append(f"statement_timeout {dataquery.STATEMENT_TIMEOUT_MS}ms 인데 {ms}ms 걸렸다")
+        out.append(res("G-16", f"행 상한 {dataquery.MAX_ROWS} · statement_timeout {dataquery.STATEMENT_TIMEOUT_MS}ms", not bad3,
+                       f"5중 교차 조인 limit 5000 → row_count {dataquery.MAX_ROWS} 잘림 · {k}중 교차 조인(뷰 {n}행 ≈ {n}^{k}) → 422 실행 실패(timeout) {ms}ms", bad3))
+        # 실행 계층 — 검증을 우회했다고 가정하고 `_run_readonly` 를 직접 부른다: 트랜잭션 읽기 전용 · 제한 시간 · 쓰기 거부 · 역할은 복제본이 아니다(D-524 W4)
+        bad4, notes = [], []
+        try:
+            ro = dataquery._run_readonly("select current_setting('transaction_read_only') as ro, current_setting('statement_timeout') as st")[1][0]
+            if ro["ro"] != "on":
+                bad4.append(f"transaction_read_only={ro['ro']} (on 기대)")
+            if ro["st"] not in (f"{dataquery.STATEMENT_TIMEOUT_MS}ms", f"{dataquery.STATEMENT_TIMEOUT_MS // 1000}s"):
+                bad4.append(f"statement_timeout={ro['st']} ({dataquery.STATEMENT_TIMEOUT_MS}ms 기대)")
+            notes.append(f"transaction_read_only={ro['ro']} · statement_timeout={ro['st']}")
+        except Exception as exc:  # noqa: BLE001
+            bad4.append(f"설정 조회 실패 {type(exc).__name__}: {str(exc)[:80]}")
+        try:
+            dataquery._run_readonly(f"insert into customer (customer_code, customer_name, created_by) values ('{lab.prefix}inj', 'q3', 'qa3')")
+            bad4.append("읽기 전용 연결에서 insert 가 성공했다")
+        except Exception as exc:  # noqa: BLE001 — 25006 read_only_sql_transaction 이 기대값
+            notes.append(f"insert → {type(exc).__name__}")
+            if "ReadOnly" not in type(exc).__name__:
+                bad4.append(f"insert 거부 사유가 읽기 전용이 아니다 — {type(exc).__name__}")
+        try:
+            rec = dataquery._run_readonly("select pg_is_in_recovery() as r")[1][0]["r"]
+            notes.append(f"pg_is_in_recovery={rec} (복제본 아님 — 읽기 전용은 트랜잭션 수준 · 역할 분리는 D-524 W4)")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"pg_is_in_recovery 조회 실패 {type(exc).__name__}")
+        if _dq_invariants(lab)["injected"] != 0:
+            bad4.append("실행 계층 insert 가 행을 남겼다")
+        out.append(res("G-16", "실행 계층(검증 우회 가정) 읽기 전용 · 제한 시간", not bad4, " · ".join(notes), bad4))
+        # 수금 뷰 부서 제한 (D-513) — 전략부(RPT-130 R · 수금 뷰 밖) 422 · PR/DS(RPT-130 칸 없음) 403 · EX/ADM 200
+        bad5, got = [], []
+        for role, view, want in (("ST", "v_dq_collections", 422), ("ST", "v_dq_receivables", 422), ("PR", "v_dq_collections", 403),
+                                 ("DS", "v_dq_receivables", 403), ("SL", "v_dq_collections", 403), ("AC", "v_dq_collections", 403),
+                                 ("SH", "v_dq_collections", 403), ("EX", "v_dq_collections", 200), ("ADM", "v_dq_receivables", 200)):
+            r, dq, ai_rows, _, _ = _ask(lab, role, f"select * from {view} limit 3", f"q3 수금 뷰 {role} (예시)")
+            got.append(f"{role} {r.status_code}")
+            if r.status_code != want:
+                bad5.append(f"{role} {view} {r.status_code} ({want} 기대)")
+            elif want == 422 and ("부서" not in r.json().get("message", "") or not dq or dq[0]["ok"]):
+                bad5.append(f"{role} 422 문장에 부서 사유 없음 / 로그 {len(dq)} — {r.json().get('message')!r:.80}")
+            elif want == 403 and (dq or ai_rows):
+                bad5.append(f"{role} 403 인데 로그 dq {len(dq)} · ai {len(ai_rows)} (칸 없음 → AI 호출 전 거부 · 0 기대)")
+        out.append(res("G-16", "수금 뷰 부서 제한(D-513)", not bad5,
+                       "ST 422(부서 사유 · 로그 1행) · PR·DS·SL·AC·SH 403(RPT-130 칸 없음 · AI 호출 0) · EX·ADM 200 — " + " · ".join(got), bad5))
+        # 질문 자체 — NUL · 10만 자 → 422 (AI 호출 전 · 로그 0) · <script> 는 저장되고 화면에 이스케이프
+        bad6 = []
+        for label, q, want_logs in (("질문 NUL", "출하\x00수량", 0), ("질문 10만 자", "가" * 100_000, 0), ("질문 1001자", "가" * 1001, 0)):
+            r, dq, ai_rows, _, _ = _ask(lab, "EX", "select 1 from v_dq_orders", q)
+            if r.status_code != 422 or len(dq) != want_logs or len(ai_rows) != want_logs:
+                bad6.append(f"{label} {r.status_code} · dq {len(dq)} · ai {len(ai_rows)} (422 · 0 · 0 기대)")
+            elif r.json().get("fields", [{}])[0].get("name") != "질문":
+                bad6.append(f"{label} fields {r.json().get('fields')}")
+        xss_q = f"{lab.prefix} <script>alert(1)</script> \" onfocus=alert(2) autofocus=\" (예시)"
+        r, dq, _, _, _ = _ask(lab, "EX", f"select request_no from v_dq_orders where customer_code = '{fx['code']}'", xss_q)
+        page = lab.client("EX").get(QUERY_PATH, headers={"accept": "text/html"}).text
+        hp = _ask(lab, "EX", f"select request_no from v_dq_orders where customer_code = '{fx['code']}'", xss_q, html=True)[0].text
+        for name, html in (("RPT-130 GET", page), ("RPT-130 POST(브라우저)", hp)):
+            if "<script>alert(1)</script>" in html or 'onfocus=alert(2) autofocus=" ' in html.replace("&quot;", '"') and "<script>" in html:
+                bad6.append(f"{name}: 질문의 <script> 가 그대로 렌더됨")
+            if "&lt;script&gt;alert(1)&lt;/script&gt;" not in html:
+                bad6.append(f"{name}: 이스케이프된 질문이 보이지 않는다(저장 글자가 화면에 안 나왔다)")
+        if r.status_code != 200 or not dq or dq[0]["question"] != xss_q:
+            bad6.append(f"<script> 질문 {r.status_code} · 저장 질문 일치 {bool(dq) and dq[0]['question'] == xss_q}")
+        out.append(res("G-16", "질문 NUL · 10만 자 → 422(AI 호출 0) · <script> 질문 이스케이프", not bad6,
+                       f"NUL · 10만 자 · 1001자 → 422 · 로그 0 / <script> 질문 → 200 · DB 원문 · RPT-130 GET·POST 에 &lt;script&gt; · 어긋남 {len(bad6)}", bad6))
+        # SYS-040 — 거부 행이 dq 탭에 · 호출 행이 ai 탭에 보인다(G-16 「거부 포함」이 눈에 보인다)
+        adm = lab.client("ADM")
+        rej = conn.q1("select d.query_no, d.error from data_query_log d join sys_user u on u.user_id = d.user_id where u.login_id = %s and not d.ok "
+                      "and d.error like %s order by d.id desc limit 1", (lab.users["EX"][0], dataquery.REJECT_PREFIX + "%"))
+        dq_page = adm.get("/sys/logs", params={"tab": "dq", "login": lab.users["EX"][0]}, headers={"accept": "text/html"})
+        ai_page = adm.get("/sys/logs", params={"tab": "ai", "login": lab.users["EX"][0]}, headers={"accept": "text/html"})
+        seen_dq = bool(rej) and dq_page.status_code == 200 and rej["query_no"] in dq_page.text and (rej["error"] or "")[:30] in dq_page.text
+        seen_ai = ai_page.status_code == 200 and dataquery.AI_KIND in ai_page.text
+        out.append(res("G-16", "SYS-040 dq · ai 탭에 거부 질의가 보인다", seen_dq and seen_ai,
+                       f"dq 탭 {dq_page.status_code} 거부 {rej['query_no'] if rej else '-'} {'보임' if seen_dq else '안 보임'} · ai 탭 {ai_page.status_code} "
+                       f"{'보임' if seen_ai else '안 보임'}"))
+    return out
+
+
+_KEYLESS_SCRIPT = r"""
+import json, os, sys, warnings, urllib.request
+warnings.filterwarnings("ignore")
+sys.path.insert(0, os.path.join(os.environ["QA3_ROOT"], "src"))
+def _blocked(*a, **k):
+    raise RuntimeError("QA3 — 실제 OpenAI 호출 차단")
+urllib.request.urlopen = _blocked
+from lcomfine.app.settings import get_settings
+s = get_settings()
+out = {"key_empty": s.openai_api_key == "", "model": s.openai_model}
+if not out["key_empty"]:
+    print("QA3JSON" + json.dumps(out)); sys.exit(0)      # 키가 비지 않았다 — 요청을 보내지 않는다(실제 호출 위험)
+from fastapi.testclient import TestClient
+from lcomfine.app.main import app
+c = TestClient(app, raise_server_exceptions=False)
+for k, v in json.loads(os.environ["QA3_COOKIE"]).items():
+    c.cookies.set(k, v)
+q = os.environ["QA3_Q"]
+r = c.post("/rpt/query", data={"question": q})
+out["json"] = {"status": r.status_code, "body": r.text[:2000]}
+r2 = c.post("/rpt/query", data={"question": q}, headers={"accept": "text/html", "referer": "/rpt/query"}, follow_redirects=False)
+out["html_post"] = {"status": r2.status_code, "location": r2.headers.get("location")}
+r3 = c.get("/rpt/query", headers={"accept": "text/html"})
+out["html_get"] = {"status": r3.status_code, "body": r3.text[:200000]}
+print("QA3JSON" + json.dumps(out, ensure_ascii=False))
+"""
+
+
+def check_ai_key_missing(lab: Lab) -> list[Result]:
+    """G-17 — 키 없음 → 422 「AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY」 가 화면에 그대로 · sys_ai_call_log 1행(ok false · error) ·
+    data_query_log 1행 · 다른 테이블 쓰기 0 · 하드코딩 결과 0. 호출 실패(fake 예외 · 글자 아닌 응답) → 422 · 로그 ok false. 키 값은 로그 · 문장에 없다."""
+    from lcomfine.app import dataquery
+    from lcomfine.db import conn
+
+    _dq_fixture(lab)
+    out: list[Result] = []
+    msg = "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY"
+    ex_lid = lab.users["EX"][0]
+    with no_real_ai() as ai:
+        if ai.NOT_CONFIGURED_MESSAGE != msg:
+            out.append(res("G-17", "키 없음 문장(계약 글자 그대로)", False, f"ai.NOT_CONFIGURED_MESSAGE = {ai.NOT_CONFIGURED_MESSAGE!r}"))
+        # 1. 프로세스 안 — settings 의 키를 비운다(실제 경로 · fake 없음) → NotConfigured
+        ai._config = lambda: ("", "gpt-4.1")
+        counts0 = business_counts()
+        inv0 = _dq_invariants(lab)
+        bad = []
+        r, dq, ai_rows, ch, _ = _ask(lab, "EX", None, "q3 키 없음 (예시)")
+        if r.status_code != 422 or r.json().get("message") != msg:
+            bad.append(f"JSON {r.status_code} {r.text[:120]} (422 · 문장 그대로 기대)")
+        else:
+            b = r.json()
+            if "rows" in b or "columns" in b or [f["name"] for f in b.get("fields", [])] != ["질의 번호"]:
+                bad.append(f"422 본문 {str(b)[:160]} (결과 없음 · fields = 질의 번호만 기대)")
+        if len(ai_rows) != 1 or ai_rows[0]["ok"] or ai_rows[0]["error"] != msg or ai_rows[0]["model"] != "gpt-4.1" or ai_rows[0]["kind"] != dataquery.AI_KIND:
+            bad.append(f"sys_ai_call_log {[(a['ok'], a['error'], a['model']) for a in ai_rows]} (1행 · ok false · 문장 기대)")
+        if len(dq) != 1 or dq[0]["ok"] or dq[0]["sql_text"] is not None or dq[0]["error"] != msg or dq[0]["row_count"] is not None:
+            bad.append(f"data_query_log {[(d['ok'], d['sql_text'], d['error']) for d in dq]} (1행 · ok false · sql 없음 · 문장 기대)")
+        if ch:
+            bad.append(f"sys_change_log {len(ch)}행 (키 없음은 변경 아님 · 0 기대)")
+        # 브라우저 — 폼 POST 는 303 + 알림 → 같은 화면 GET 에 문장이 보인다 · 결과 표 없음
+        hr, dq2, ai2, _, _ = _ask(lab, "EX", None, "q3 키 없음 브라우저 (예시)", html=True)
+        page = lab.client("EX").get(QUERY_PATH, headers={"accept": "text/html"})
+        if hr.status_code != 303 or not hr.headers.get("location", "").startswith(QUERY_PATH):
+            bad.append(f"브라우저 POST {hr.status_code} → {hr.headers.get('location')} (303 /rpt/query 기대)")
+        if page.status_code != 200 or msg not in page.text or 'data-result="' in page.text:
+            bad.append(f"브라우저 화면 {page.status_code} · 문장 {'보임' if msg in page.text else '안 보임'} · 결과 표 {'있음' if 'data-result=' in page.text else '없음'}")
+        if dq2 and dq2[0]["query_no"] not in page.text:
+            bad.append("최근 질의 목록에 키 없음 질의가 없다")
+        if len(dq2) != 1 or len(ai2) != 1:
+            bad.append(f"브라우저 질의 로그 dq {len(dq2)} · ai {len(ai2)} (1 · 1 기대)")
+        if _dq_invariants(lab) != inv0:
+            bad.append("키 없음 요청이 업무 행을 바꿨다")
+        diff = {t: (counts0.get(t), n) for t, n in business_counts().items() if counts0.get(t) != n}
+        out.append(res("G-17", "키 없음(프로세스 안 · settings 비움) → 422 문장 그대로 · 로그 1·1 · 결과 0", not bad,
+                       f"JSON 422 · 브라우저 303→화면에 문장 · sys_ai_call_log ok=false error=문장 · data_query_log ok=false sql 없음 · 변경 로그 0 · "
+                       f"업무 테이블 전수 diff {len(diff)}{' ' + str(diff)[:100] if diff else ''}", bad))
+        # 2. 하위 프로세스 — LCOMFINE_OPENAI_API_KEY= (빈 값) · settings 실제 경로 · urlopen 차단
+        bad2 = []
+        q = f"q3 키 없음 하위 프로세스 {lab.prefix} (예시)"
+        m = _marks()
+        env = dict(os.environ, LCOMFINE_OPENAI_API_KEY="", QA3_ROOT=str(ROOT), QA3_COOKIE=json.dumps(dict(lab.fresh("EX").cookies)), QA3_Q=q)
+        p = subprocess.run([sys.executable, "-c", _KEYLESS_SCRIPT], cwd=ROOT, env=env, capture_output=True, text=True, timeout=180)
+        mm = re.search(r"QA3JSON(.*)$", p.stdout, re.S)
+        if not mm:
+            bad2.append(f"하위 프로세스 실패 rc={p.returncode}: {(p.stderr or p.stdout)[-300:]}")
+            got = {}
+        else:
+            got = json.loads(mm.group(1))
+        if not got.get("key_empty"):
+            bad2.append("하위 프로세스의 settings 키가 비지 않았다(.env 가 빈 환경변수를 덮었다?) — 요청을 보내지 않았다")
+        else:
+            j = got["json"]
+            if j["status"] != 422 or msg not in j["body"] or "rows" in j["body"]:
+                bad2.append(f"JSON {j['status']} {j['body'][:120]}")
+            if got["html_post"]["status"] != 303:
+                bad2.append(f"브라우저 POST {got['html_post']}")
+            if got["html_get"]["status"] != 200 or msg not in got["html_get"]["body"] or 'data-result="' in got["html_get"]["body"]:
+                bad2.append(f"브라우저 화면 {got['html_get']['status']} · 문장 {'보임' if msg in got['html_get']['body'] else '안 보임'}")
+            dq, ai_rows, ch = _logs_since(lab, m)
+            if len(dq) != 2 or any(d["ok"] for d in dq) or any(d["error"] != msg for d in dq) or any(d["question"] != q for d in dq):
+                bad2.append(f"data_query_log {[(d['ok'], d['error']) for d in dq]} (2행 · ok false · 문장 기대)")
+            if len(ai_rows) != 2 or any(a["ok"] for a in ai_rows) or any(a["error"] != msg for a in ai_rows):
+                bad2.append(f"sys_ai_call_log {[(a['ok'], a['error']) for a in ai_rows]} (2행 · ok false 기대)")
+            if ch:
+                bad2.append(f"sys_change_log {len(ch)}행 (0 기대)")
+        out.append(res("G-17", "키 없음(하위 프로세스 LCOMFINE_OPENAI_API_KEY= · settings 실제 경로)", not bad2,
+                       f"키 빈 값 확인 {got.get('key_empty')} · JSON {got.get('json', {}).get('status')} · 브라우저 POST {got.get('html_post', {}).get('status')} → "
+                       f"GET {got.get('html_get', {}).get('status')} 문장 보임 · 로그 dq 2 · ai 2 · 변경 0", bad2))
+        # 3. 호출 실패 — 주입 클라이언트가 예외 · 글자 아닌 응답 → 422 「AI 호출 실패 — …」 · 로그 ok false
+        bad3 = []
+
+        def boom(m_, s_, u_):
+            raise RuntimeError("연결 거부 (예시)")
+
+        r, dq, ai_rows, ch, _ = _ask(lab, "EX", boom, "q3 호출 실패 (예시)")
+        if r.status_code != 422 or not r.json().get("message", "").startswith("AI 호출 실패 — ") or "연결 거부" not in r.json().get("message", ""):
+            bad3.append(f"예외 fake {r.status_code} {r.text[:120]}")
+        if len(ai_rows) != 1 or ai_rows[0]["ok"] or "연결 거부" not in (ai_rows[0]["error"] or "") or ai_rows[0]["ms"] is None:
+            bad3.append(f"예외 fake ai 로그 {[(a['ok'], a['error']) for a in ai_rows]}")
+        if len(dq) != 1 or dq[0]["ok"] or not (dq[0]["error"] or "").startswith("AI 호출 실패") or dq[0]["sql_text"] is not None or ch:
+            bad3.append(f"예외 fake dq 로그 {[(d['ok'], d['sql_text'], d['error']) for d in dq]} · 변경 {len(ch)}")
+        r, dq, ai_rows, _, _ = _ask(lab, "EX", lambda m_, s_, u_: {"sql": "select 1"}, "q3 글자 아닌 응답 (예시)")
+        if r.status_code != 422 or "응답이 글자가 아니다" not in r.json().get("message", "") or len(ai_rows) != 1 or ai_rows[0]["ok"] or len(dq) != 1 or dq[0]["ok"]:
+            bad3.append(f"글자 아닌 응답 {r.status_code} {r.text[:100]} · ai {[(a['ok'], a['error']) for a in ai_rows]}")
+        r, dq, ai_rows, _, _ = _ask(lab, "EX", lambda m_, s_, u_: "", "q3 빈 응답 (예시)")
+        if r.status_code != 422 or len(dq) != 1 or dq[0]["ok"]:
+            bad3.append(f"빈 응답 {r.status_code} · dq {len(dq)}")
+        # 실제 호출 경로가 바깥으로 나가면 차단기(_NoNetwork)에 걸린다 — 키가 있을 때 fake 없이 부르면 「AI 호출 실패 — _NoNetwork」 · 그래도 로그 1행
+        ai._config = lambda: ("q3-not-a-real-key", "gpt-4.1")
+        r, dq, ai_rows, _, _ = _ask(lab, "EX", None, "q3 차단기 (예시)")
+        blocked = r.status_code == 422 and "_NoNetwork" in r.json().get("message", "") and len(ai_rows) == 1 and not ai_rows[0]["ok"]
+        if not blocked:
+            bad3.append(f"차단기 경로 {r.status_code} {r.text[:120]} · ai {[(a['ok'], a['error']) for a in ai_rows]} (실제 urlopen 이 불렸어야 하는데 안 불렸거나 다른 길)")
+        out.append(res("G-17", "호출 실패(예외 · 글자 아닌 응답 · 빈 응답 · 네트워크 차단) → 422 「AI 호출 실패 — …」 · 로그 ok false", not bad3,
+                       f"예외 fake · dict 응답 · 빈 응답 · urlopen 차단 4 → 422 · sys_ai_call_log ok=false · data_query_log ok=false · 어긋남 {len(bad3)}", bad3))
+        # 4. 키 값이 로그 · 문장에 실리지 않는다 — 가짜 키(sentinel)로 잰다 · 실제 키 값은 응답·로그에 없는지만 센다(찍지 않는다)
+        bad4, notes = [], []
+        sentinel = "q3sentinel" + secrets.token_hex(8)
+        ai._config = lambda: (sentinel, "gpt-4.1")
+
+        def leak_client(m_, s_, u_):
+            raise RuntimeError(f"Authorization: Bearer {sentinel} rejected")
+
+        r, dq, ai_rows, _, _ = _ask(lab, "EX", leak_client, "q3 키 가림 주입 (예시)")
+        a_err = (ai_rows[0]["error"] or "") if ai_rows else ""
+        d_err = (dq[0]["error"] or "") if dq else ""
+        if sentinel in a_err or sentinel in d_err or sentinel in r.text:
+            bad4.append(f"주입 예외의 키 글자가 남았다 — ai 로그 {sentinel in a_err} · dq 로그 {sentinel in d_err} · 422 본문 {sentinel in r.text}")
+        notes.append(f"주입 예외: ai 로그 {'***' if '***' in a_err else '가림 표식 없음'} · dq {'가림' if sentinel not in d_err else '노출'} · 응답 {'가림' if sentinel not in r.text else '노출'}")
+
+        def fail_openai(model, system, user, *, key):   # 실제 호출 함수 자리 — HTTP 오류 본문이 키를 되비추는 상황(OpenAI 401 「Incorrect API key provided: …」)
+            raise ai.CallFailed(f"HTTP 401 Unauthorized Incorrect API key provided: {key}")
+
+        ai._openai = fail_openai
+        r, dq, ai_rows, _, _ = _ask(lab, "EX", None, "q3 키 가림 HTTP 오류 (예시)")
+        a_err = (ai_rows[0]["error"] or "") if ai_rows else ""
+        d_err = (dq[0]["error"] or "") if dq else ""
+        leak_http = [k for k, v in (("sys_ai_call_log.error", a_err), ("data_query_log.error", d_err), ("422 본문", r.text)) if sentinel in v]
+        if leak_http:
+            bad4.append("HTTP 오류 문장의 키가 그대로 남았다: " + " · ".join(leak_http))
+        notes.append(f"HTTP 오류: ai 로그 {'가림(***)' if sentinel not in a_err else '노출'} · dq 로그 {'가림' if sentinel not in d_err else '노출'} · 422 본문 {'가림' if sentinel not in r.text else '노출'}")
+        real = [v for v in (os.environ.get("LCOMFINE_OPENAI_API_KEY"),) if v and len(v) >= 8]
+        if real:
+            n_leak = conn.q1("select (select count(*) from sys_ai_call_log where error like %s) + (select count(*) from data_query_log where error like %s "
+                             "or sql_text like %s or question like %s) as n", (f"%{real[0]}%", f"%{real[0]}%", f"%{real[0]}%", f"%{real[0]}%"))["n"]
+            if n_leak:
+                bad4.append(f"실제 키 값이 든 로그 행 {n_leak}")
+            notes.append(f"실제 키 값이 든 로그 행 {n_leak}(.env 의 값으로 DB 를 검색만 — 값은 찍지 않는다)")
+        # 정적 — ai.py 에서 `key` 가 쓰이는 줄은 Authorization 헤더와 _mask 뿐
+        src = (ROOT / "src/lcomfine/app/ai.py").read_text(encoding="utf-8").splitlines()
+        uses = [f"{i}: {ln.strip()[:70]}" for i, ln in enumerate(src, 1) if re.search(r"\bkey\b", ln) and not ln.strip().startswith(("#", '"""', "'''"))
+                and "_mask(" not in ln and "key=key" not in ln and "def _openai" not in ln and "def _mask" not in ln and "key, model = _config()" not in ln
+                and "if key:" not in ln and "not key" not in ln and '"***"' not in ln]        # `_mask` 본문(replace(key, "***"))은 가리는 줄이다
+        allowed_static = all("Authorization" in u for u in uses)
+        if not allowed_static:
+            bad4.append("ai.py 의 key 사용 줄: " + " / ".join(uses))
+        notes.append(f"정적 ai.py key 사용 {len(uses)}줄(Authorization 헤더만 {allowed_static})")
+        out.append(res("G-17", "키 값이 로그 · 예외 문장 · 응답에 없다", not bad4, " · ".join(notes), bad4))
+        # 5. 하드코딩 결과 0 — 정적: dataquery · rpt · ai 에 결과 행 리터럴 · 예외 삼키기 없음
+        hits = []
+        for rel in ("src/lcomfine/app/dataquery.py", "src/lcomfine/app/routers/rpt.py", "src/lcomfine/app/ai.py"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            for i, ln in enumerate(text.splitlines(), 1):
+                s_ = ln.strip()
+                if s_.startswith("#"):
+                    continue
+                literal_rows = re.search(r'"rows":\s*\[\s*\{\s*"', s_)      # 결과 행 리터럴(글자 키의 dict) — `[{k: … for …}]` 직렬화 컴프리헨션은 리터럴이 아니다
+                if literal_rows or re.search(r"except\s+\w*\s*:\s*pass\b", s_) or re.search(r"except Exception:\s*$", s_):
+                    hits.append(f"{rel}:{i} {s_[:60]}")
+        out.append(res("G-17", "정적: 하드코딩 결과 · 예외 삼키기 없음", not hits, f"dataquery.py · rpt.py · ai.py — 결과 리터럴/except pass {len(hits)}", hits))
+    return out
+
+
+def check_rpt_access(lab: Lab) -> list[Result]:
+    """G-19 · G-20 (RPT) — 화면 9 × 부서 8 200/403 · F-RPT-132 × 8(칸 R 이상 → 빈 본문 422 · 칸 없음 403 · AI 호출 0) · 미로그인 401 ·
+    비활성 · 로그아웃 401."""
+    from lcomfine.app import contracts, nav, rbac
+
+    cells = {(sid, rc): lv for sid, rc, lv in contracts.permission_cells()}
+    screens = [sc for sc in nav.SCREENS if sc.screen_id in RPT_SCREENS]
+    out: list[Result] = []
+    bad, n200, n403 = [], 0, 0
+    for r in rbac.roles():
+        c = lab.client(r.code)
+        for sc in screens:
+            want = 200 if cells.get((sc.screen_id, r.code)) else 403
+            got = c.get(sc.path).status_code
+            n200 += want == 200
+            n403 += want == 403
+            if got != want:
+                bad.append(f"{sc.screen_id}×{r.code} {got} ({want} 기대)")
+        html = c.get("/", headers={"accept": "text/html"}).text
+        hrefs = set(re.findall(r'href="([^"?#]+)', html))
+        for sc in screens:
+            if not cells.get((sc.screen_id, r.code)) and sc.path in hrefs:
+                bad.append(f"메뉴 {r.code}: 칸 없는 {sc.screen_id} 링크")
+    out.append(res("G-19", "RPT 화면 9 × 부서 8 (200/403 · 메뉴 숨김)", not bad and len(screens) == 9,
+                   f"화면 {len(screens)} × 부서 {len(rbac.roles())} — 200 기대 {n200} · 403 기대 {n403} · 어긋남 {len(bad)}", bad))
+    fn = contracts.function("F-RPT-132")
+    bad2, got = [], []
+    with no_real_ai():
+        m = _marks()
+        for r in rbac.roles():
+            lv = rbac.level(r.code, "RPT-130")
+            st = lab.client(r.code).post(QUERY_PATH, data={}).status_code
+            got.append(f"{r.code}({lv or '없음'}) {st}")
+            want = 422 if lv else 403
+            if st != want:
+                bad2.append(f"F-RPT-132×{r.code} 칸 {lv or '없음'} → {st} ({want} 기대)")
+        dq, ai_rows, _ = _logs_since(lab, m)
+        if dq or ai_rows:
+            bad2.append(f"빈 본문으로 로그가 남았다 dq {len(dq)} · ai {len(ai_rows)} (질문 누락은 AI 호출 전 422 · 0 기대)")
+        anon = new_client()
+        a1 = anon.post(QUERY_PATH, data={"question": "x"}).status_code
+        a2 = anon.get(QUERY_PATH).status_code
+        a3 = anon.get(QUERY_PATH, headers={"accept": "text/html"}, follow_redirects=False)
+        if (a1, a2, a3.status_code) != (401, 401, 303) or not a3.headers.get("location", "").startswith("/login"):
+            bad2.append(f"미로그인 POST {a1} · GET {a2} · GET(html) {a3.status_code}→{a3.headers.get('location')} (401 · 401 · 303 /login 기대)")
+    out.append(res("G-19", "F-RPT-132 질의 실행 × 부서 8 (권한 예외 — 칸 R 이상 통과 · 칸 없음 403) · 미로그인 401", not bad2 and fn.permission_exception,
+                   f"권한 예외 {fn.permission_exception} — " + " · ".join(got) + f" · 미로그인 POST {a1} GET {a2} · 어긋남 {len(bad2)}", bad2))
+    # G-20 — 비활성 · 로그아웃 → RPT 401
+    admin = lab.client("ADM")
+    lid, pw, uid = lab.make_user("EX", "rex")
+    c = login(lid, pw)
+    a = c.get("/rpt/orders").status_code
+    deact = admin.post(f"/sys/users/{uid}/delete").status_code
+    b, bp = c.get("/rpt/summary").status_code, c.post(QUERY_PATH, data={"question": "x"}).status_code
+    lid2, pw2, _ = lab.make_user("ST", "rst")
+    c2 = login(lid2, pw2)
+    a2_ = c2.get(QUERY_PATH).status_code
+    c2.post("/logout", follow_redirects=False)
+    d, dp = c2.get("/rpt/orders").status_code, c2.post(QUERY_PATH, data={"question": "x"}).status_code
+    got2 = (a, deact, b, bp, a2_, d, dp)
+    out.append(res("G-20", "RPT 비활성 · 로그아웃 → 401", got2 == (200, 200, 401, 401, 200, 401, 401),
+                   f"EX 전 {a} · 비활성 {deact} → RPT-080 GET {b} · 질의 POST {bp} / ST 전 {a2_} · 로그아웃 → RPT-010 GET {d} · 질의 POST {dp}"))
+    return out
+
+
+def check_rpt_change_log(lab: Lab) -> list[Result]:
+    """G-22 (RPT) — 성공 질의 → sys_change_log 정확히 1행(F-RPT-132 · RPT-130 · POST · target data_query_log:<번호>) · 거부 · 키 없음 · 403 · 422 → 0행 ·
+    SYS-040 변경 탭에 보인다 · 대시보드 8 GET → sys_access_log 조회 1행씩."""
+    from lcomfine.db import conn
+
+    fx = _dq_fixture(lab)
+    out: list[Result] = []
+    ex_lid = lab.users["EX"][0]
+    with no_real_ai() as ai:
+        bad = []
+        r, dq, _, ch, _ = _ask(lab, "EX", f"select request_no, qty from v_dq_orders where customer_code = '{fx['code']}'", "q3 변경 로그 성공 (예시)")
+        if r.status_code != 200 or len(ch) != 1:
+            bad.append(f"성공 질의 {r.status_code} · 변경 로그 {len(ch)}행 (200 · 1 기대)")
+        else:
+            c = ch[0]
+            want = ("F-RPT-132", "RPT-130", "POST", QUERY_PATH, f"data_query_log:{r.json()['query_no']}", ex_lid, "EX")
+            got = (c["function_id"], c["screen_id"], c["method"], c["path"], c["target"], c["login_id"], c["role_code"])
+            if got != want:
+                bad.append(f"변경 로그 값 {got} (기대 {want})")
+        target = ch[0]["target"] if ch else ""
+        neg = [("거부(쓰기 SQL)", "EX", "delete from customer", 422), ("키 없음", "EX", None, 422), ("칸 없음 403", "PR", "select 1 from v_dq_orders", 403)]
+        for label, role, fake, want in neg:
+            if fake is None:
+                ai._config = lambda: ("", "gpt-4.1")
+            r, _, _, ch2, _ = _ask(lab, role, fake, f"q3 변경 로그 {label} (예시)")
+            if r.status_code != want or ch2:
+                bad.append(f"{label} → {r.status_code} (기대 {want}) · 변경 로그 {len(ch2)}행 (0 기대)")
+        ai._config = lambda: ("q3-not-a-real-key", "gpt-4.1")
+        m = _marks()
+        st = lab.client("EX").post(QUERY_PATH, data={"question": ""}).status_code
+        _, _, ch3 = _logs_since(lab, m)
+        if st != 422 or ch3:
+            bad.append(f"빈 질문 → {st} · 변경 로그 {len(ch3)}행 (422 · 0 기대)")
+        page = lab.client("ADM").get("/sys/logs", params={"tab": "change", "login": ex_lid}, headers={"accept": "text/html"})
+        if not target or page.status_code != 200 or target not in page.text:
+            bad.append(f"SYS-040 변경 탭 {page.status_code} 에 {target!r} 안 보임")
+        out.append(res("G-22", "RPT 질의 성공 → sys_change_log 1행 · 거부/키 없음/403/422 → 0행 · SYS-040", not bad,
+                       f"성공 1 → 1행(F-RPT-132 · RPT-130 · POST /rpt/query · {target or '-'}) · 음성 4 → 0행 · SYS-040 변경 탭 보임 · 어긋남 {len(bad)}", bad))
+    # 대시보드 8 GET → sys_access_log 조회 1행씩 (경영진 임시 계정)
+    bad2 = []
+    c = lab.client("EX")
+    for sid in RPT_SCREENS[:-1]:
+        from lcomfine.app import nav
+        path = nav.path_of(sid)
+        before = conn.q1("select count(*) as n from sys_access_log where login_id = %s and log_type = '조회' and screen_id = %s", (ex_lid, sid))["n"]
+        st = c.get(path, headers={"accept": "text/html"}).status_code
+        after = conn.q1("select count(*) as n from sys_access_log where login_id = %s and log_type = '조회' and screen_id = %s", (ex_lid, sid))["n"]
+        if st != 200 or after - before != 1:
+            bad2.append(f"{sid} {st} · 조회 로그 +{after - before}")
+    out.append(res("G-22", "RPT 대시보드 8 조회 → sys_access_log 1행씩", not bad2, f"화면 8 · 어긋남 {len(bad2)}", bad2))
+    return out
+
+
+def check_rpt_escape(lab: Lab) -> list[Result]:
+    """X-09 — 거래처 이름의 `<script>` 가 대시보드 화면(표 · 거래처 선택) 과 인라인 SVG `<title>` 에 이스케이프돼 나온다 · 대시보드 GET 은 업무 테이블을 바꾸지 않는다."""
+    from lcomfine.app import templating
+    from lcomfine.db import conn
+
+    fx = _dq_fixture(lab)
+    raw, esc = "<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"
+    today = date.today().isoformat()
+    c = lab.client("EX")
+    counts0 = business_counts()
+    bad, seen = [], []
+    pages = {"RPT-010 (표 top_customers · 선택)": f"/rpt/orders?date_from={today}&date_to={today}",
+             "RPT-050 (거래처 선택)": "/rpt/shipment", "RPT-060 (거래처 선택)": "/rpt/collection",
+             "RPT-070 (거래처 선택)": "/rpt/order-flow", "RPT-080 (거래처 선택)": "/rpt/summary",
+             "RPT-010 ?customer=<script>": f"/rpt/orders?customer={fx['xs']}&date_from={today}&date_to={today}"}
+    for label, path in pages.items():
+        r = c.get(path, headers={"accept": "text/html"})
+        if r.status_code != 200:
+            bad.append(f"{label} {r.status_code}")
+            continue
+        if raw in r.text or "<img src=x onerror=alert(2)>" in r.text:
+            bad.append(f"{label}: 거래처 이름의 태그가 그대로 렌더됨")
+        if esc in r.text:
+            seen.append(label)
+    if not seen:
+        bad.append("어느 화면에도 이스케이프된 이름이 안 보인다(검사가 비었다)")
+    # 인라인 SVG <title> — 차트 매크로를 직접 렌더해 라벨의 태그가 이스케이프되는지 (대시보드 템플릿과 같은 Jinja 환경 · autoescape)
+    svg = templating.env.from_string('{% import "_macros.html" as ui %}{{ ui.svg_bar(series) }}{{ ui.svg_line(series) }}').render(
+        series=[{"label": raw, "value": 3}, {"label": "b", "value": None}])
+    if raw in svg or esc not in svg or "<title>" not in svg:
+        bad.append(f"SVG <title> 이스케이프 — raw {raw in svg} · esc {esc in svg}")
+    # RPT-010 의 수주 표에 그 거래처 행이 있다(이름이 실제로 화면에 흐른다)
+    r = c.get(f"/rpt/orders?date_from={today}&date_to={today}", headers={"accept": "text/html"})
+    if f"{lab.prefix}XS" not in r.text and f"{lab.prefix}xs" not in r.text:
+        bad.append("RPT-010 에 <script> 거래처의 의뢰가 보이지 않는다")
+    for sid in RPT_SCREENS[:-1]:
+        from lcomfine.app import nav
+        c.get(nav.path_of(sid))
+    diff = {t: (counts0.get(t), n) for t, n in business_counts().items() if counts0.get(t) != n}
+    return [res("X-09", "대시보드 — 거래처 이름 <script> 이스케이프(화면 · SVG title) · GET 이 업무 테이블을 바꾸지 않음", not bad,
+                f"화면 {len(pages)} 중 이스케이프 보인 곳 {len(seen)} · 원문 태그 0 · SVG 막대·선 title 이스케이프 · 대시보드 8 GET 뒤 업무 테이블 전수 diff {len(diff)}"
+                f"{' ' + str(diff)[:100] if diff else ''}", bad)]
+
+
+def check_rpt_static() -> list[Result]:
+    """X-10 — dashboard.py · rpt.py 에 쓰기 SQL(insert · update … set · delete from · truncate · create · alter · drop) 0 · dashboard 는 conn.x/tx 0 ·
+    rpt.py 의 conn.tx 는 dataquery.ask(로그) 하나 · 쓰기 테이블은 계약(db-schema F-RPT-132) 둘뿐."""
+    write_re = re.compile(r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|truncate\s|create\s+(table|temp|index)|alter\s+table|drop\s+(table|view))\b", re.I)
+    hits, tx = [], []
+    for rel in ("src/lcomfine/app/dashboard.py", "src/lcomfine/app/routers/rpt.py"):
+        for i, ln in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
+            s_ = ln.strip()
+            if s_.startswith("#"):
+                continue
+            if write_re.search(s_):
+                hits.append(f"{rel}:{i} {s_[:60]}")
+            if re.search(r"\bconn\.(x|tx)\(", s_):
+                tx.append(f"{rel}:{i} {s_[:60]}")
+    dq_src = (ROOT / "src/lcomfine/app/dataquery.py").read_text(encoding="utf-8")
+    ai_src = (ROOT / "src/lcomfine/app/ai.py").read_text(encoding="utf-8")
+    writes = set(re.findall(r"insert into (\w+)", dq_src + ai_src, re.I))
+    ok_tx = all("routers/rpt.py" in t and "conn.tx()" in t for t in tx) and len(tx) == 1
+    ok_w = writes == {"data_query_log", "sys_ai_call_log"}
+    return [res("X-10", "정적: 대시보드 · RPT 라우터 쓰기 SQL 0 · 데이터 질의 쓰기 테이블 = 로그 2", not hits and ok_tx and ok_w,
+                f"dashboard.py · rpt.py 쓰기 SQL {len(hits)} · conn.x/tx {len(tx)}(rpt.py 의 dataquery.ask 트랜잭션만 {ok_tx}) · "
+                f"dataquery.py · ai.py 의 insert 대상 {sorted(writes)}", hits + ([] if ok_tx else tx))]
+
+
 # ── 판정표 ──────────────────────────────────────────────────────────────
-def w3_rows() -> list[Result]:
-    return [Result("G-16", "데이터 질의 검증", FAIL, "W3/W4 — RPT-130 데이터 질의 미구현 (라우터 없음 · 판정 대상 없음)"),
-            Result("G-17", "키 없음", FAIL, "W3/W4 — AI 호출(ai.py · sys_ai_call_log) 미구현"),
-            Result("G-18", "SSO 토큰", FAIL, "W3/W4 — DOC-010 SSO 미구현")]
+def w4_rows() -> list[Result]:
+    return [Result("G-18", "SSO 토큰", FAIL, "W4 — DOC-010 SSO 미구현")]
 
 
 def run_all(run_seeds: bool = False) -> list[Result]:
-    rows: list[Result] = w3_rows()
+    rows: list[Result] = w4_rows()
 
     def guard(gid: str, item: str, fn, *args):
         try:
@@ -1444,7 +2231,14 @@ def run_all(run_seeds: bool = False) -> list[Result]:
         rows += guard("G-20", "COL 비활성·로그아웃 401", check_col_sessions, lab)
         rows += guard("G-22", "COL 쓰기 4 변경 로그", check_col_change_log, lab)
         rows += guard("X-05", "COL 업로드 보안", check_col_upload_abuse, lab)
+        # W3 대시보드 · 데이터 질의 (RPT) — AI 는 fake · 실제 호출 차단
+        rows += guard("G-19", "RPT 화면 9 · 질의 실행 × 부서 8", check_rpt_access, lab)
+        rows += guard("G-16", "데이터 질의 우회 시도", check_dataquery_bypass, lab)
+        rows += guard("G-17", "키 없음 · 호출 실패", check_ai_key_missing, lab)
+        rows += guard("G-22", "RPT 변경 로그", check_rpt_change_log, lab)
+        rows += guard("X-09", "대시보드 이스케이프", check_rpt_escape, lab)
     rows += guard("X-08", "COL 정적", check_col_static)
+    rows += guard("X-10", "RPT 정적", check_rpt_static)
     rows += guard("G-21", "seed_dev3 정적", check_seed_dev3_static)
     rows += guard("G-24", "docker", check_docker)
     return rows

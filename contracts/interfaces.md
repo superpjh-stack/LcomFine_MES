@@ -189,15 +189,24 @@ erp_upload.mapped_fields() -> dict[str, bool]
 erp_upload.error_link(batch_id) -> str                          # 알림 link = /col/upload-history?batch=<id>
 
 # app.dashboard (개발3 · W3) — 8 함수: orders production quality inventory shipment collection order_flow summary
-dashboard.<이름>(period, customer_id=None) -> {"kpis": [...], "series": {...}, "tables": {...}, "asof": date | None}
+dashboard.<이름>(period, customer_id=None) -> {"kpis": [{key, label, value | None, digits, unit, text | None, note}], "series": {이름: [{label, value | None}]},
+                                                  "tables": {이름: [dict]}, "asof": date | None, "period": (f, t), "bucket": "day" | "month", "customer_id", "notes": [str]}
+#   period = "YYYY-MM" | (시작일, 종료일) · value None = 미수집 · text 가 있으면 수 대신 글자(미확정 (D-519) · (D-520)) · kpi key 목록은 progress-dev3 §1.5 · 세부 D-805
+#   수금 · 납기 준수율 · 기계별은 stats 를 재사용(집계 SQL 이 두 곳에 있지 않다) · summary 는 추가 키 "kind"(일일 · 주간 · 월간)
+dashboard.period_bounds(period) · dashboard.summary_kind(f, t) · dashboard.TOP_N · dashboard.FLOW_STAGES · dashboard.UNDECIDED_LOSS · dashboard.UNDECIDED_BOTTLENECK
+stats.period_bounds(period)                                     # "YYYY-MM" | (시작일, 종료일) → (f, t)
 
 # app.ai (개발3 · W3)
-ai.complete(system, user, *, kind, cur) -> str   # 키 없으면 ai.NotConfigured · 호출마다 sys_ai_call_log
-ai.NotConfigured · ai.set_client(fake)           # 테스트 주입
+ai.complete(system, user, *, kind, cur=None, user_id=None) -> str   # 키 없으면 ai.NotConfigured · 실패 ai.CallFailed(사유) — 둘 다 sys_ai_call_log 1행 뒤 올린다 · 호출마다 1행(ms · error)
+ai.NotConfigured · ai.CallFailed · ai.NOT_CONFIGURED_MESSAGE      # "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY" (화면에 그대로 · G-17)
+ai.set_client(fake)                              # 테스트 주입 — fake(model, system, user) -> str · None 이면 실제 호출(표준 urllib · D-504)
 
 # app.dataquery (개발3 · W3)
-dataquery.ask(cur, user, question) -> dict
-dataquery.validate_sql(sql, allowed_views) -> str   # SELECT 한 문장 · 허용 뷰 v_dq_* 만 · 어긋나면 422 「허용되지 않는 질의」
+dataquery.ask(cur, user, question) -> dict         # 질문 → ai.complete → validate_sql → 별도 연결 read only · statement_timeout · MAX_ROWS → data_query_log 1행(거부 · 키 없음 · 실패 포함 · numbering "DQ")
+                                                    #   반환 {query_no, ok, sql, columns, rows, row_count, truncated, error, ms …} — 모양은 progress-dev3 §1.5 · D-806
+dataquery.validate_sql(sql, allowed_views) -> str   # SELECT 한 문장 · 허용 뷰 v_dq_* 만 · 카탈로그 · 쓰기 · 다중 문장 · 주석 · CTE · 함수(허용 목록 밖) 거부 → dataquery.QueryRejected(이유) → 라우터 422 「허용되지 않는 질의 — 이유」
+dataquery.VIEWS · dataquery.allowed_views(role_code) -> set[str]   # 수금 뷰 2 는 SL · AC · ADM · EX 만(D-513)
+dataquery.recent(user) -> list[dict] · dataquery.MAX_ROWS · dataquery.QueryRejected
 
 # app.sso (개발1 · W4)
 sso.issue(cur, user) -> tuple[str, str]   # (token, jti) · 비활성 · 미매핑이면 sso.NotMapped

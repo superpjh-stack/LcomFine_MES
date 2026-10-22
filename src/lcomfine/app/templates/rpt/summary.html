@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  <h1>{{ screen.name }}</h1>
+  <p class="muted">일일 · 주간 · 월간. 일일은 창고·출하 중심, 주간·월간에 수주·생산·수금을 더한다. 해설 문장은 없다(D-505) — 수치는 각 리포트의 집계와 같다.</p>
+  {{ f.notice(notice) }}
+  <nav class="actions" aria-label="요약 단위">
+    {% for key, label in tabs %}
+    <a class="btn{% if form.tab == key %} btn-primary{% endif %}" href="{{ nav.path_of('RPT-080') }}?tab={{ key }}&amp;asof={{ form.asof }}&amp;customer={{ form.customer }}"{% if form.tab == key %} aria-current="page"{% endif %} data-tab="{{ key }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <form class="search" method="get" role="search">
+    <input type="hidden" name="tab" value="{{ form.tab }}">
+    {{ f.input("asof", "기준일", form.asof, type="date") }}
+    <label class="field"><span>거래처</span>
+      <select name="customer"><option value="">전체</option>
+      {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == (form.customer | string) %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
+      </select></label>
+    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  </form>
+  {% if data %}<p class="muted"><strong>{{ data.kind }}</strong> 요약 · 기간 {{ data.period[0] | dt }} ~ {{ data.period[1] | dt }}{% if data.asof %} · ERP 업로드 기준일 {{ data.asof | dt }}{% endif %}</p>{% endif %}
+</section>
+{% if data %}
+{% for s in data.tables.sections %}
+<section class="panel" data-section="{{ s.screen_id }}">
+  <h2><a href="{{ nav.path_of(s.screen_id) }}">{{ s.title }}</a></h2>
+  {{ d.kpis(s.kpis) }}
+</section>
+{% endfor %}
+{{ d.chart_table("shipment_qty", "구간별 확정 출하 수량", data.series.shipment_qty, "구간", "출하 수량", 3) }}
+{{ d.chart_table("issue_qty", "구간별 불출 수량", data.series.issue_qty, "구간", "불출 수량", 3) }}
+{% endif %}
+{% endblock %}

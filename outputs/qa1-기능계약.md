@@ -179,3 +179,106 @@ QA1 세계에 W2 몫을 더했다(admin · 화면이 부르는 HTTP): 거래처 
 - `uv run python tools/check_trace.py` — G-01 10/10 PASS · G-02 3/5(고아 16 = DOC · RPT).
 - 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from erp_upload_batch where source_file like 'QA1-%'; select count(*) from erp_customer_map where erp_code like 'QA1-%'; select count(*) from item where item_code like 'QA1-%'"` → 0 · 0 · 0 · `erp_column_map` 7 = 시드(거래처코드 · 일자 · 매출액 · 수금액 · 잔액 · 수단 · 어음 만기).
 - 쓴 파일: `tools/check_screens.py` · `tests/test_qa1_col.py`(새) · `tests/test_qa1_screens.py` · `tests/test_qa1_contract_text.py`(문장만) · `outputs/qa1-기능계약.md`(이 절). 앱 코드 · 계약 · 결정 · 다른 QA 파일은 건드리지 않았다. 커밋 없음.
+
+---
+
+# W3 대시보드 (2026-10-22) — RPT 9 화면 · 기능 10 + SYS-040 로그 탭 6 을 범위에 넣어 130 기능
+
+검증만 했다. 코드는 고치지 않았다. 검사기 `tools/check_screens.py` 의 범위를 「대메뉴가 DOC 가 아닌 기능」으로 넓혔다(W1 109 + COL 11 + **RPT 10 = 130** · DOC 6 은 W4 까지 placeholder 라 FAIL 로 세지 않는다 · placeholder 2). 기대값은 전부 계약(`function-list.md` F-RPT-011~081 · 131 · 132 · F-SYS-041 · `api-contract.md` §2 의 F-RPT-132 브라우저 200 예외 · §4 권한 예외 · `permission-matrix.md` RPT 칸 40 · `ia.json` RPT 9 · SYS-040 L3 · logic · 대메뉴 이름 「대시보드」 D-505 · `decisions.md` D-512 · D-513 · D-519 · D-520 · D-805 · D-806 · D-609 · goal §3.4 인라인 SVG + 표 · 반응형 390)에서 끌어왔다.
+QA1 세계에 W3 몫을 더했다(admin · 화면이 부르는 HTTP): 전략부(ST) QA1 사용자 1(`QA1-<6자리>-ST` — RPT-130 은 ST · EX · ADM 만 칸이 있다) → 그 세션으로 F-RPT-132 7 건을 **`ai.set_client(fake)` 주입**으로(실제 OpenAI 호출 **0** · 키 없음은 `ai._config` 를 잠깐 바꾸고 같은 함수 안에서 되돌림) → RPT 8 화면을 이번 달 · QA1 거래처로 열어 KPI · SVG · 표 대조 → SYS-040 탭 6 → 정리(`data_query_log` · `sys_ai_call_log` 는 QA1 사용자 `user_id` 로 · 사용자 · 세계 행 · 회차 · 매핑). 정리 후 `QA1-` 행 0(`data_query_log.question` · `sys_user` · `item` · `erp_upload_batch` 각 0 — `psql` 대조). 감사 로그 `sys_change_log` 의 F-RPT-132 2 행(QA1 사용자)은 W1 · W2 와 같이 남긴다. 시드 계정 · 다른 QA 의 행은 건드리지 않았다(QA2 · QA3 가 같은 DB 에서 동시에 돌았다 · E2E 캡처가 새로 생기고 있었다).
+
+## W3-1. 결함
+
+| ID | 심각도 | 담당 | 상태 | 요약 |
+|---|---|---|---|---|
+| DEF-QA1-007 | 경미 | 개발3 (`routers/rpt.py` `_dashboard` · `summary`) · 아키텍트 Ruling 28 | **해소(실측)** | RPT 8 화면의 조회 칸 형식 오류 422 가 **Accept 에 `text/html` 이 없어도 HTML**(같은 화면을 422 로 다시 그림)로 온다 — `api-contract.md` §2 「요청의 Accept 에 text/html 이 있으면 브라우저 · 없으면 JSON `{code: validation_error, message, fields}`」 · 「422 (브라우저 GET) = 422 오류 화면(`_error.html`)」 과 다르다. 상태코드 · 문장은 맞다(422 · 「시작일 형식이 올바르지 않습니다 (YYYY-MM-DD)」) |
+| DEF-QA1-008 | 경미 | 개발1 (`routers/sys.py` SYS-040 `access` 탭) | **해소(실측)** | SYS-040 접속 로그 탭의 구분(`log_type`) 이 선택지(로그인 · 조회 · 변경 · 오류 · SSO — 화면 select 5 · db-schema `log_type`) 밖이면 **200 빈 표(미수집)** — D-609 「구분 … 선택지 밖은 422」 · 같은 화면의 erp · dq · sso 탭은 422 다 |
+| DEF-QA1-009 | 경미 | 아키텍트 (`nav.py` 묶음 툴팁) | **해소(실측)** | 좌측 메뉴 묶음 ⑥ 추적·분석 의 `<h2 title="통합 조회, LOT 추적, 생산 보고서, AI 리포트">` 툴팁에 옛 대메뉴 이름 「AI 리포트」 — D-505 「RPT 는 이름만 「대시보드」」 · 메뉴 글자 자체는 「대시보드」(G-01 PASS). 정본 묶음 설명을 그대로 옮긴 것이라 ia-overrides 로 함께 바꿀지 판정 |
+
+치명 0 · 중대 0 · 경미 3 — **전부 해소(재실측 2026-10-22)**: 007 은 아키텍트 Ruling 28(api-contract §2 「대시보드 RPT-010~080 은 같은 화면을 422 로 다시 그린다 · Accept 에 text/html 이 없으면 JSON」) + 개발3 수정 → JSON 요청 422 `application/json` `code='validation_error'` · 브라우저 422 같은 화면 / 008 은 개발1 수정 → `?tab=access&log_type=XYZ` 422 / 009 는 아키텍트 수정 → 좌측 메뉴(툴팁 포함) 「AI 리포트」 0회. **미해소 0.** W1 · W2 결함 6 은 재발하지 않았다(화면 GET 403 문장 276/276 · 빈 본문 200 0 · 일반 문장 422 0 · 5xx 0 · 알림 닫힘 OK).
+
+### DEF-QA1-007 · 경미 · RPT 조회 칸 422 의 응답 모양 (api-contract §2)
+- 재현(admin · TestClient 기본 `Accept: */*`): `GET /rpt/orders?date_from=2026-13-45` → **422 `text/html`**(화면 전체 · 알림 「시작일 형식이 올바르지 않습니다 (YYYY-MM-DD)」) · `code` 없음. 같은 요청에 `Accept: text/html` → 422 같은 화면(`_error.html` 아님). `?customer=999999999` · `?customer=abc` · 기간 역순 · NUL · RPT-080 `?tab=yearly` · `?asof=2026-13-45` 도 같은 모양(상태코드는 전부 422 · 500 0).
+- 기대: `api-contract.md` §2 — 브라우저 GET 의 422 는 「422 오류 화면(`_error.html`)」 · 그 밖(JSON)은 `{"code": "validation_error", "message", "fields"}`. 다른 화면(TRK-020 `?period=` · COL-040 · SYS-040)은 `raise http.validation_error` 로 JSON 422 를 낸다(W2 절 · 이번 SYS-040 실측 「시작일: 날짜 형식(YYYY-MM-DD)이 아닙니다」 JSON).
+- 원인: `src/lcomfine/app/routers/rpt.py` `_dashboard()` · `summary()` 가 422 `HTTPException` 을 잡아 `templating.render(..., status_code=422)` 로 **입력칸을 유지한 화면**을 그린다(개발3 공표 `progress-dev3.md` §1.5 「형식 오류는 422 로 화면을 다시 그린다」 — 계약에는 예외 줄이 없다. F-RPT-132 브라우저 200 은 계약 §2 에 예외로 올라갔다).
+- 수정(아키텍트 Ruling 28 · 개발3 · 2026-10-22): api-contract §2 에 「대시보드 RPT-010~080 은 같은 화면을 422 로 다시 그려 조건 칸 옆에 사유를 보인다 … `Accept` 에 text/html 이 없으면 JSON」 이 들어왔고 라우터가 그대로 낸다. 재실측: `GET /rpt/orders?date_from=2026-13-45`(Accept */*) → 422 `application/json` `code='validation_error'` · 브라우저 → 422 같은 화면 + 문장. 검사기 행 `RPT 422 응답 모양 … OK` · `tests/test_qa1_rpt.py::test_rpt_422_json_shape_when_not_browser` PASS.
+
+### DEF-QA1-008 · 경미 · SYS-040 접속 탭 구분 선택지 밖 200
+- 재현(admin · JSON): `GET /sys/logs?tab=access&log_type=XYZ` → **200**(행 0 · 「미수집」). 같은 화면 `?tab=dq&log_type=XYZ` → 422 「허용/거부: 허용 · 거부 중 하나여야 합니다」 · `?tab=erp&log_type=XYZ` → 422 · `?tab=sso&log_type=XYZ` → 422 · `?tab=nope` → 422 · `?date_from=2026-13-45` → 422 · `?login=<NUL>` → 422.
+- 기대: D-609 「필터는 탭 공통 — … 구분 `log_type` 하나(접속 구분 · 기능 ID · 회차 상태 · 호출 용도 · 허용/거부 · 성공/실패 — **선택지 밖은 422**)」. 접속 탭의 select 는 5 선택지(`templates/sys/logs.html` · db-schema `sys_access_log.log_type` 로그인 | 조회 | 변경 | 오류 | SSO). 기능 ID(change) · 호출 용도(ai) 는 자유 입력이라 대상이 아니다.
+- 원인: `routers/sys.py` `logs()` 가 `access` 탭만 `params["type"] = s(log_type, "구분")`(글자 그대로) 이고 erp · dq · sso 는 `choice(...)` 다.
+- 수정(개발1 · 2026-10-22) 뒤 재실측: `?tab=access&log_type=XYZ` → **422** (탭 · dq · erp · sso · 틀린 날짜 · NUL 도 422). 검사기 행 `SYS-040 필터 — … OK` · `tests/test_qa1_rpt.py::test_sys_040_filter_outside_choices_is_422` PASS.
+
+### DEF-QA1-009 · 경미 · 좌측 메뉴 툴팁의 옛 이름 「AI 리포트」
+- 재현(admin · 브라우저): `GET /` 의 `<nav class="side">` 안 `<h2 class="side__bundle-title" title="통합 조회, LOT 추적, 생산 보고서, AI 리포트">⑥ 추적·분석</h2>`. 대메뉴 글자는 `data-menu="RPT"` 아래 「대시보드」(`nav.MENUS` 도 「대시보드」 · G-01 PASS).
+- 기대: D-505 「RPT 는 이름만 「대시보드」」 · goal §1 「범위 밖 … AI 해설 리포트 는 메뉴 어디에도 만들지 않는다」 — 메뉴(툴팁 포함)에 「AI 리포트」 0.
+- 원인: 묶음 설명(정본 묶음 ⑥ 의 대메뉴 나열)이 `ia.json` 그대로이고 `ia-overrides.json` 은 대메뉴 이름만 바꿨다. 아키텍트 소유(`nav.py` · `base.html` · `ia-overrides.json`) — 정본 글을 고치는 것이 아니라 D-505 편차의 적용 범위를 정하는 일이다.
+- 수정(아키텍트 · `nav.py` 묶음 툴팁 · 2026-10-22) 뒤 재실측: 좌측 메뉴 「AI 리포트」 **0회** · 메뉴 글자 「대시보드」. 검사기 행 `좌측 메뉴 — … OK` · `tests/test_qa1_rpt.py::test_menu_has_no_old_name_ai_report` PASS.
+
+## W3-2. 게이트 판정 (QA1 몫)
+
+명령: `uv run python tools/check_screens.py` — 약 12~14초 · 종료코드 = FAIL 행 수. 실측(2026-10-22 · 결함 3 반영 뒤 재실측) **종료코드 0** — 18 행 전부 PASS(반영 전 실행 2회: 종료코드 1 = `G-02 RPT 계약 문장 … FAIL 항목 52 · 어긋남 3`).
+
+| 게이트 | 판정 | 실측 (check_screens 행) |
+|---|---|---|
+| **G-02** 기능 ↔ 라우트 ↔ 표식 (W1·W2·W3) | **PASS** (2/2) | 범위 기능 **130**(DOC 6 제외) — API 가 라우트에 글자 그대로 130/130 · `@pytest.mark.fn` 표식 130/130 · 읽지 못한 테스트 0. RPT 10 전부 라우트 · 표식 있음(`GET /rpt/orders` … `/rpt/summary` · `/rpt/query` · `POST /rpt/query`) |
+| **G-02** 오류 계약 (api-contract §1 · §3 · goal §2.7) | **PASS** (1/1) | 쓰기 63 × 사례 **240**(W1 209 + COL 27 + **F-RPT-132 4**) 어긋남 0 · 5xx 0 · 화면 GET 조회 칸 **198**(화면 65 · RPT 8 = 35 · SYS-040 6) NUL · 틀린 날짜 → 500 0 · 틀린 날짜를 200 으로 받은 칸 0 · 403 문장 다른 것 0 · 「미확정 (D-nn)」 안 보이는 화면 0/12(W1 6 + COL 3 + **RPT-020 · 030 D-519 · RPT-070 D-520**) · 세계 단계 35 실패 0 · 남은 행 0 |
+| **G-02** 오류 계약 §3 — 422 가 항목을 짚음 | **PASS** (1/1) | 422 사례 **164** 중 일반 문장 0(F-RPT-132 4 전부 항목 「질문」) |
+| **G-02** COL 계약 문장 (W2) | **PASS** (1/1) | 항목 23 · 어긋남 0 — W2 그대로(RPT 검사 뒤에 매핑 삭제 · 사용 중지가 돈다) |
+| **G-02** RPT 계약 문장 (W3 · 정본 L3 · logic · D-512 · D-805 · D-806 · D-609 · goal §3.4 · 계약 §2 예외) — 자동 확인 | **PASS** (1/1) | 항목 **52** · 어긋남 **0** (반영 전 실행: 어긋남 3 = DEF-QA1-007 · 008 · 009 — 해소) — 아래 W3-3 · W3-4 |
+| **G-03** 화면 응답 | **PASS** (3/3) | 화면 67 × 계정 8: 칸 W/R 260 → 200 260/260 · 칸 없음 276 → 403 276/276 · 범위 화면 **65** placeholder 0(전체 placeholder **2** = DOC-010 · DOC-020). RPT 9 × 8 = 72: 칸 **40**(전부 R — 010 6 · 020 · 030 · 040 4 · 050 6 · 060 · 070 5 · 080 · 130 3) → 200 40/40 · 칸 없음 32 → 403 32/32 |
+| **G-19** 권한 403 전수 (QA1 몫) | **PASS** (9/9) | 정적: 쓰기 라우트 **63** 전부 `require_fn(<그 기능 ID>)` 하나(RPT 1 = `require_fn("F-RPT-132")`) · 조회 라우트 **67** 전부 `require_screen`(RPT 9 · SYS-040) / DB `sys_permission` 260 = 계약 260 / 칸 밖 화면 GET 276 → 403 / 메뉴 = 권한 칸(계정 8 어긋남 0 — RPT 메뉴는 칸 있는 부서에게만 · 글자 「대시보드」) / 쓰기 63 × 계정 8: R · 칸 없음 **366** → 403 「이 기능을 실행할 권한이 없습니다」 366/366 · W 부서 **138** → 401/403/5xx 아님 138/138 / 권한 예외 F-HOME-022 · F-RPT-132 칸 R 통과 11/11 / **F-RPT-132 칸 없는 부서(SL · PR · SH · DS · AC) → 403 5/5**(api-contract §4 「권한 예외 … 칸이 없으면 → 403」 — 개발3 §3-12 가 QA3 검사기에 요청한 바로 그 기대값) · 칸 R(ST · EX · ADM) 은 빈 본문 422 「질문을 입력해 주세요」(AI 호출 전) |
+
+- `uv run python tools/check_trace.py` G-02: 「라우트 없는 계약 **6** · 표식 없는 기능 **6** · 이어진 기능 **130/136**」 — 6 은 전부 DOC(W4). W2 때 16 에서 RPT 10 이 빠졐다. G-01 10/10 PASS(「RPT 이름 「대시보드」 · RPT-090~120 없음」 포함).
+
+## W3-3. 오류 계약 — RPT 조회 칸 · F-RPT-132 (전부 JSON 판정 · fake 주입 · 실제 OpenAI 호출 0)
+
+| 대상 | 사례 → 실측 |
+|---|---|
+| RPT 8 조회 칸 GET(admin) | `date_from=2026-13-45` · `date_from=<NUL>` · `date_from>date_to` · `customer=999999999`(없는 거래처 — 사용자가 고른 값이라 422 · 「없는 거래처입니다」) · `customer=abc` · RPT-050 `date_to=2026-02-30` · RPT-080 `tab=yearly`(「탭은 일일 · 주간 · 월간 중 하나입니다」) · `asof=2026-13-45` · `customer=999999999` → 전부 **422** · 500 0 · 사람이 읽는 문장(「시작일 형식이 올바르지 않습니다 (YYYY-MM-DD)」 「시작일이 종료일보다 늦습니다」 「거래처 값이 올바르지 않습니다」). 검사기 GET 조회 칸 전수(RPT 35 + SYS-040 6 = 41 요청) 전부 422. 응답 모양(재실측 · Ruling 28): Accept */* → `application/json` `code='validation_error'` · 브라우저 → 같은 화면 422 + 사유 |
+| F-RPT-132 `POST /rpt/query` 입력(전략부 QA1 사용자 · AI 호출 전 · 로그 0) | 누락(빈 본문) → **422** 「질문을 입력해 주세요」(fields 질문: 필수 항목입니다) · 공백만 → 422 같음 · NUL → 422 「질문: 글자에 NUL(0x00)을 넣을 수 없습니다」 · **10만 자** → 422 「질문: 1000자까지 입력할 수 있습니다」(`dataquery.QUESTION_MAX_CHARS`). 네 사례 뒤 `data_query_log` 행 0(fake 사례 7 만 남음) |
+| F-RPT-132 fake 거부 SQL `delete from v_dq_orders` | **422** `validation_error` 「허용되지 않는 질의 — SELECT 문장만 실행한다 — `delete` 로 시작하는 문장은 거부」 · fields `질의 번호` · `SQL` · `data_query_log` 1행 ok=false · error 같은 문장 · sql_text 보존 · `sys_change_log` 0 |
+| F-RPT-132 fake 허용 SQL `select * from v_dq_orders limit 5` (JSON) | **200** `http.saved` `{ok true, message 「질의 DQ-… — 1행」, query_no, sql, columns, rows, row_count 1, truncated false, ms}` · `data_query_log` ok=true row_count 1 · **`sys_change_log` 1행**(function_id `F-RPT-132` · target `data_query_log:<질의 번호>`) · 결과 행은 저장되지 않음(D-806) |
+| F-RPT-132 수금 뷰 `select * from v_dq_collections limit 1` | 전략부(ST) → **422** 「허용되지 않는 질의 — `v_dq_collections` 는 이 부서가 질의할 수 없는 뷰다 (영업부 · 회계부 · 전산 관리자 · 경영진만)」 · `dataquery.validate_sql(…, allowed_views("EX"))` 통과(D-513 SL · AC · ADM · EX) |
+| F-RPT-132 AI 키 없음(`ai._config` → 빈 키 · `set_client(None)` · 복원) | **422** 「AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY」(= `ai.NOT_CONFIGURED_MESSAGE`) · `sys_ai_call_log` ok=false error 같은 문장(키 값 0) · `data_query_log` ok=false sql_text null — 조용한 폴백 0 |
+| F-RPT-132 AI 호출 실패(fake 가 `RuntimeError("QA1 boom (예시)")`) | **422** 「AI 호출 실패 — RuntimeError: QA1 boom (예시)」 · `sys_ai_call_log` ok=false error 「RuntimeError: QA1 boom (예시)」 · 하드코딩 결과 0 |
+| F-RPT-132 **브라우저**(Accept text/html) 허용 SQL | **200 같은 화면**(303 아님 — api-contract §2 예외 · D-806) · `<section data-result="DQ-…">` · `<pre class="grid-wrap">select * from v_dq_orders limit 5</pre>` · 「결과 표 — 1행」 표(grid-wrap) · 「최근 질의」 표에 `data-query` 행 · `sys_change_log` +1 |
+| F-RPT-132 실행 실패(검증 통과 · 없는 열 `select qa1_no_such_column from v_dq_orders`) | **422** 「실행 실패 — column "qa1_no_such_column" does not exist」 · `data_query_log` ok=false |
+| 로그 행 수 | 질의 7 → `data_query_log` **7**(거부 5 = 거부 SQL · 수금 뷰 · 키 없음 · 호출 실패 · 실행 실패) · `sys_ai_call_log` **7**(실패 2 = 키 없음 · 호출 실패) — 거부 · 실패도 1행씩(D-513 · D-806) · RPT-130 「최근 질의」 표에 7 전부 · 거부 행 `is-error` 5 · 사유 글자 |
+
+## W3-4. 계약 문장 — RPT 8 · RPT-130 · SYS-040 · 메뉴 (자동 확인 52 + 사람 판정)
+
+자동 확인 52 항목(`check_screens` 요약 표 「RPT 계약 문장 — …」 · `tests/test_qa1_rpt.py`) **52 OK**(반영 전 실행: 49 OK · 3 어긋남 = 결함 3 · 해소). 자동 대조의 L3 낱말: RPT 9 · SYS-040 중 **빠진 낱말이 있는 화면 1**(RPT-080 「위 리포트의 핵심 수치와 짧은 해설」) — 아래 표의 사람 판정. 화면은 QA1 세계가 있는 동안(이번 달 · `?customer=<QA1 거래처>` · RPT-080 `?tab=` 셋) admin 으로 열었다.
+
+| 화면 | 정본 L3 · logic · 결정 | 자동 확인 실측 | 사람 판정 — 화면에 있는 것 |
+|---|---|---|---|
+| RPT-010 수주 | 기간별 생산의뢰 건수·수량 · 거래처 상위 · 납기 분포 · 미착수 의뢰 / 원천 생산의뢰서 · 지시서 없는 건 = 미착수 | KPI `requests`(QA1 1건) `qty` `customers` `not_started` · 차트 `requests` `qty` `due` SVG `<title>` = 표 3/3 · 표 `top_customers`(QA1 거래처 코드) `not_started` | 시작일 · 종료일 `type=date` · 거래처 select · KPI 4 · 막대 3(구간 · 납기 월) + 같은 숫자의 표 · 거래처 상위 표 · 미착수 표(「미착수 의뢰 없음」) · 머리 「기간 … 구간 일 단위 · 화면을 열 때 집계(캐시 없음 · D-512)」 · WO-010 연결 |
+| RPT-020 생산 | 지시 대비 생산 실적 · 생산 로스율 · 가동률·기계별 / 원천 생산일보 · 로스율 · 가동률 · 기계별통계 · D-519 | KPI 7(`loss_rate` = **`미확정 (D-519)`** · `produced_qty` 60.000 · `utilization`) · 차트 3 SVG = 표 · 표 `by_work_order` `by_equipment` | 지시 대비 생산 실적 표(지시 · 생산 · 양품 · 로스 · 가동 · 정지 분) · 기계별통계 표(= `stats.machine_stats`) · 가동률 산식 가설 D-801 문장 · 로스율 칸 「미확정 (D-519)」 + note 「산식 미확정 — 원 수량만 보인다」 · PRD-040 · PRP-010 연결 |
+| RPT-030 품질 | 검사 로스율 · 입고·제품 불합격 LOT · 재판정 / 원천 검사일보 · 입고검사·제품검사 판정 · D-519 | KPI 6(`loss_rate` **D-519** · `inspected_qty` 55.000 · `judgements` · `rejected_lots` · `rejudged`) · 차트 3(SVG 2 = 표 · 불량유형 미수집) · 표 `rejected` `rejudged` `daily_by_work_order` | 불합격 LOT 표(구분 · LOT · 차수 · 판정 · 판정자) · 재판정 표(차수 2 이상 · 이전 판정 열) · 불량유형별 막대 · INS-040 · QC-030 연결 |
+| RPT-040 재고·창고 | 입고·불출 · 재고 변동 상위 · 장기 체류 LOT · 실사 차이 / 원천 자재·입고 · 재고 | KPI 8(`material_receipts` 1건 · `issues` 1건 · `adjusts` · `adjust_diff`) · 차트 `receipt_qty` `issue_qty` SVG = 표 · 표 `top_moves` `long_stay` `adjusts` `receipts_by_item` | 장기 체류 표 제목에 「체류일 = 오늘 − LOT 생성일 · 기준일 수 없음 D-805」(지어내지 않음) · 실사 차이 표(장부 · 실사 · 차이 · 사유) · INV-030 연결 |
+| RPT-050 출하 | 출하 건수·수량 · 거래처별 · 납기 준수율 / 원천 출하 · 준수율은 의뢰번호 있을 때만 | KPI `shipments`(QA1 확정 1) `qty` `customers` `due_rate`(「미수집」 — QA1 출하 지시에 의뢰번호 없음 → 모집단 0 · 0 % 로 적지 않음) · 차트 3 SVG = 표 · 표 `by_customer`(QA1 거래처) `by_item` `due_rows` `recent` | 「납기 준수율은 출하 지시에 생산의뢰 번호가 있을 때(공정 이관 시)만 낸다 — 산식 가설 D-804」 문장 · 모집단 표 due_rows(납기가 기간 안인 의뢰) · SHP-010 연결 |
+| RPT-060 수금 | 월별 수금액 · 출하 대비 수금 · 미수 연령 · 90일 초과 거래처 / 원천 ERP 업로드분 · **가장 최근 업로드 기준일 명시** | 머리 「ERP 업로드 기준일: **1980-01-31** (반영 회차의 마지막 기준 기간 끝)」 + KPI `asof` = `stats.erp_asof()` 1980-01-31(QA1 회차 · 다른 반영 회차 없음) · KPI `collected` `sales` `shipped_qty` `over90` · 차트 `collected` `shipped_qty` `aging` · 표 `monthly` `by_customer` `over90` | 출하 대비 수금(월 · 월×거래처) 표 「건 단위로 짝짓지 않음」 · 미수 연령 구간 막대(기준일 = ERP 업로드 기준일) · 90일 초과 거래처 표 · COL-060 · COL-070 연결 |
+| RPT-070 주문 흐름 | 의뢰별 단계 소요일(의뢰 → 지시 → 생산 완료 → 제품 입고 → 출하) · 병목 단계 · 거래처·월별 수금 / 번호 키로 잇기 · 수금은 거래처·월 · 병목 기준일 설계 때 확정 | 표 `rows` 에 QA1 의뢰번호 행(`data-request`) · 단계 5 소요일 · 병목 열 = **`미확정 (D-520)`** · KPI `bottleneck` 「미확정 (D-520)」 · 차트 `avg_days`(SVG = 표) `collected` · 표 `stages` `collection_by_customer` · 본문 「건 단위로 짝짓지 않음」 | 의뢰별 단계 날짜 표(의뢰일 · 지시일 · 생산 완료 · 제품 입고 · 출하 · 소요일 5 · 병목) · 단계 소요일 요약 표(건수 · 평균 · 최대) · WO-010 · WO-020 · MAT-030 · SHP-030 · COL-070 연결 |
+| RPT-080 경영 요약 | 일일 · 주간 · 월간 · **위 리포트의 핵심 수치와 짧은 해설** / 일일은 창고·출하 중심, 주간·월간에 수주·생산·수금 | 탭 `data-tab` daily · weekly · monthly(글자 일일 · 주간 · 월간) · 일일 `data-section` = {RPT-040, RPT-050} · 주간 · 월간 = {RPT-010, 020, 040, 050, 060}(D-805) · 차트 `shipment_qty` `issue_qty` SVG = 표 | 자동 대조가 못 찾은 「짧은 해설」 은 **의도된 부재** — D-505 「해설 문장은 없다」 · D-512 「해설 문장은 없다(D-505)」(AI 해설 리포트는 범위 밖). 화면이 그 사실을 적는다: 「해설 문장은 없다(D-505) — 수치는 각 리포트의 집계와 같다」. 결함 아님 |
+| RPT-130 데이터 질의 | 질문 입력 · 생성된 쿼리 · 결과 표 / 허용 뷰만 읽기 전용 · 수금 뷰는 영업·경리·관리자·경영진 · 질의 로그 | `<input name="question" required maxlength="1000">` · 본문 「질문 입력 → 생성된 쿼리 → 결과 표」 · 허용 뷰 8 나열 · 전략부는 `v_dq_collections` · `v_dq_receivables` 흐림(`class="dim"` 2) · 실행 뒤 「생성된 쿼리 DQ-…」 `<pre>` + 「결과 표 — n행」 · 최근 질의 표(허용 「실행」 칩 · 거부 「거부·실패」 칩 + 사유) | 「허용 목록의 조회 뷰만 읽기 전용 … SELECT 한 문장 · 행 상한 200 · 제한 시간 · D-513 · D-806」 · 「모든 질의(거부 포함)는 로그에 남는다」 문장 · 확인 대화(`data-confirm` — app.js 몫 · 템플릿 스크립트 0) |
+| SYS-040 로그 | 접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그 / ERP 회차·교체 · AI 건수·실패·응답 시간 · SSO 사용자·시각·성공 여부 | 탭 6 = `LOG_TABS` · 보이는 열 전부 db-schema.md 컬럼(계약 밖 열 0) · 탭마다 200 · 표 머리 = 열 수 · 표 밑 「원본 `표` · 열 …」 · dq 탭(`?login=QA1 전략부`) 머리 `data-n=7 data-rejected=5` + 질의 번호 7 행 + 「허용」 「거부」 · ai 탭 `data-n=7 data-failed=2` + `data-avg-ms` + 키 없음 문장 · 「QA1 boom」 사유 · erp 탭(오늘) QA1 회차 2 행 · 1회차 「교체」 · 「교체한 회차」 = 2회차 번호 · 필터 탭 · access · dq · erp · sso 선택지 밖 · 틀린 날짜 · NUL → 422(접속 탭은 DEF-QA1-008 해소 뒤) | 「업로드·AI 호출 로그」 L3 하나가 표 셋(ERP 업로드 · AI 호출 · 데이터 질의)으로(D-609) · SSO 탭은 W4 전 「미수집」 + note 「문서관리 SSO 는 W4 (F-DOC-011)」 · 쓰기 0 |
+| 좌측 메뉴 | D-505 「대시보드」 | `nav.MENUS` RPT = 「대시보드」 · `data-menu="RPT"` 글자 「대시보드」 · 칸 있는 부서에게만(G-19 메뉴 = 권한 칸) · 묶음 ⑥ 툴팁 「AI 리포트」 0회(DEF-QA1-009 해소) | 묶음 ⓪~⑦ 순서 그대로 · RPT 는 ⑥ 추적·분석 아래 넷째 |
+
+- **인라인 SVG + 같은 숫자의 표**(goal §3.4): RPT 8 의 `data-series` 묶음 21(010 3 · 020 3 · 030 3 · 040 2 · 050 3 · 060 3 · 070 2 · 080 2) 중 SVG 가 그려진 18 전부 `<title>` 「라벨: 값」 목록 = 표 행(라벨 · 값) — 어긋남 0. SVG 없는 3(RPT-030 1 · RPT-060 1 · RPT-070 1 — 값이 전부 `미수집`인 묶음 · QA1 세계에 불량 · 이번 달 수금이 없다) 은 `ui.empty()` 만 — 표는 「미수집」 행. 외부 차트 라이브러리 0 · `<script>` 은 base 의 `/static/app.js` 하나(RPT · SYS 템플릿 안 `<script` 0 — 정적 grep).
+- **390 폭**: RPT 8 · RPT-130 결과 표 · SYS-040 탭 6 의 모든 `<table>` 이 `.grid-wrap`(`overflow: auto; max-width: 100%` · style.css) 안 — 렌더 HTML 조상 검사 래퍼 밖 표 0 · 템플릿 정적 grep(`<table` 앞 200자 `grid-wrap`) 0 위반. 실제 390 캡처는 QA3 몫(`outputs/e2e/ex_rpt_*-390.png` 가 생기고 있었다).
+- 0건은 전부 `미수집`(KPI value None · 차트 `<title>` 「라벨: 미수집」 · 표 「미수집」) — 0 으로 지어내지 않는다(D-805).
+
+관찰(결함으로 올리지 않음 — 계약에 기준 없음):
+- RPT-050 KPI `due_rate` 가 QA1 세계에서 「미수집」 — QA1 출하 지시는 의뢰번호 없이 만들어 모집단 0 이다(F-RPT-051 「의뢰번호 있는 출하만」 그대로). 수치 일치는 QA2 G-15 몫.
+- RPT-060 의 asof 가 QA1 회차(1980-01-31)로 보이는 것은 QA1 세계가 있는 동안뿐 — 정리 뒤 반영 회차가 없으면 「미수집」.
+- F-RPT-132 거부 응답의 `fields[].reason` 에 생성 SQL 500자가 그대로 들어간다(D-806 「fields 에 질의 번호 · SQL」) — 계약대로.
+
+## W3-5. 검증 명령 · 산출물
+
+- `uv run python tools/check_screens.py [--json <파일>]` — 2026-10-22 재실측(결함 3 반영 뒤): **G-02 6/6 · G-03 3/3 · G-19 9/9 · 종료코드 0**(반영 전 실행 2회: G-02 5/6 · 종료코드 1 = RPT 계약 문장 어긋남 3). 약 12~14초. `--cleanup-all` 은 앞 실행이 죽어 남은 `QA1-` 행(질의 · AI 호출 로그 · 전략부 사용자 포함) 정리.
+- `uv run pytest -q tests/test_qa1_rpt.py tests/test_qa1_screens.py tests/test_qa1_errors.py tests/test_qa1_contract_text.py tests/test_qa1_col.py` — 재실측 **49 passed · 0 failed**(23초). 반영 전 실행은 결함 3 테스트(`test_qa1_rpt.py::test_rpt_422_json_shape_when_not_browser` · `::test_sys_040_filter_outside_choices_is_422` · `::test_menu_has_no_old_name_ai_report`)를 잠깐 `xfail` 로 두었다가 오케스트레이터 지시로 떼어 **평범한 테스트**로 바꿨다 — 앞으로 결함 테스트는 실패 상태로 두고 xfail · skip 으로 가리지 않는다(게이트 규칙).
+  - `tests/test_qa1_rpt.py`(새 · 18 테스트 · 전부 passed) — 표식 `F-RPT-011` ~ `081` · `131` · `132` · `F-SYS-041`: 기능 10 라우트 · 표식 · `require_fn`/`require_screen` · RPT 9 × 8 200/403 + 문장 + 메뉴 이름 · F-RPT-132 × 8 권한 예외(칸 R 3 통과 · 칸 없음 5 → 403) · 조회 칸 422 · 입력 422 4 · 거부 · 부서 뷰 · 키 없음 · 호출 실패 · 실행 실패 · 허용 JSON 200 · 브라우저 200 · 변경 로그 · 로그 7/7 · SVG = 표 · grid-wrap · 스크립트 0 · D-519 · D-520 · asof · 탭 3 · RPT-130 화면 · SYS-040 탭 6 · 자동 확인 52 어긋남 0.
+  - `tests/test_qa1_screens.py` · `test_qa1_contract_text.py` — 문서 문장만 범위 130 · 화면 65 로 고침(검사는 `check_screens` 상수를 따른다 · W1 테스트 16 은 범위가 넓어진 채 통과 — 오류 계약 사례 240 · GET 조회 칸 198 · 미확정 화면 12).
+- `uv run python tools/check_trace.py` — G-01 10/10 PASS · G-02 3/5(고아 6 = DOC · W4).
+- 정리 확인: `psql -h /tmp lcomfine_db -tAc "select count(*) from data_query_log where question like 'QA1-%'; select count(*) from sys_user where login_id like 'QA1-%'; select count(*) from item where item_code like 'QA1-%'; select count(*) from erp_upload_batch where source_file like 'QA1-%'"` → 0 · 0 · 0 · 0. `sys_ai_call_log` 의 QA1 사용자 행 0(사용자와 함께 지움).
+- 쓴 파일: `tools/check_screens.py`(범위 130 · `check_rpt_contract` · `_Rpt` 파서 · `schema_columns` · 세계에 전략부 사용자 · 정리 · F-RPT-132 사례 4 · G-19 행 1) · `tests/test_qa1_rpt.py`(새) · `tests/test_qa1_screens.py` · `tests/test_qa1_contract_text.py`(문장만) · `outputs/qa1-기능계약.md`(이 절). 앱 코드 · 계약 · 결정 · 다른 QA 파일은 건드리지 않았다. 커밋 없음.

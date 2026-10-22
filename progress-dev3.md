@@ -1,7 +1,7 @@
 # progress-dev3 — 개발3 (SHP · PRP · COL · RPT / 화면 22)
 
 > §1 공표(다른 사람이 그대로 쓰는 것) · §2 진행 · §3 요청(스키마 · 계약 · 공용 파일). 실측한 것만 적는다.
-> v2(2026-10-21 정본) 기준. W1 = SHP 3 · PRP 3 · `stats.py`(끝). **W2 = COL 7 · `erp_upload.py` · `stats` 수금 함수(이 판)**. RPT(W3) 는 아직 placeholder 9.
+> v2(2026-10-21 정본) 기준. W1 = SHP 3 · PRP 3 · `stats.py`(끝). W2 = COL 7 · `erp_upload.py` · `stats` 수금 함수(끝). **W3 = RPT 9 · `dashboard.py` · `ai.py` · `dataquery.py`(이 판)** — 개발3 placeholder 0.
 
 ## 1. 공표
 
@@ -105,6 +105,65 @@ erp_upload.UNMAPPED_PREFIX == "거래처 코드 미매핑" · erp_upload.DECISIO
 | 집계 원천 (COL-040~070 · TRK) | 반영 회차 · `error is null` · 사용 중 매핑 — `v_dq_collections` 와 같은 모양(`stats._ERP_CTE`) |
 
 
+### 1.5 W3 공표 — `dashboard` 8 함수 · `ai` · `dataquery` (QA2 G-15 독립 재계산 · QA3 G-16 · G-17 · 개발1 SYS-040 이 그대로 쓴다)
+
+```python
+from lcomfine.app import dashboard, ai, dataquery
+
+# ── dashboard — 집계 SQL 은 여기(+ 재사용하는 stats)뿐 · 읽기만 · 캐시 없음 · 세부 정의 D-805 (D-512 의 빈칸)
+dashboard.orders(period, customer_id=None)      # RPT-010   dashboard.shipment(period, customer_id=None)    # RPT-050
+dashboard.production(period, customer_id=None)  # RPT-020   dashboard.collection(period, customer_id=None)  # RPT-060
+dashboard.quality(period, customer_id=None)     # RPT-030   dashboard.order_flow(period, customer_id=None)  # RPT-070
+dashboard.inventory(period, customer_id=None)   # RPT-040   dashboard.summary(period, customer_id=None)     # RPT-080
+#   period = "YYYY-MM" | (시작일, 종료일)(date · 양끝 포함) — 그 밖 ValueError. customer_id 는 010 · 050 · 060 · 070 · 080 만 적용(020 · 030 · 040 은 기간만 · D-805)
+#   반환(8 함수 공통):
+#   {"kpis":   [{"key", "label", "value": 수 | None, "digits", "unit", "text": str | None, "note"}],   # value None = 미수집 · text 가 있으면 수 대신 글자(미확정 (D-519) 등)
+#    "series": {이름: [{"label", "value": 수 | None}]},     # 구간 라벨 전부(일 'YYYY-MM-DD' 또는 월 'YYYY-MM') · 행 없는 구간 None
+#    "tables": {이름: [dict, …]},
+#    "asof":   date | None,            # RPT-060(+ 070 · 080) = stats.erp_asof() · 그 밖 None
+#    "period": (f, t), "bucket": "day" | "month", "customer_id", "notes": [str]}
+#   kpi key 목록 —
+#   orders:     requests qty customers not_started                       series: requests qty due        tables: top_customers not_started due_distribution
+#   production: work_orders order_qty produced_qty good_qty loss_qty loss_rate(text D-519) utilization(D-801)
+#                                                                         series: good_qty produced_qty by_equipment   tables: by_work_order by_equipment(= stats.machine_stats)
+#   quality:    inspected_qty defect_qty loss_rate(text D-519) judgements rejected_lots rejudged
+#                                                                         series: defect_qty inspected_qty defects     tables: rejected rejudged defects_by_type daily_by_work_order
+#   inventory:  material_receipts material_receipt_qty issues issue_qty product_receipts product_receipt_qty adjusts adjust_diff
+#                                                                         series: receipt_qty issue_qty               tables: top_moves long_stay adjusts receipts_by_item
+#   shipment:   shipments qty customers due_rate(D-804) on_time late_done late_open
+#                                                                         series: qty shipments by_customer           tables: by_customer by_item recent due_rows
+#   collection: asof(text) collected sales(text D-516 가능) shipped_qty over90(text 미수집/D-516 가능)
+#                                                                         series: collected shipped_qty aging         tables: monthly by_customer over90 aging aging_buckets
+#   order_flow: requests shipped avg_1..avg_5(단계 평균 소요일) bottleneck(text D-520)
+#                                                                         series: avg_days collected                  tables: rows(days[단계]) stages collection_monthly collection_by_customer
+#   summary:    위 KPI 들을 group 과 함께(kind 일일 = RPT-040 · 050 / 주간 · 월간 = + 010 · 020 · 060) · tables.sections[{title, screen_id, kpis}] · 추가 키 "kind"
+dashboard.period_bounds(period) · dashboard.summary_kind(f, t) · dashboard.TOP_N(10) · dashboard.DAY_BUCKET_MAX_DAYS(31) · dashboard.FLOW_STAGES
+dashboard.UNDECIDED_LOSS == "미확정 (D-519)" · dashboard.UNDECIDED_BOTTLENECK == "미확정 (D-520)"
+
+# ── ai — OpenAI 를 부르는 유일한 곳(D-504) · 호출마다 sys_ai_call_log 1행(실패 · 키 없음 포함) · 키 값은 어디에도 적지 않는다
+ai.complete(system, user, *, kind, cur=None, user_id=None) -> str   # 키 없음 → ai.NotConfigured · 실패 → ai.CallFailed(사유) — 둘 다 로그 뒤 올린다
+ai.NotConfigured · ai.CallFailed · ai.NOT_CONFIGURED_MESSAGE == "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY"
+ai.set_client(fake)             # 테스트 주입 — fake(model, system, user) -> str · None 이면 실제 호출로
+#   sys_ai_call_log 행: kind('데이터 질의') · model · ok · ms · error(키 없음 문장 · HTTP n · 연결 실패 …) · user_id · created_at
+
+# ── dataquery — 검증 · 실행 · 로그는 여기뿐(D-513 · D-806)
+dataquery.VIEWS                              # {뷰: None | (부서 코드…)} — 수금 뷰 2 = ("SL", "AC", "ADM", "EX")
+dataquery.allowed_views(role_code) -> [str]
+dataquery.validate_sql(sql, allowed_views) -> str    # 통과 = 정리된 SQL · 어긋나면 dataquery.QueryRejected(이유) — 라우터는 422 「허용되지 않는 질의 — 이유」
+dataquery.ask(cur, user, question) -> dict   # {"query_no", "question", "sql", "ok", "columns", "rows", "row_count", "truncated", "error", "ms", "views"}
+#   거부 · 키 없음 · 호출 실패 · 실행 실패는 예외가 아니라 ok=False + error (로그를 남긴 뒤 라우터가 422). data_query_log 1행 / 질의 · sys_ai_call_log 1행 / 호출
+dataquery.recent(user, limit=20)             # 최근 질의 목록(화면)
+dataquery.MAX_ROWS(200) · STATEMENT_TIMEOUT_MS(5000) · QUESTION_MAX_CHARS(1000) · REJECT_PREFIX("허용되지 않는 질의")
+```
+
+| 무엇 | 값 |
+|---|---|
+| RPT 화면 조회 인자 | RPT-010~070 `?date_from=&date_to=&customer=`(거래처는 010 · 050 · 060 · 070) · 기본 = 이번 달 1일 ~ 오늘 · 기간 상한 3년 · 형식 오류는 422 로 화면을 다시 그린다 · RPT-080 `?tab=daily|weekly|monthly&asof=&customer=` · RPT-130 GET 인자 없음 |
+| 화면 표식 | KPI `data-kpi="<key>"` · 차트 `<section data-series="<이름>">`(SVG `<title>` 「라벨: 값」 + `table[data-series-table]` 같은 숫자 · 소수 0 `num`) · 표 `<section data-table="<이름>">` · RPT-080 `data-section="<화면 ID>"` · RPT-130 결과 `data-result="<질의 번호>"` |
+| `POST /rpt/query` | 폼 `question`(필수 · 1000자) → JSON 200 `{ok, message, query_no, sql, columns, rows, row_count, truncated, ms}` / 422 `{message: "허용되지 않는 질의 — …" \| "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY" \| "AI 호출 실패 — …" \| "실행 실패 — …", fields: [질의 번호 · SQL]}` · 브라우저 성공은 같은 화면 200 에 SQL · 결과 표(D-806) |
+| 변경 로그 | `sys_change_log` function_id `F-RPT-132` · target `data_query_log:<질의 번호>` (성공만) |
+
+
 ## 2. 진행 (W1 — 기능 10/10)
 
 | 기능 | API | 상태 | 테스트 (`@pytest.mark.fn`) |
@@ -184,6 +243,48 @@ erp_upload.UNMAPPED_PREFIX == "거래처 코드 미매핑" · erp_upload.DECISIO
 
 파일: `src/lcomfine/app/erp_upload.py`(새) · `src/lcomfine/app/routers/col.py`(새) · `src/lcomfine/app/templates/col/{_c,uploads,history,customer_map,collections,receivables,aging,shipment_vs_collection}.html`(새) · `src/lcomfine/app/stats.py`(수금 함수 7 추가) · `src/lcomfine/db/seed_dev3.py`(새) · `tests/test_dev3_col.py`(새) · `decisions.md`(D-802~804 덧붙임). 커밋은 오케스트레이터.
 
+## 2-W3. 진행 (W3 대시보드 — 기능 10/10 · 2026-10-22)
+
+| 기능 | API | 상태 | 테스트 (`@pytest.mark.fn`) |
+|---|---|---|---|
+| F-RPT-011 수주 리포트 조회 | `GET /rpt/orders` | 완료 | 1 — 의뢰 2 · 수량 80 · 미착수 1 · 일 구간 31(값 2 · 미수집 29) · 납기 월 분포 · SVG title = 표 · 422 3 · SH/DS 403 · 업무 테이블 diff 0 |
+| F-RPT-021 생산 리포트 조회 | `GET /rpt/production` | 완료 | 1 — 생산 150 · 양품 138 · 로스 12 · 가동률 80.0(D-801) · `미확정 (D-519)` · 다음 달 제외 · 기계별 = `stats.machine_stats` · SL 403 |
+| F-RPT-031 품질 리포트 조회 | `GET /rpt/quality` | 완료 | 1 — 검사 150 · 불량 5 · 불량유형 합 · 판정 3 · 불합격 LOT 2(입고 1 · 제품 1) · 재판정 1(이전 불합격 → 합격) · AC 403 |
+| F-RPT-041 재고·창고 리포트 조회 | `GET /rpt/inventory` | 완료 | 1 — 입고 2 · 150 · 불출 1 · 30 · 제품 입고 1 · 조정 1 · 차이 −3 · 변동 상위 · 장기 체류 · SL 403 |
+| F-RPT-051 출하 리포트 조회 | `GET /rpt/shipment` | 완료 | 1 — 확정 2 · 55 · 준수율 50.0(납기 안 완료 1 · 지연 1 · 의뢰번호 없는 출하 제외) · 거래처 필터 · PR 403 |
+| F-RPT-061 수금 리포트 조회 | `GET /rpt/collection` | 완료 | 1 — 회차 없음 = `미수집` → 반영 회차 1(매출 1,000 · 수금 400 · 1990 매출 300) → 기준일 명시 · 월별 수금 400 · 출하 20 · 90일 초과 거래처 · PR/SH 403 |
+| F-RPT-071 주문 흐름 리포트 조회 | `GET /rpt/order-flow` | 완료 | 1 — 의뢰 05-02 → 지시 05-03 → 생산 05-06 → 입고 05-08 → 출하 05-12 = 1 · 3 · 2 · 4 · 10일 · 미착수 의뢰는 전부 미수집 · `미확정 (D-520)` · PR 403 |
+| F-RPT-081 경영 요약 조회 | `GET /rpt/summary` | 완료 | 1 — 일일(040 · 050) · 주간 · 월간(+ 010 · 020 · 060) · 탭 · 기준일 422 · PR/SL 403 |
+| F-RPT-131 데이터 질의 조회 | `GET /rpt/query` | 완료 | 1 — 질문 폼 · 허용 뷰(ST 는 수금 뷰 흐림) · 최근 질의 · PR/AC 403 · 스크립트 없음 |
+| F-RPT-132 질의 실행 | `POST /rpt/query` | 완료 | 7 — `validate_sql` 거부 29 사례(쓰기 · 다중 문장 · 주석 · CTE · 허용 밖 뷰 · 하위 질의 · 카탈로그 · `pg_sleep` · 함수 · for update · into · 큰따옴표 · $$ · NUL) · 통과 4 · 부서 뷰 제한(PR · ST 거부 · SL · EX 허용) · 키 없음 → `NotConfigured` → 422 문장 그대로 + `sys_ai_call_log` 실패 + `data_query_log` 거부 행 · fake 실패 → 422 「AI 호출 실패」 + 로그 · fake 성공 → 200 · 결과 2행 · 로그 ok · 변경 로그 1 · 브라우저 200 결과 표 · 실행 실패(없는 열) 422 · 질의 6 → 로그 6 · 6 · 행 상한 · PR/SL 403 · 업무 테이블 diff 0 |
+| (dashboard) 빈 기간 | — | 완료 | 1 (표식 없음) — 6 함수 KPI · series 전부 None · 요약 kind 일일/주간/월간 · ValueError |
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 개발3 테스트 | **78 passed** (7.9s) = W1 19 + W2 14 + W3 45 (`tests/test_dev3_rpt.py`) | `uv run pytest -q tests/test_dev3_*.py` |
+| 전체 테스트 | **351 passed · 1 failed** — 실패 1 = `tests/test_qa3_security.py::test_g19_write_403_full_sweep`(QA3 검사기의 기대값 결함 · §3-12) | `uv run pytest -q` |
+| G-02 RPT | 라우트 없는 계약 16 → **6**(RPT 0 · 남은 6 = DOC) · 표식 없는 기능 16 → **6**(RPT 0) · 이어진 기능 **130/136** | `make check-trace` |
+| G-03 RPT | 화면 67 × 칸 있음 260/260 → 200 · 칸 없음 276/276 → 403 · placeholder 11 → **2**(개발1 DOC 2 · **RPT 0**) | `make check-routes` |
+| G-05 쓰기 경계 | PASS — 라우터 16(rpt.py 포함) 쓰기 테이블 ⊆ 계약 · `rpt.py` 직접 쓰기 0(로그는 `dataquery` · `ai`) · RPT 8 화면 GET 전후 업무 테이블 24 diff 0(테스트마다 확인) | `uv run python tools/check_data.py` G-05 · `tests/test_dev3_rpt.py` `_counts()` |
+| G-15 · G-16 · G-17 | 기능은 있다 — QA2 `check_data.py` · QA3 `check_security.py` 가 아직 「W3 — 없다」로 적어 FAIL(QA 가 W3 로 잰다 · §3-13 · §3-14) | `make check-data` · `make check-security` |
+| 테스트 잔류 행 | `data_query_log` 0 · `sys_ai_call_log` 0 · `T3%` 거래처 · 원자재 LOT · ERP 회차 0 | `psql -h /tmp lcomfine_db -c "select count(*) from data_query_log"` 등 |
+| 실제 OpenAI 호출 | 테스트 0회(`ai.set_client(fake)`) · 개발 중 수동 확인 1회(RPT-130 질의 · 로그 행은 지웠다) | `grep -n set_client tests/test_dev3_rpt.py` |
+| 결정 | D-805(대시보드 집계 세부) · D-806(질의 검증 · 실행 · 응답 · ai 시그니처) — `가설` | `decisions.md` |
+
+파일: `src/lcomfine/app/dashboard.py` · `ai.py` · `dataquery.py` · `routers/rpt.py`(새) · `templates/rpt/{_d,orders,production,quality,inventory,shipment,collection,order_flow,summary,query}.html`(새) · `stats.py`(`period_bounds` 공개 한 줄) · `tests/test_dev3_rpt.py`(새) · `decisions.md`(D-805 · 806 덧붙임). 커밋은 오케스트레이터.
+
+### 2-W3.1 QA3 결함 반영 (2026-10-22)
+
+| 결함 | 고친 것 | 실측 | 검증 |
+|---|---|---|---|
+| DEF-QA3-005 (경미) — AI SQL 속 NUL → 로그 insert DataError → 롤백(로그 0행) · 사유 없는 422 | `dataquery._strip_fence` 가 NUL 을 표시 글자 `\x00`(`dataquery.NUL_GLYPH`) 로 바꾸고, `ask` 가 원문에 NUL 이 있었으면 **검증 전에** 「허용되지 않는 질의 — 쓸 수 없는 글자(NUL) · 원문 N자」 로 거부(`validate_sql` 도 같은 이유로 거부 — 심층 방어). `sql_text` · 422 `fields.SQL` 에는 표시 글자가 간다 | 422 message 「허용되지 않는 질의 — 쓸 수 없는 글자(NUL) · 원문 N자」 · `data_query_log` 1행(sql_text `select * from v_dq_orders\x00 where 1=1`) · `sys_ai_call_log` 1행(fake 성공) · 응답에 NUL 0 | `uv run pytest -q tests/test_dev3_rpt.py -k nul_is_rejected` · QA3 G-16 「우회 SQL」 54/54 PASS |
+| DEF-QA3-006 (경미) — 실제 호출 경로 `CallFailed` 문장의 키가 dq 로그 · 422 · 화면에 노출 | `ai._mask` 가 설정 키 값 + `Bearer …` + `sk-…` 꼴을 가리고, `complete` 의 `except CallFailed` 가 가린 문장으로 **다시 만든 예외**를 올린다(`raise CallFailed(masked) from None`) — 로그 · 예외 · 응답 어디로 가도 키 없음 | sentinel 키 · `_openai` 가 「HTTP 401 … key …」 로 실패 → `ai.complete` 예외 문장 · 422 본문 · `sys_ai_call_log.error` · `data_query_log.error` · RPT-130 최근 질의 전부 sentinel 0 · `***` 표식 | `uv run pytest -q tests/test_dev3_rpt.py -k never_carries_key` · QA3 G-17 「키 값이 로그 · 예외 문장 · 응답에 없다」 PASS |
+
+| DEF-QA1-007 (경미) — RPT 8 화면 조회 칸 형식 오류 422 가 `Accept` 에 text/html 이 없어도 HTML 재렌더 | `routers/rpt.py` `_render` — `http.wants_html(request)` 가 아니면 `http.validation_error` 를 그대로 raise(계약 §2 JSON `{code, message, fields}`), 브라우저는 같은 화면 422 재렌더 유지(아키텍트가 api-contract §2 에 예외로 적는다). `_dashboard` · `summary` 둘 다 `_render` 를 거친다 | JSON: `date_from=2002-13-01` → 422 `code validation_error` · `fields[0].name` 시작일 · `customer=abc` → 거래처 · `tab=yearly` → 탭 / `Accept: text/html` → 422 text/html · 입력칸 유지 | `uv run pytest -q tests/test_dev3_rpt.py -k json_422_without_html` (`@pytest.mark.fn("F-RPT-011")`) |
+| DEF-QA2-005 (경미) — RPT-070 이 거래처·월별 수금을 보이면서 「ERP 업로드 기준일」 글자가 없다 | `templates/rpt/order_flow.html` 에 RPT-060 과 같은 `c.asof_line(data.asof)` 한 줄(Ruling 29 · asof = `dashboard.order_flow` 가 돌려주는 `stats.erp_asof()` · None 이면 「미수집 — 반영된 회차가 없다」) | 화면 본문에 「ERP 업로드 기준일: <날짜 또는 미수집>」 | `uv run pytest -q tests/test_dev3_rpt.py -k order_flow`(`@pytest.mark.fn("F-RPT-071")` 테스트에 한 줄 추가) |
+
+실측 명령 결과(이 수정 뒤): `uv run pytest -q tests/test_dev3_rpt.py tests/test_qa3_rpt.py tests/test_qa1_rpt.py` → **79 passed · 1 xfailed · 2 failed = XPASS(strict)**(`test_rpt_422_json_shape_when_not_browser` = DEF-QA1-007 해소로 XPASS · `test_menu_has_no_old_name_ai_report` XPASS — 둘 다 QA1 이 xfail 표식을 뗀다); `uv run pytest -q tests/test_dev3_rpt.py tests/test_qa3_rpt.py` → **63 passed**(dev3 RPT 47 · QA3 RPT 16); `uv run pytest -q tests/test_dev3_*.py` → **80 passed**; `uv run python tools/check_security.py` G-16 7행 · G-17 5행 전부 PASS. 테스트 0회 실제 OpenAI 호출(fake · sentinel · `_openai` 치환).
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 1. **[아키텍트 · function-list.md / db-schema.md §2.2]** F-SHP-021 계약 문장 「`stock_move` 한 행(사유 출하)」 → 「LOT 라인마다 `stock_move` 한 행」. 구현 · 브리프(w1-dev3)는 라인마다 1행이다(LOT 별 추적 · `stock_move.lot_id` 가 한 LOT 만 담는다).
@@ -202,4 +303,13 @@ erp_upload.UNMAPPED_PREFIX == "거래처 코드 미매핑" · erp_upload.DECISIO
 10. **[개발1 · TRK-030 · TRK-020 · HOME-010]** §1.3 공표대로 `stats.customer_receivable(cid)` 를 수금 칸에, `stats.due_compliance(period)` 를 납기 준수율에, HOME 회계부 카드 「90일 초과 미수」는 `len(stats.aging(stats.erp_asof() or date.today())["over90"])`(undecided 면 `미확정 (D-516)`) 로 붙일 수 있다. TRK-030 의 `erp_asof` 조회는 `stats.erp_asof()` 로 바꾸면 집계 SQL 이 `stats` 한 곳이 된다(progress-dev1 §3 「stats 가 공표되면 옮긴다」).
 11. **[아키텍트 · interfaces.md §9]** DEF-QA2-004 수정으로 `erp_upload.remap(...)` 반환이 `int` → **`dict {"reviewed", "changed", "applied", "still_error"}`** 로 바뀌었다(§1.4). F-COL-031 · 032 응답 문장은 「다시 해석한 행 N · 그중 반영 M · 다른 오류로 여전히 제외 K」, JSON 은 `reinterpreted · applied · still_error · remapped(=applied)`. §9 의 `remap` 한 줄을 이대로 갱신해 달라.
     **종결** — 아키텍트가 interfaces.md §9 에 반영했다(2026-10-22). 같이 DEF-QA1-006 수정으로 `erp_upload.py` 의 알림 닫기가 `notify.resolve_by_link` 로 바뀌었다(Ruling 27 · 아키텍트 수정).
-
+12. **[QA3 · tools/check_security.py:274 · tests/test_qa3_security.py]** G-19 「R·없음 부서 쓰기 403」의 기대값 `expect_403 = (r.code not in f.roles_w) and not f.permission_exception` 이 권한 예외 기능(F-RPT-132 · F-DOC-011 · F-HOME-022)을 **모든 부서 통과**로 본다. 계약은 `api-contract.md` §4 「권한 예외 쓰기 기능 … 칸이 없으면 → 403(R 이면 통과)」 — RPT-130 은 ST · EX · ADM 만 칸이 있어 SL · PR · SH · DS · AC 의 `POST /rpt/query` 403 이 맞다(`rbac.require_fn` · `can_do` 가 그렇게 판정 · 화면 GET 도 403). 기대값을 `expect_403 = (rbac.level(r.code, f.screen_id) is None) if f.permission_exception else (r.code not in f.roles_w)` 로 고쳐 달라. HOME-020 · DOC-010 은 전 부서 칸이 있어 지금까지 드러나지 않았다. (전체 pytest 의 실패 1 이 이것이다.)
+13. **[QA2 · check_data.py G-15]** `dashboard` 8 함수의 반환 모양과 집계 정의는 §1.5 · D-805. 재계산 절차: ① `tests/test_dev3_rpt.py` 의 `RptWorld` 처럼 2002-05 에 행을 만들거나 실 DB 의 기간을 고른다 ② `dashboard.<fn>((f, t), customer_id)` 의 `kpis[key].value` · `series[name][i].value` 를 D-805 의 SQL 정의로 따로 센다 ③ 화면은 `data-kpi="<key>"` 안의 숫자 · `data-series="<name>"` 안 SVG `<title>` 「라벨: 값」 과 표 둘째 열(`num` 소수 0)로 대조 ④ 0건은 `미수집` 글자, 로스율 `미확정 (D-519)`, 병목 `미확정 (D-520)`, RPT-060 의 `asof` = `stats.erp_asof()`(KPI `asof` · 화면 「ERP 업로드 기준일」). 수금 · 납기 · 기계별은 `stats` 를 다시 쓰므로 G-14 · D-804 · PRP-020 과 같은 수가 나와야 한다.
+14. **[QA3 · check_security.py G-16 · G-17]** 우회 시도는 `dataquery.validate_sql(sql, dataquery.allowed_views(role))` 로 직접, 또는 `ai.set_client(lambda m, s, u: "<sql>")` 주입 뒤 `POST /rpt/query`(폼 `question`) 로 — **실제 OpenAI 를 부르지 않는다**(`.env` 에 키가 있다). 키 없음은 `monkeypatch.setattr(ai, "_config", lambda: ("", "gpt-4.1"))` + `ai.set_client(None)` → 422 문장 「AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY」 · `sys_ai_call_log` ok=false 행 · `data_query_log` ok=false 행. 거부 사례 29 는 `tests/test_dev3_rpt.py::test_validate_sql_rejects`. `POST /rpt/query` 에 빈 폼은 422(질문 누락 · AI 호출 전) — G-19 전수 두드리기는 그래서 OpenAI 를 부르지 않는다.
+15. **[개발1 · SYS-040 로그 탭]** `sys_ai_call_log` 열: `kind`(데이터 질의) · `model` · `ok` · `ms` · `error`(키 없음 문장 · HTTP n · 연결 실패 · 응답 형식 — 키 값은 없다) · `user_id` · `created_at`. `data_query_log` 열: `query_no`(DQ-…) · `user_id` · `role_code` · `question` · `sql_text`(AI 실패면 NULL) · `ok` · `row_count` · `error`(「허용되지 않는 질의 — …」 · 「AI 호출 실패 — …」 · 「실행 실패 — …」 · 키 없음 문장) · `ms` · `created_at`. 둘 다 읽기만(쓰는 곳은 `ai` · `dataquery` 뿐). 거부 행도 한 줄이다 — 탭에서 `ok=false` 를 빨간 행(`is-error`)으로 보이면 G-16 「거부 포함」이 눈에 보인다.
+16. **[아키텍트 · interfaces.md §9]** 코드대로 갱신해 달라: `ai.complete(system, user, *, kind, cur=None, user_id=None)`(+ `ai.CallFailed` · `ai.NOT_CONFIGURED_MESSAGE`) · `dataquery.ask` 반환 dict 모양 · `dataquery.VIEWS · allowed_views · QueryRejected · recent · MAX_ROWS` · `dashboard` 반환의 `period · bucket · customer_id · notes` 키와 `period_bounds · summary_kind` (§1.5). `stats.period_bounds(period)` 도 공개했다.
+    **종결** — 아키텍트가 interfaces.md §9 를 §1.5 대로 갱신했다(2026-10-22). 코드 변경 없음.
+17. **[아키텍트 · api-contract.md §2 참고]** F-RPT-132 의 브라우저 성공 응답은 303 이 아니라 **같은 화면 200**(SQL · 결과 표 — 결과 행을 저장하지 않아 303 뒤에 보일 수 없다 · D-806). 변경 로그 · JSON `http.saved` 는 계약 그대로. 계약 표에 이 예외 한 줄을 적어 주면 QA1 의 사례와 맞는다.
+    **종결** — 아키텍트가 api-contract.md §2 에 F-RPT-132 브라우저 200 예외 한 줄을 넣었다(2026-10-22).
+18. **[아키텍트 · static/style.css · 선택]** RPT 템플릿은 색을 전부 토큰 클래스로 썼고 인라인 style 은 레이아웃(패널 안 `h2` 여백 `margin: 12px 16px 0` · 질문 칸 `flex: 1 1 100%`)만 남았다. `.panel--grid > h2 { margin: 12px 16px 0 }` 와 `.search .field--wide { flex: 1 1 100% }` 를 넣어 주면 인라인 style 을 뺀다.
+    **종결** — 아키텍트가 두 클래스를 style.css 에 넣었고, `templates/rpt/` 의 인라인 `style=` 를 전부(h2 여백 → `.panel--grid > h2` · 질문 칸 → `.field--wide` · 결과 `<pre>` · 요약 탭 nav 의 style 제거) 빼서 **`style=` 0** 이다(`grep -rc 'style=' src/lcomfine/app/templates/rpt/` → 전부 0 · `uv run pytest -q tests/test_dev3_rpt.py` 45 passed · 2026-10-22).

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% import "col/_c.html" as c %}
+{% import "_macros.html" as ui %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "원천: ERP 수금현황 업로드분(반영 회차). 월별 수금액 · 출하 대비 수금(월 · 거래처 단위 · 건 단위로 짝짓지 않음) · 미수 연령 · 90일 초과 거래처.", data, [(nav.path_of("COL-060"), nav.by_id("COL-060").name), (nav.path_of("COL-070"), nav.by_id("COL-070").name)]) }}
+  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("collected", "월별 수금액", data.series.collected, "월", "수금액") }}
+{{ d.chart_table("shipped_qty", "월별 확정 출하 수량(MES)", data.series.shipped_qty, "월", "출하 수량", 3) }}
+{{ d.chart_table("aging", "미수 연령(구간별 순액 · 기준일 = ERP 업로드 기준일)", data.series.aging, "구간", "순액(Σ매출 − Σ수금)") }}
+{{ d.table("monthly", "출하 대비 수금(월)", [("ym", "월", none), ("shipments", "확정 출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "ERP 매출", 0), ("collected_amount", "ERP 수금", 0)], data.tables.monthly) }}
+{{ d.table("by_customer", "출하 대비 수금(월 · 거래처)", [("ym", "월", none), ("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "매출", 0), ("collected_amount", "수금", 0)], data.tables.by_customer) }}
+<section class="panel panel--grid" data-table="over90">
+  <h2>90일 초과 거래처 ({{ data.tables.over90 | length }})</h2>
+  {% if data.tables.over90 %}
+  <div class="grid-wrap"><table class="grid"><thead><tr><th>거래처 코드</th><th>거래처</th><th class="num">90일 초과 순액</th><th class="num">미수 합</th></tr></thead>
+  <tbody>{% for r in data.tables.over90 %}<tr><td>{{ r.customer_code }}</td><td>{{ r.customer_name }}</td><td class="num">{{ r.cells[data.tables.aging_buckets[-1]].net | num }}</td><td class="num">{{ r.total_net | num }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty("90일 초과 거래처 없음" if data.asof else "미수집") }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

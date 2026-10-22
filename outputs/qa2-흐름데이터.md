@@ -207,3 +207,81 @@ G-06 ~ G-10 은 W1 과 같이 PASS(같은 실행에서 다시 잼). 게이트 �
 - 기준 기간은 사람이 고른 날짜 둘이고 같은 (시작, 끝)만 교체 키다(D-802). 겹치지만 다른 기간(예: 10/1~10/31 과 10/1~10/15)은 둘 다 `반영` 으로 남아 둘 다 집계에 든다 — `v_dq_collections` 의 「기간이 겹치면 올라온 그대로 센다」 와 같다. QA2 흐름은 이 성질을 써서 기간 Q 회차(E2)와 기간 P 회차(E)를 같은 달에 함께 두었다.
 - `remap` 은 미매핑 코드 행만이 아니라 원문 거래처코드가 그 코드인 반영 회차 행 전부를 지금 열 매핑 · 거래처 매핑으로 다시 해석한다(날짜 · 금액 오류는 그대로 남는다) — 계약 F-COL-031 「해당 오류 행을 다시 반영할 수 있다」 에 맞는다. 사람이 읽는 수가 달랐던 것(DEF-QA2-004)은 해소되어 이제 「다시 해석 · 그중 반영 · 여전히 제외」 세 수로 나온다.
 - `check_data.py` 는 ERP 회차의 기준 기간을 DB 가 센 확정 출하 월(`to_char(confirmed_at,'YYYY-MM')` · 세션 시간대)에서 잡는다 — 월 경계의 밤에 돌려도 출하 월 = ERP 월이 맞다.
+
+## 8. W3 대시보드 (2026-10-22)
+
+개발3 이 `dashboard.py` 8 함수와 RPT-010~080 화면을 만들었다. `check_data.py` 에 **대시보드 단계**(`Flow.dashboards` · 수금 단계 뒤)를 더해 G-15 를 재고, `LATER` 를 비웠다(이제 G-05~G-15 전부 잰다 · 재지 못한 것은 이유와 함께 FAIL — `MUST_MEASURE_W3`). 앱 코드는 고치지 않았다. 세계 = W1 E2E(의뢰 R1 100 · 지시 · 입고 120/80 · 분할 · 불출 150 · 일보 100/95/5 · 480/30분 · 검사일보 95/2 DF01 · 제품 입고 95/10/5 · 판정 · 출하 S1 60 확정) + 미착수 의뢰 R2 10 + W2 ERP 업로드(C1 매출 1,000 · 수금 300 / C2 매출 500 · 수금 200 · 미매핑 U 제외) — **기간 = S1 확정 월(2026-10-01~31 · 일 구간 31) · 거래처 = C1(흐름) · C2(ERP 만 · 의뢰 · 출하 없음)**.
+
+대조 방식: 화면 8 마다 ① `dashboard.<fn>((f, t), customer_id)` 반환(kpis · series · tables) ② **QA2 가 따로 쓴 SQL**(D-805 정의 · `group by` · `filter (where …)` · `count(distinct (kind, lot_id))` · 뷰 · `stats` 를 거치지 않음) ③ 화면 HTML(`data-kpi` 카드 글자 · `data-series` 구역의 SVG `<title>` 「라벨: 값」 과 `table[data-series-table]` 둘째 열 · `data-table` 행 수) 셋을 대조했다. **020 · 030 · 040 은 거래처 필터가 없어 전 DB 집계**라 다른 QA 의 동시 쓰기가 끼어든다 — 처음엔 「독립 → 함수 → 화면 → 독립」 앞뒤 대조 3회로 했는데 QA1 · QA3 가 계속 써서 3회 전부 흔들렸다(제품 입고 3→4 · 체류일 목록 변동). 그래서 **REPEATABLE READ 트랜잭션 하나**(`Flow.snapshot` — `conn.q` · `conn.q1` 만 그 연결로 바꾸고 끝에 rollback · `conn.x` · `conn.tx` 는 그대로)에서 함수 · 독립 SQL · 화면 GET(TestClient → 라우터 → 같은 `conn.q`) 을 읽어 **같은 순간의 DB** 로 셋을 맞췄다. 그 뒤 두 번 연속 종료코드 0.
+
+### 8.1 결함
+
+| ID | 심각도 | 담당 | 상태 | 요약 |
+|---|---|---|---|---|
+| DEF-QA2-005 | 경미 (계약 밖 · 판단 요청) | 개발3 (`templates/rpt/order_flow.html`) · 아키텍트(계약 문장) | **해소(실측)** — Ruling 29(F-RPT-071 에 명시) · `c.asof_line(data.asof)` · `tests/test_dev3_rpt.py` 본문 검사 · `check_data.py` rc 0 · `test_qa2_rpt.py` 12 passed (2026-10-22 오케스트레이터 실측) | **RPT-070 주문 흐름이 거래처·월별 수금(ERP 업로드분 · `stats.shipment_vs_collection`)을 보이면서 「ERP 업로드 기준일」 글자가 없다.** `dashboard.order_flow` 는 `asof`(= `stats.erp_asof()` · 실측 2026-10-31)를 돌려주고, RPT-060 은 머리 `ERP 업로드 기준일: 2026-10-31` 과 KPI `asof` 로, RPT-080 주간 · 월간은 머리에 적는데 RPT-070 화면만 적지 않는다(재현: `GET /rpt/order-flow?date_from=2026-10-01&date_to=2026-10-31&customer=<C1>` → 본문에 「ERP 업로드 기준일」 0회 · `check_data` 단계 80 「화면에 기준일 False」). 기대: 수금 수치가 있는 화면은 기준일을 함께(정본 RPT-060 · TRK-030 의 같은 성질 · progress-dev3 §1.5 「asof: RPT-060(+ 070 · 080)」). **계약 F-RPT-071 · D-512 · D-805 는 070 에 명시를 요구하지 않아 G-15 수치 판정에는 넣지 않았다**(G-15 「수금 대시보드에 최근 업로드 기준일」 = RPT-060 PASS). 고치려면 `order_flow.html` 에 `c.asof_line(data.asof)` 한 줄 — 또는 계약에 「070 은 적지 않는다」 를 적으면 종결 |
+
+치명 0 · 중대 0 · 경미 1(미해소 · 계약 밖). W1 · W2 결함 4 는 전부 해소 상태 그대로.
+
+### 8.2 게이트 판정 — W3 실측 (`uv run python tools/check_data.py --transcript` · 종료코드 **0** · 약 5초 · 두 번 연속 · `make check-data` 도 0)
+
+| 게이트 | 판정 | 실측 (check_data 행 — 번호 · 거래처 코드는 그 실행 `QA2-640752978` 의 값) |
+|---|---|---|
+| **G-05 쓰기 경계** | **PASS** (8/8) | 기존 6 행 + **새 행 2**: ① 정적 — `rpt.py` 직접 쓰기 **0** · `dataquery.py` 쓰기 {data_query_log} · `ai.py` 쓰기 {sys_ai_call_log} ⊆ F-RPT 「쓰는 테이블」 · 계약 밖 0 · 쓰기 호출(`dataquery.ask` · `conn.tx`)이 전부 **POST 핸들러 `run_query` 안** · GET 핸들러 9 에는 없음 · `dashboard.py` 쓰기 문 0(`READ_ONLY_HELPERS` 에 추가 — 집계 캐시 테이블 없음) ② 동적 — 경영진 `ex` 로 RPT 8 화면 **12 GET**(C1 필터 · 기본 기간 2 · 요약 탭 3) 전부 200 · **업무 테이블 44 행 수 diff 0**(로그 4 — 조회 · 변경 · 질의 · AI — 는 다른 세션이 동시에 쓰므로 수에서 빼고, GET 이 질의 로그를 쓰지 않는 것은 ① 이 보증) |
+| **G-15 대시보드 8 수치** | **PASS** (11/11) | 아래 8 화면 행 + asof · 미수집/미확정 · 거래처 필터 행 — 전부 **함수 = 독립 SQL = 화면 KPI 글자 = SVG `<title>` = 표** · 어긋남 0 |
+| — RPT-010 수주 (C1 · 10월) | PASS | 의뢰 **2** · 수량 **110.000** · 거래처 **1** · 미착수 **1** = 독립 SQL 2 · 110.000 · 1 · 1 · 일 구간 31(값 1 · 미수집 30) 건수 · 수량 · 납기 월 분포 [('2026-10', 1), ('2026-11', 1)] · 거래처 상위 (C1, 2, 110) · 미착수 표에 REQ-2610-0240 있고 REQ-2610-0239(지시 있음) 없음 · 화면 KPI 어긋남 0 · SVG/표 어긋남 0 |
+| — RPT-020 생산 (10월 · 전 DB) | PASS | 일보 있는 지시 **1** · 지시 수량 **100.000** · 생산 **100.000** · 양품 **95.000** · 로스 **5.000** · 가동률 **94.1**(= 480 ÷ 510 · D-801) = 독립 SQL 같음 · 로스율 KPI `text` 「미확정 (D-519)」 = 화면 글자 · 구간 양품 · 생산 같음 · 기계별(설비 코드 → 양품 · 생산) {EQ01: (95, 100)} = 독립 · WO-2610-0140 행 100/95/5 |
+| — RPT-030 품질 (10월 · 전 DB) | PASS | 검사 **95.000** · 불량 **2.000** · 판정 **8** · 불합격 LOT **3** · 재판정 **3** = 독립 SQL(`count(distinct (kind, lot_id)) filter (where result='불합격')` · `filter (where seq > 1)`) · 로스율 「미확정 (D-519)」 화면 같음 · 불량유형 합 {DF01: 2} · 재판정 표 전부 seq>1 · 불합격 표 (종류, LOT) 수 = KPI |
+| — RPT-040 재고·창고 (10월 · 전 DB) | PASS | 원자재 입고 **2건 220.000**(분할 LOT 제외 · 취소 제외) · 불출 **2건 165.000** · 제품 입고 **3건 110.000** · 조정 **None(미수집)** 차이 None = 독립 SQL · 구간 입고 · 불출 같음 · 변동 상위 10 수량 [95, 60, 50, 40] 같음 · 장기 체류 10 체류일 같음 · 변동 상위 표 4행 |
+| — RPT-050 출하 (C1 · 10월) | PASS | 출하 **1건 60.000** · 거래처 **1** · 준수율 **None(미수집)** (납기 안 · 지연 완료 · 지연 전부 None — R1 납기 11-01 은 기간 밖 · R2 는 진행 = 분모 밖 · D-804) = 독립 SQL(`filter (where done and last_on <= due_date)` …) · 구간 수량 · 건수 · 거래처별 [(C1, 60, 1)] 같음 · SHP-2610-0625 60 · 의뢰 REQ-2610-0239 · 준수율 모집단 전부 C1 |
+| — RPT-060 수금 (C1) | PASS | 수금 **300.00** · 매출 **1000.00** · 출하 수량 **60.000** · 90일 초과 **None** · **asof 2026-10-31** = 독립 SQL(ERP 반영 회차 테이블 직접 · `max(period_to) of 반영`) · 월별 수금 [300] · 출하 [60] · 연령 4구간 [700, 0, 0, 0] 같음 · 화면 머리 「ERP 업로드 기준일: 2026-10-31」 · KPI asof 같음 · 월 표 1행 |
+| — RPT-070 주문 흐름 (C1) | PASS | 의뢰 **2** · 출하까지 **1** · 평균 소요일 5단계 **[0.0, 0.0, 0.0, 0.0, 0.0]**(전부 오늘) = 독립 SQL(`left join … group by` · 단계 5 를 D-805 에서 옮겨 적음) · 의뢰별 소요일 표 = 독립(R1 5단계 전부 0 · R2 미착수 전부 None=미수집) · 단계 요약(건수 · 평균 · 최대) 같음 · 병목 KPI 「미확정 (D-520)」 · 표 병목 열 「미확정 (D-520)」 · 수금 월 합 = 독립 |
+| — ERP 업로드 기준일(asof) | PASS | RPT-060 머리 · KPI 2026-10-31 (G-15 기대값) / RPT-070 반환 asof 2026-10-31 · **화면 글자 없음 → DEF-QA2-005 경미(계약 밖)** / RPT-080 주간 · 월간 머리 표시 · 일일 없음(수금 절 없음) |
+| — RPT-080 경영 요약 (C1 · 기준일 오늘) | PASS | **일일**(10-22) 절 [RPT-040, RPT-050] · KPI 12 / **주간**(10-16~22) · **월간**(10-01~22) 절 [040, 050, 010, 020, 060] · KPI 24 — 절 KPI = 같은 기간의 개별 함수 = 독립 SQL = 화면 `data-section` 안 글자 · 어긋남 0 · 구간 SVG/표 어긋남 0 · 해설 문장 없음 · 기준일 주간 · 월간만 |
+| — 미수집 · 미확정 글자 | PASS | C2(의뢰 0): KPI 4 전부 None → 화면 「미수집」 · 일 구간 31칸 표 전부 「미수집」 · SVG 대신 `empty` / C1: 행 없는 날 **30칸** 「미수집」 = 표 · SVG title 미수집 수 · 「0」 칸 없음(0 으로 지어내지 않음) / 로스율 · 병목 글자는 위 행 / **매출 열 미매핑 → 「미확정 (D-516)」 분기는 미실측**(이 DB 의 열 매핑 시드 7 이 매핑된 상태 · 다른 QA 가 함께 쓰는 열 매핑을 바꾸지 않았다) |
+| — 거래처 필터 (D-805) | PASS | RPT-020 · 030 · 040: 거래처 인자를 줘도 KPI · series 같음 · 화면에 거래처 칸(`name="customer"`) 없음 · 화면 값 = 필터 없음 / RPT-010 · 050 · 070 (C2) KPI 전부 None · RPT-060 C2 수금 200 · 매출 500 = 독립 · 출하 None · RPT-080 월간 C2 수주 · 출하 절 None · 화면 select 에 C2 selected · 출하 「미수집」 |
+
+G-06 ~ G-14 는 W1 · W2 와 같이 PASS(같은 실행에서 다시 잼). 게이트 요약: `G-05 PASS · G-06 PASS · G-07 PASS · G-08 PASS · G-09 PASS · G-10 PASS · G-11 PASS · G-12 PASS · G-13 PASS · G-14 PASS · G-15 PASS — FAIL 행 0 → 종료코드 0`.
+
+### 8.3 W3 단계 기록 (`--transcript` 74~90 · 번호는 그 실행의 값 · 거래처 C1 = 3512 · C2 = 3513)
+
+| # | 단계 | 계정 | 요청 | 응답 | DB 확인 (함수 · 독립 SQL) |
+|---|---|---|---|---|---|
+| 74 | RPT-010 수주(C1 · 이 달) | admin | `GET /rpt/orders?date_from=2026-10-01&date_to=2026-10-31&customer=3512` | 200 | 함수 {requests 2 · qty 110.000 · customers 1 · not_started 1} = 독립 같음 · 미착수 [REQ-2610-0240] |
+| 75 | RPT-020 생산(이 달) | admin | `GET /rpt/production?date_from=…&date_to=…` | 200 | 함수 {work_orders 1 · order_qty 100 · produced 100 · good 95 · loss 5 · utilization 94.1} = 독립 · 설비 {EQ01: (95, 100)} |
+| 76 | RPT-030 품질(이 달) | admin | `GET /rpt/quality?…` | 200 | 함수 {inspected 95 · defect 2 · judgements 8 · rejected_lots 3 · rejudged 3} = 독립 · 불량유형 {DF01: 2} |
+| 77 | RPT-040 재고·창고(이 달) | admin | `GET /rpt/inventory?…` | 200 | 함수 {입고 2 · 220 · 불출 2 · 165 · 제품 입고 3 · 110 · 조정 None · None} = 독립 · 변동 상위 [95, 60, 50, 40] · 체류일 [0 × 7] |
+| 78 | RPT-050 출하(C1 · 이 달) | admin | `GET /rpt/shipment?…&customer=3512` | 200 | 함수 {shipments 1 · qty 60 · customers 1 · due_rate None · on_time/late_done/late_open None} = 독립 · 거래처별 [(C1, 60, 1)] |
+| 79 | RPT-060 수금(C1 · 이 달) | admin | `GET /rpt/collection?…&customer=3512` | 200 | 함수 {collected 300 · sales 1000 · shipped_qty 60 · over90 None} asof 2026-10-31 = 독립 · 연령 [700, 0, 0, 0] |
+| 80 | RPT-070 주문 흐름(C1 · 이 달) | admin | `GET /rpt/order-flow?…&customer=3512` | 200 | 함수 {requests 2 · shipped 1 · avg_1~5 0.0} = 독립 · REQ-2610-0239 소요일 전부 0 · asof 반환 2026-10-31 · **화면에 기준일 False** |
+| 81~83 | RPT-080 일일 · 주간 · 월간(C1 · 기준일 오늘) | admin | `GET /rpt/summary?tab=daily|weekly|monthly&asof=2026-10-22&customer=3512` | 200 | 일일 절 [040, 050] KPI 12 어긋남 0 · 주간 · 월간 절 [040, 050, 010, 020, 060] KPI 24 어긋남 0 |
+| 84 | RPT-010 수주(C2 · 의뢰 없음) | admin | `GET /rpt/orders?…&customer=3513` | 200 | KPI 4 「미수집」 · 31칸 전부 미수집 · SVG 없음 |
+| 85 | RPT-010 수주(C1 · 일 구간) | admin | `GET /rpt/orders?…&customer=3512` | 200 | 행 없는 날 30칸 「미수집」 = 표 = SVG title |
+| 86~88 | RPT-020 · 030 · 040 `?customer=` 무시 | admin | `GET /rpt/{production,quality,inventory}?…&customer=3513` | 200 | 값 = 필터 없음 · 거래처 칸 없음 |
+| 89 | RPT-050 출하(C2 · 필터 적용) | admin | `GET /rpt/shipment?…&customer=3513` | 200 | select C2 selected · 출하 「미수집」 |
+| 90 | RPT 8 화면 GET 전후 행 수 | ex | `GET 12 경로` | [200] | 업무 테이블 44 diff 0 |
+
+### 8.4 독립 재계산 대조 (W3 — 함수 반환 · QA2 독립 SQL · 화면 셋이 전부 같다)
+
+| 화면 · 대상 | `dashboard.<fn>` 반환 | QA2 독립 SQL (D-805 정의를 따로 쓴 문장) | 화면(HTML) | 일치 |
+|---|---|---|---|---|
+| RPT-010 KPI 4 · series 3 · 거래처 상위 | 2 · 110.000 · 1 · 1 | `count(*) · sum(qty) · count(distinct customer_id) · count(*) filter (where not exists(취소 아닌 지시))` from production_request(request_date 기간 · 취소 제외 · customer_id) · `group by request_date` · `to_char(due_date,'YYYY-MM')` | KPI 「2 건」 「110.000」 「1 곳」 「1 건」 · SVG title 31 · 표 31 · 미착수 표 1행 | 일치 |
+| RPT-020 KPI 6 · 구간 2 · 기계별 | 1 · 100 · 100 · 95 · 5 · 94.1 · 로스율 text | `count(distinct work_order_id) · sum(...)` from production_daily(work_date) · 지시 수량 `sum(w.qty) where w.id in (distinct work_order_id)` · 가동률 Σrun ÷ (Σrun + Σstop) · `group by equipment_code` | KPI 글자 같음 · 「미확정 (D-519)」 · SVG/표 같음 | 일치 |
+| RPT-030 KPI 5 · 구간 2 · 불량유형 | 95 · 2 · 8 · 3 · 3 · 로스율 text | inspection_daily(work_date) 합 · `jsonb_each_text(defects)` 키 합 · 입고 ∪ 제품 판정 `inspected_at::date` 기간 · `count(distinct (kind, lot_id)) filter (where result='불합격')` · `filter (where seq>1)` | KPI 글자 같음 · 「미확정 (D-519)」 · SVG/표 같음 | 일치 |
+| RPT-040 KPI 8 · 구간 2 · 변동 상위 · 장기 체류 | 2 · 220 · 2 · 165 · 3 · 110 · None · None | 입고 = `(select r.id, sum(l.qty) … parent_lot_id is null … group by r.id)` 바깥 `count(*) · sum` · 불출 같은 꼴 · product_receipt · stock_adjust(`adjusted_at::date`) · `stock_move group by lot_kind, lot_id order by sum desc limit 10` · lot_stock(qty>0) `current_date − created_at::date` 상위 10 | KPI 글자 같음(조정 「미수집」) · SVG/표 같음 · 변동 상위 표 4행 | 일치 |
+| RPT-050 KPI 7 · 구간 2 · 거래처별 · 준수율 | 1 · 60 · 1 · None · None · None · None | 확정 출하 `confirmed_at::date` 기간 · 거래처 · `sum(l.qty)` per order → 바깥 집계 · 납기 모집단 `due_date 기간 · 취소 아님` · `filter (where done and last_on <= due_date)` 등 4 묶음 · 분모 0 → None | KPI 글자 같음(준수율 「미수집」) · SVG/표 같음 | 일치 |
+| RPT-060 KPI 5 · series 3 · 월 표 | 300 · 1000 · 60 · None · asof 2026-10-31 | erp_upload_row ⋈ erp_upload_batch(반영) ⋈ erp_customer_map(use_yn Y) · error null · `to_char(txn_date,'YYYY-MM')` 월 · 출하 월(confirmed_at) · asof `max(period_to) where status='반영'` · 연령 `case when asof − txn_date <= 30 …` Σ매출 − Σ수금 | 머리 「ERP 업로드 기준일: 2026-10-31」 · KPI 「2026-10-31」 「300 원」 「1,000 원」 「60.000」 「미수집」 · SVG/표 같음 · 월 표 1행 | 일치 |
+| RPT-070 KPI 8 · 소요일 표 · 단계 요약 · 수금 월 합 | 2 · 1 · 0.0 × 5 · 병목 text | production_request `left join work_order/production_daily/product_receipt/shipment_order … group by r.id` → `min(created_at)::date · max(work_date) · max(received_on) · max(confirmed_at)::date` · 단계 5 소요일 뒤 − 앞 · 평균 소수 1 | KPI 글자 같음 · 「미확정 (D-520)」 KPI · 표 병목 열 · SVG/표 같음 · 의뢰별 표 2행 | 일치 |
+| RPT-080 절 KPI(일일 12 · 주간 24 · 월간 24) | 개별 함수 값 그대로 | 같은 기간으로 위 독립 SQL 재실행(일일 = 오늘 · 주간 = 7일 · 월간 = 1일~오늘) | `data-section` 안 KPI 글자 같음 · 구간 SVG/표 같음 | 일치 |
+
+### 8.5 산출물 · 다시 돌리는 법 (W3)
+
+- `tools/check_data.py` — 대시보드 단계 `Flow.dashboards`(G-15 11 행 + G-05 동적 1 행) · 독립 SQL `indep_orders · indep_production · indep_quality · indep_inventory · indep_shipment · indep_collection · indep_order_flow · indep_ship_vs_coll_any` · 화면 조각 읽기 `kpi_text · series_html · table_html · kpi_mismatch · series_mismatch`(KPI 기대 글자는 템플릿 규칙 `num(digits)` + 단위 · 「미수집」 · `text`) · `Flow.snapshot`(REPEATABLE READ 한 트랜잭션에서 `conn.q/q1` 읽기) · 정적 G-05 행 1(RPT 라우터 · dashboard.py · POST 안에서만) · `READ_ONLY_HELPERS` 에 `dashboard.py` · `LOG_TABLES` 에 변경 · 질의 · AI 로그(다른 세션의 동시 쓰기 — 질의 로그는 정적 행이 보증) · **`LATER = {}`** · `MUST_MEASURE_W3`. 실측: **종료코드 0 · 약 5초**(단계 90 · 검사 행 72 — G-05 8 · G-06~G-14 53 · G-15 11).
+- `tests/test_qa2_rpt.py`(새 · 12) — 기준정보 → E2E → 수금 → 대시보드만 돌리는 모듈 픽스처 · 화면 8 마다 1(표식 `F-RPT-011 · 021 · 031 · 041 · 051 · 061 · 071 · 081`) + 미수집/미확정 1 · 거래처 필터 1 · G-05 RPT 1 · 정리 확인 1. 각 테스트는 check_data 행 PASS 위에 **이 파일의 두 번째 독립 SQL**(허용 뷰 `v_dq_orders` · `v_dq_shipments` · `v_dq_collections` · 이 흐름의 지시 · LOT 행)을 한 번 더 댄다.
+- `uv run pytest -q tests/test_qa2_rpt.py` → **12 passed in 3.1s** · `uv run pytest -q tests/test_qa2_*.py` → **43 passed in 6.2s**(W1 21 + W2 10 + W3 12). 남은 행: `psql -h /tmp lcomfine_db -tAc "select count(*) from customer where customer_code like 'QA2-%'"` → 0 · item · erp_upload_batch · erp_customer_map 0 · `erp_column_map` 7(시드 그대로).
+
+### 8.6 관찰 (결함으로 올리지 않음)
+
+- `dashboard.production · quality · inventory` 는 `customer_id` 인자를 집계에 쓰지 않지만 반환 `customer_id` 에 받은 값을 되읊는다(라우터는 넘기지 않아 화면엔 영향 없음). §1.5 「020 · 030 · 040 은 기간만」과 어긋나지 않는다 — 참고.
+- RPT-060 미수 연령 series 는 거래처에 행이 하나라도 있으면 빈 구간을 **0** 으로 적는다([700, 0, 0, 0]) — 「그 구간 순액 0」 이라 값이고, D-805 「행이 없는 구간은 None」 은 일 · 월 구간 얘기라 결함으로 보지 않았다. 반면 90일 초과 거래처 KPI 는 `_n(0)` → 「미수집」 이다(0곳과 미수집이 같은 글자). 개발3 참고.
+- `loss_qty`(RPT-020) · `defect_qty`(030) · `adjust_diff`(040) KPI 는 모집단 행이 있으면 0 을 0 으로 적고(`_n` 아님), 그 밖 KPI 는 0 → 「미수집」. QA2 독립 재계산도 같은 규칙(값 0 ≠ 0건)으로 셌다.
+- 같은 DB 를 다른 QA 가 동시에 쓰는 동안 전 DB 집계(020 · 030 · 040 · RPT-080 의 040 절) 는 앞뒤 재읽기 3회로는 맞출 수 없었다(제품 입고 3 → 4 · 170 등 매 회 바뀜) — 스냅샷 트랜잭션으로 해결. `check_data` 의 기존 「조회 화면 GET 전후 diff 0」 도 QA3 의 데이터 질의(data_query_log · sys_ai_call_log 2 → 9)로 한 번 흔들려 로그 4 를 수에서 뺐다(업무 테이블 44 는 그대로 센다).

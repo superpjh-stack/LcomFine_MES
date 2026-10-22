@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "원천: 출하(확정 출하 · 기간 = 확정일). 납기 준수율은 출하 지시에 생산의뢰 번호가 있을 때(공정 이관 시)만 낸다 — 산식 가설 D-804.", data, [(nav.path_of("SHP-010"), nav.by_id("SHP-010").name)]) }}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("qty", "기간별 출하 수량", data.series.qty, "구간", "출하 수량", 3) }}
+{{ d.chart_table("shipments", "기간별 출하 건수", data.series.shipments, "구간", "건수", 0, "line") }}
+{{ d.chart_table("by_customer", "거래처별 출하 수량(상위)", data.series.by_customer, "거래처", "출하 수량", 3) }}
+{{ d.table("by_customer", "거래처별", [("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "건수", 0), ("qty", "수량", 3)], data.tables.by_customer) }}
+{{ d.table("by_item", "제품별", [("item_code", "품목 코드", none), ("item_name", "제품", none), ("shipments", "건수", 0), ("qty", "수량", 3)], data.tables.by_item) }}
+{{ d.table("due_rows", "납기 준수율 모집단(납기가 기간 안인 의뢰 · 의뢰번호 있는 출하만)", [("request_no", "의뢰번호", none), ("customer_name", "거래처", none), ("item_name", "제품", none), ("qty", "의뢰 수량", 3), ("due_date", "납기", none), ("shipped_qty", "확정 출하", 3), ("last_confirmed_on", "마지막 확정일", none), ("bucket", "구분", none)], data.tables.due_rows, "납기가 기간 안인 의뢰 없음") }}
+{{ d.table("recent", "확정 출하 목록", [("shipment_no", "출하 번호", none), ("confirmed_at", "확정 일시", none), ("customer_name", "거래처", none), ("request_no", "의뢰번호", none), ("due_date", "납기", none), ("lines", "LOT 줄", 0), ("qty", "수량", 3)], data.tables.recent) }}
+{% endif %}
+{% endblock %}

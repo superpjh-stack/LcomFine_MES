@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "원천: 생산의뢰서. 의뢰는 있는데 지시서가 없는 건을 「미착수」로 짚는다. 기간 = 의뢰일 · 취소 의뢰 제외.", data, [(nav.path_of("WO-010"), nav.by_id("WO-010").name)]) }}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("requests", "기간별 의뢰 건수", data.series.requests, "구간", "건수") }}
+{{ d.chart_table("qty", "기간별 의뢰 수량", data.series.qty, "구간", "수량", 3) }}
+{{ d.chart_table("due", "납기 분포(납기 월별 건수)", data.series.due, "납기 월", "건수") }}
+{{ d.table("top_customers", "거래처 상위", [("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("requests", "건수", 0), ("qty", "수량", 3)], data.tables.top_customers) }}
+{{ d.table("not_started", "미착수 의뢰(지시서 없음)", [("request_no", "의뢰번호", none), ("request_date", "의뢰일", none), ("customer_name", "거래처", none), ("item_name", "제품", none), ("qty", "수량", 3), ("due_date", "납기", none), ("status", "상태", none)], data.tables.not_started, "미착수 의뢰 없음") }}
+{% endif %}
+{% endblock %}

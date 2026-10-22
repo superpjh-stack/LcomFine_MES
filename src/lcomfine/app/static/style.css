@@ -146,6 +146,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; box-shadow: var(--shadow); min-width: 0; }
 .panel--grid { padding: 0; overflow: hidden; }
 .panel--grid > .empty { margin: 16px; }
+.panel--grid > h2 { margin: 12px 16px 0; }
+.search .field--wide { flex: 1 1 100%; }
 .search { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin: 0; }
 .search:empty { display: none; }
 .panel:has(> .search:empty) { display: none; }

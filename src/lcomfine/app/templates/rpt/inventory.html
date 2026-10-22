@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "rpt/_d.html" as d %}
+{% import "shp/_f.html" as f %}
+{% block body %}
+<section class="panel">
+  {{ d.header(screen, "원천: 자재·입고 · 재고. 입고·불출(취소 제외 · 기간 = 입고일 · 불출일) · 재고 변동 상위(재고 이동 합) · 장기 체류 LOT(현재고가 남은 LOT 의 체류일 상위) · 실사 차이(재고 조정).", data, [(nav.path_of("INV-030"), nav.by_id("INV-030").name)]) }}
+  {{ f.notice(notice) }}
+  {{ d.filters(form, customers, with_customer) }}
+</section>
+{% if data %}
+<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.chart_table("receipt_qty", "기간별 원자재 입고 수량", data.series.receipt_qty, "구간", "입고 수량", 3) }}
+{{ d.chart_table("issue_qty", "기간별 불출 수량", data.series.issue_qty, "구간", "불출 수량", 3) }}
+{{ d.table("top_moves", "재고 변동 상위(LOT 별 이동 수량 합)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("kinds", "이동 종류", none), ("moves", "건수", 0), ("qty", "수량 합", 3)], data.tables.top_moves, "기간 안 재고 이동 없음") }}
+{{ d.table("long_stay", "장기 체류 LOT(체류일 = 오늘 − LOT 생성일 · 기준일 수 없음 D-805)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("warehouse_code", "창고", none), ("location_code", "위치", none), ("status", "상태", none), ("qty", "현재고", 3), ("allocated_qty", "할당", 3), ("since", "생성일", none), ("days", "체류일", 0)], data.tables.long_stay, "현재고가 남은 LOT 없음") }}
+{{ d.table("adjusts", "실사 차이(재고 조정)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("book_qty", "장부", 3), ("actual_qty", "실사", 3), ("diff_qty", "차이", 3), ("reason", "사유", none), ("adjusted_at", "조정 일시", none)], data.tables.adjusts, "기간 안 조정 없음") }}
+{{ d.table("receipts_by_item", "원자재 입고 품목별", [("item_code", "품목 코드", none), ("item_name", "품목", none), ("receipts", "입고 건", 0), ("lots", "LOT", 0), ("qty", "수량", 3)], data.tables.receipts_by_item) }}
+{% endif %}
+{% endblock %}

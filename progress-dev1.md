@@ -43,6 +43,17 @@
 - F-WO-021 은 같은 트랜잭션에서 `notify.handle_by_link(cur, <request_created link>, user)` 로 그 의뢰의 알림을 닫는다.
 - **개발2 MAT-020 불출**은 `order_issued` 알림을 닫으려면 쓰기 트랜잭션에서 `notify.handle_by_link(cur, nav.path_of("MAT-020") + f"?wo={work_order_no}", user)` 를 부르면 된다.
 
+### 1.4 공통코드 (SYS-030 · F-SYS-031) — 다른 라우터가 읽는 그룹 글자 (W3 공표)
+
+| 그룹 코드(`sys_common_code.group_code`) | 뜻 | 지금 읽는 곳 (실측 `grep -rn sys_common_code src/lcomfine`) |
+|---|---|---|
+| `설비` | 설비 코드 | `routers/wo.py`(지시 설비 선택 · 작업 순서) · `routers/prd.py`(생산일보 설비) · `routers/inv.py` · `stats.py` |
+| `불량유형` | 검사일보 `defects` 의 키 | `routers/ins.py` |
+| `수금수단` | ERP 행 `parsed.method` | `routers/col.py`(COL-040 수단 필터 = 공통코드 ∪ 반영 행의 수단 글자 · D-802) |
+
+- 그룹 글자는 `routers/sys.py` `CODE_GROUPS = ("설비", "불량유형", "수금수단")` 과 같다(정본 3 — 다른 그룹은 422). 읽는 쪽은 `select code, code_name from sys_common_code where group_code = '<그룹>' and use_yn = 'Y' order by sort_no, code` 모양이면 된다 — 사용 중지(`use_yn = 'N'`)는 새 선택에서 빼고, 이미 저장된 값은 그대로 보인다(wo · ins 가 그렇게 한다).
+- 기본 행은 공통 시드 `seed.py` `COMMON_CODES`(설비 2 · 불량유형 3 · 수금수단 3 · 전부 `(예시)`). `seed_dev1.run()` 은 **빈 그룹에만** `(예시)` 코드 하나(`EX-EQ` · `EX-DF` · `EX-PM`)를 더한다(D-609). 삭제는 참조가 있으면 사용 중지(D-606).
+
 ## 2. 진행 (W1 · 2026-10-21)
 
 | 항목 | 실측 | 검증 방법 |
@@ -69,6 +80,17 @@
 | 추적 | G-01 전부 PASS · G-02 고아 ① 16 = DOC 6(W4) + RPT 10(W3) — TRK · HOME 0 | `uv run python tools/check_trace.py` |
 | 고친 파일 | `src/lcomfine/app/routers/{trk,home}.py` · `templates/trk/{due,customers}.html` · `templates/home/index.html` · `tests/test_dev1_{common,trk,home}.py` · `decisions.md`(D-608) · 이 파일. `stats.py` · 계약 · `main.py` · `rbac` 는 읽기만 | `git status` |
 
+### 2-W3. 진행 (W3 — SYS-040 로그 탭 보강 · SYS-030 공통코드 그룹 3 · 2026-10-22)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| **SYS-040 탭 6** (F-SYS-041) | `access` · `change` 그대로 + `erp`(`erp_upload_batch` — 회차 번호 · 기준 기간 · 회차 · 반영/교체 · 교체한 회차 번호(`replaced_by` 의 `batch_no`) · 올린 파일 · 읽은 행 · 오류·미매핑 행 · 올린 사람 · 머리 회차/반영/교체/읽은 행/오류 행) · `ai`(`sys_ai_call_log` — 머리 건수 · 실패 · 평균 ms · 행 용도 · 모델 · 성공/실패 · ms · 실패 사유 · 사용자) · `dq`(`data_query_log` — 머리 건수 · 거부 · 평균 ms · 행 로그 번호 · 질문 · 생성 SQL · 허용/거부 · 행 수 · 사유 · 부서 · 사용자 · **거부 포함**) · `sso`(`sys_access_log` 구분 SSO — 머리 건수 · 실패 · 행 사용자 · 부서 · 성공 여부 · 경로 · 대상 · 내용 · IP · W4 전엔 `미수집`). 열 = db-schema 컬럼만 · 표 밑에 원본 표 · 컬럼 이름. 필터 사용자 · 기간 · 구분 하나(탭별 선택지 밖 422). 머리 수치는 같은 필터. 행 0 → `미수집`. 머리 `data-log-tab · data-n · data-live/replaced/errors · data-failed · data-avg-ms · data-rejected`. **쓰기 0**(`routers/sys.py` SYS-040 절에 insert/update/delete 0) | `tests/test_dev1_sys.py::test_logs_six_tabs_200_and_empty_is_uncollected` · `::test_logs_erp_tab_shows_batches_and_replacement`(1979 회차 2 · 교체 1 · 상태 그대로) · `::test_logs_ai_tab_counts_failures_and_avg_ms`(성공 100 + 실패 300 → `data-n="2" data-failed="1" data-avg-ms="200"`) · `::test_logs_dq_tab_includes_rejected_queries`(허용 1 · 거부 1 · 필터) · `::test_logs_sso_tab_uncollected_until_w4` · `::test_logs_tabs_permission_cells`(pr · sl · ac · ex × 탭 6 → 403) |
+| **SYS-030 공통코드 그룹 3** (F-SYS-032) | DB 에 설비 2 · 불량유형 3 · 수금수단 3(공통 시드 · 전부 `(예시)`). `seed_dev1.run()` 두 번 → `code_group 3 · code_added 0` 그대로(빈 그룹에만 더한다). 읽는 쪽 그룹 글자 공표 §1.4 | `tests/test_dev1_sys.py::test_code_groups_seeded_and_idempotent` · `uv run python -c "from lcomfine.db import seed_dev1; print(seed_dev1.run()); print(seed_dev1.run())"` |
+| 개발1 테스트 | **77 passed**(W2 69 + W3 8: sys 17 · trk 5 · home 6 · common 2 · bas 12 · std 23 · wo 10 · jobs 2) · QA · arch 화면 묶음 56 passed · 테스트 뒤 내 접두(`T…-log`) 행 `sys_ai_call_log` · `data_query_log` · `erp_upload_batch` · `sys_access_log(SSO)` 0 — 개발3 의 행은 건드리지 않는다 | `uv run pytest -q tests/test_dev1_*.py` · `uv run pytest -q tests/test_qa1_screens.py tests/test_qa1_contract_text.py tests/test_qa2_static.py tests/test_qa3_security.py tests/test_qa3_robustness.py tests/test_arch_smoke.py tests/test_arch_layout.py tests/test_arch_gate.py` |
+| 추적 | G-01 PASS · G-02 고아 ① ③ 16 = DOC 6(W4) + RPT 10(개발3 W3) — SYS 0 | `uv run python tools/check_trace.py` |
+| **W3 QA1 수정 · DEF-QA1-008** (경미) | 접속 탭 구분 `log_type` 을 `choice(…, ACCESS_LOG_TYPES)` 로 — 값 집합은 db-schema §6 `sys_access_log.log_type`(로그인 · 조회 · 변경 · 오류 · SSO) · 밖이면 422(erp · dq · sso 와 같은 규칙 · D-609). 변경 탭의 기능 ID 도 계약(`contracts.functions()`)에 없는 ID 면 422. AI 탭 「호출 용도」는 값 집합이 개발3 몫(`ai.py` 의 kind 글자)이라 글자 그대로 둔다. QA1 의 `tests/test_qa1_rpt.py::test_sys_040_filter_outside_choices_is_422` 는 이제 통과하므로 strict xfail 표식을 QA1 이 떼어야 한다(XPASS) | `tests/test_dev1_sys.py::test_logs_access_and_change_filter_outside_choices_422` · `uv run pytest -q tests/test_dev1_sys.py` → **17 passed** · `tests/test_dev1_*.py` → 77 passed |
+| 고친 파일 | `src/lcomfine/app/routers/sys.py`(SYS-040 절 · 모듈 docstring) · `templates/sys/logs.html` · `db/seed_dev1.py` · `tests/test_dev1_sys.py` · `decisions.md`(D-609) · 이 파일. `main.py` · `nav.py` · `schema.sql` · 계약 · 개발3 파일은 읽기만 · 커밋 없음 | `git status --short` |
+
 - 공용 테스트 도구 `tests/test_dev1_common.py::Erp` — (예시) xlsx 를 지금 열 매핑(시드 7)의 열 이름으로 만들어 `POST /col/uploads` · `POST /col/customer-map` 로 올리고 `close()` 가 **자기 회차 id 만** 지운다(기간 1985년 — 개발3 의 1990~1993 과 겹치지 않는다). 필수 항목 매핑이 없을 때만 기본 항목 이름을 저장하고 되돌린다.
 
 - 쓰기는 전부 `rbac.require_fn` · 화면 GET 은 `rbac.require_screen` · 출력 GET(F-STD-054 · F-WO-024)은 `require_fn`. 성공은 `http.saved` 직후 `audit.log_change`.
@@ -85,3 +107,5 @@
 3. **개발2 / 개발3 화면 조건** — HOME 카드가 거는 조회 인자: QC-010 · QC-020 `?status=검사대기`, MAT-020 · PRD-010 · SHP-010 · SHP-020 · COL-020 · COL-030 은 인자 없이 연다. 각 화면이 그 인자를 받아 거르면 「조건이 걸린 채 열린다」가 완성된다.
 4. **위치 확인 (아키텍트)** — goal.md §3.2 는 `app/jobs.py`, w1-dev1 · Makefile 은 `python -m lcomfine.jobs` → `src/lcomfine/jobs.py` 로 만들었다. interfaces.md §10 은 개발 시드 `main() -> int`, w1-common 은 `run()` — 둘 다 두었다. CLAUDE.md 는 아직 v1(설계도 · 대메뉴 12) 내용이다.
    **종결(Ruling 25)** — goal.md §3.2 · §5 가 `src/lcomfine/jobs.py` 로 고쳐졌다(커밋 1fd01fd). CLAUDE.md 도 v2 로 바뀌었다.
+5. **개발3 (`ai.py` · `dataquery.py` · W3)** — SYS-040 의 AI 호출 · 데이터 질의 탭은 `sys_ai_call_log` · `data_query_log` 의 **db-schema 열 그대로** 읽는다. 쓰는 쪽이 채우는지 확인 바란다: `sys_ai_call_log.kind`(호출 용도 글자 — 탭의 「호출 용도」 필터는 이 값과 글자 일치) · `model` · `ok` · `ms` · `error`(키 없음 포함 · **키 값은 적지 않는다**) · `user_id`(사용자 필터는 `sys_user.login_id` 로 잇는다 — 비면 사용자 칸 `—`) / `data_query_log.query_no`(`numbering.next("DQ")`) · `user_id` · `role_code` · `question` · `sql_text`(AI 실패면 null) · `ok`(검증 거부 · 실패 = false — 탭은 「거부」로 보이고 거부 수를 센다) · `row_count` · `error`(거부·실패 사유 — 탭의 「거부·실패 사유」 열) · `ms`. 열을 더하거나 뜻을 바꾸면 `db-schema.md` 와 함께 알려 주면 탭을 맞춘다. 쓰기는 개발3 몫 — SYS-040 은 어느 표에도 쓰지 않는다.
+6. **개발1 W4 메모 (자기 몫)** — SSO 탭은 `sys_access_log` 의 `log_type = 'SSO'` 행(D-514 · G-18)을 보인다. F-DOC-011 이 남길 때 `result`(성공/실패) · `login_id` · `screen_id = 'DOC-010'` · `function_id = 'F-DOC-011'` · `detail`(거부 사유 — 토큰 값은 적지 않는다)을 채우면 탭의 필터 · 머리 수치가 그대로 맞는다.

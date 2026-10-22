@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""QA1 기능 · 계약 전수 (W1 · W2) — `uv run python tools/check_screens.py`. 서버를 띄우지 않고 TestClient 로 앱을 부른다.
+"""QA1 기능 · 계약 전수 (W1 · W2 · W3) — `uv run python tools/check_screens.py`. 서버를 띄우지 않고 TestClient 로 앱을 부른다.
 
 기대값은 개발 테스트가 아니라 계약에서 직접 끌어온다:
   · `contracts/function-list.md` (contracts.functions()) — 기능 · API · 권한(W 부서 · R 이상 · 권한 예외)
@@ -7,11 +7,11 @@
   · `contracts/ia.json` + `ia-overrides.json` (tools.design_doc.effective()) — 정본 L3 · logic
   · `contracts/api-contract.md` — 오류 계약(422 · 404 · 501 · 403 문장)
 
-검사 (범위 = 대메뉴가 DOC · RPT 가 아닌 기능 120 — W1 109 + W2 COL 11. DOC · RPT 는 W3 · W4 까지 placeholder 라 FAIL 로 세지 않는다):
+검사 (범위 = 대메뉴가 DOC 가 아닌 기능 130 — W1 109 + W2 COL 11 + W3 RPT 10. DOC 6 은 W4 까지 placeholder 라 FAIL 로 세지 않는다):
   G-02  ① 범위 기능의 API 가 라우트에 글자 그대로 ② `@pytest.mark.fn` 표식 ③ 쓰기 라우트의 `require_fn(<그 기능 ID>)` (정적)
-  G-03  화면 67 × 계정 8 GET — 칸 W/R → 200 · 칸 없음 → 403 (placeholder 11 포함) · 범위 화면 56 placeholder 0
-  G-19  같은 전수의 403 쪽 + 메뉴에 칸 밖 화면 없음 + 쓰기 62 × 계정 8 POST (W → 권한 통과 · R/없음 → 403 · 권한 예외 R 통과)
-        + DB `sys_permission` = 권한 매트릭스
+  G-03  화면 67 × 계정 8 GET — 칸 W/R → 200 · 칸 없음 → 403 (placeholder 2 포함) · 범위 화면 65 placeholder 0
+  G-19  같은 전수의 403 쪽 + 메뉴에 칸 밖 화면 없음 + 쓰기 63 × 계정 8 POST (W → 권한 통과 · R/없음 → 403 · 권한 예외 R 통과 ·
+        F-RPT-132 는 칸 없는 부서 403 — api-contract §4) + DB `sys_permission` = 권한 매트릭스
   G-02  오류 계약 (api-contract §1 · §3 · goal §2.7 — QA1 몫): QA1 세계(접두 `QA1-`)를 화면의 HTTP 로 만들고
         쓰기 기능마다 누락 422 · 없는 ID 404 · 미확정 501 · NUL · 자릿수 초과 · 음수 422 를 두드린 뒤 지운다(응답 모양까지).
         W2: (예시) xlsx 를 openpyxl 로 만들어 `POST /col/uploads` 로 올리고(회차 2 · 교체 · 오류 행 · 미매핑 · 알림) 파일 없음 · 엑셀 아닌 파일 ·
@@ -21,6 +21,11 @@
   G-02  COL 계약 문장 (정본 L3 · logic · D-516 · D-608) — 세계가 있는 동안 자동 확인: 오류 행 `is-error`(빨간색) · 미매핑 목록 · 교체됨 ·
         매핑 뒤 재반영 · 어음 만기 도래 · 30/60/90 구간 · 출하 대비 나란히 · 매출 열 매핑을 잠깐 지워 COL-050 · COL-060 · TRK-030 · HOME 회계부 카드의
         `미확정 (D-516)` (지운 매핑은 같은 함수 안에서 되돌린다) · TRK-030 수금 칸 ok/미수집 · ERP 업로드 기준일
+  G-02  RPT 계약 문장 (W3 · 정본 L3 · logic · D-512 · D-805 · D-806 · D-609 · goal §3.4) — 세계가 있는 동안 자동 확인: RPT 8 화면의 KPI · 차트 · 표 표식 ·
+        **인라인 SVG <title> = 같은 숫자의 표 행** · 표는 전부 `grid-wrap`(390 가로 스크롤 0) · 스크립트 0 · `미확정 (D-519)` · `(D-520)` · RPT-060 ERP 업로드 기준일 ·
+        RPT-080 일일 · 주간 · 월간 · RPT-130 질문 → SQL → 결과 표 · F-RPT-132 를 `ai.set_client(fake)` 로(실제 OpenAI 호출 0): 거부 SQL 422 「허용되지 않는 질의 — 이유」 ·
+        부서 뷰 제한 · 키 없음 · 호출 실패 · 실행 실패 422 · 허용 SQL JSON 200 `http.saved` · 브라우저 같은 화면 200(계약 §2 예외) · 변경 로그 1행 · 로그 행 수 ·
+        SYS-040 탭 6(열 = db-schema 컬럼 · 질의 · AI 호출 · ERP 회차가 보임 · 선택지 밖 422) · 좌측 메뉴 「대시보드」. 로그는 QA1 사용자(전략부)로 남겨 끝에 지운다.
   계약 문장 (참고 — 요약 표에만): 화면 본문(계약 패널 · 메뉴 제외)에 정본 L3 낱말이 보이는가 — 자동 대조라 사람이 판정한다(outputs/qa1-기능계약.md)
 
 출력 행: `G-nn  항목  PASS|FAIL  실측` (tools/gate.py 의 `_ROW_RE`). 종료코드 = FAIL 행 수 (최대 125) — gate.py 는 「종료코드 ≠ 0 인데 FAIL 행이 없으면
@@ -49,8 +54,8 @@ sys.path.insert(0, str(ROOT))
 
 from lcomfine.app.settings import get_settings  # noqa: E402 — .env 를 먼저 읽는다
 
-LATER_MENUS = ("DOC", "RPT")                 # W3 · W4 — 아직 placeholder (COL 은 W2 에 범위로 들어왔다)
-SCOPE = "W1·W2"
+LATER_MENUS = ("DOC",)                       # W4 — 아직 placeholder (COL 은 W2 · RPT 는 W3 에 범위로 들어왔다)
+SCOPE = "W1·W2·W3"
 LOGINS = ("sl", "pr", "sh", "ds", "ac", "st", "ex", "admin")
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 #: QA1 ERP 업로드의 기준 기간 — 개발3 1990~1993 · 개발1 1985 · QA2 는 비는 기간을 고른다. 1980 년은 어느 테스트도 쓰지 않는다
@@ -82,7 +87,7 @@ def app_and_clients():
 
 
 def w1_functions():
-    """범위 기능 — 대메뉴가 DOC · RPT 가 아닌 것 (W1 109 + W2 COL 11 = 120). 이름은 W1 때 것을 그대로 둔다(테스트가 부른다)."""
+    """범위 기능 — 대메뉴가 DOC 가 아닌 것 (W1 109 + W2 COL 11 + W3 RPT 10 = 130). 이름은 W1 때 것을 그대로 둔다(테스트가 부른다)."""
     from lcomfine.app import contracts
 
     return [f for f in contracts.functions() if f.menu_code not in LATER_MENUS]
@@ -279,7 +284,7 @@ def check_screens(app, clients, rep: Report) -> dict:
         rep.defects.append(f"[403 문장] 화면 GET 403 인데 「이 기능을 실행할 권한이 없습니다」 — 화면 {len(by_screen)} ({', '.join(by_screen)}) "
                            f"· 예: {badmsg[0]}")
     w1 = [s for s in screens if s.menu_code not in LATER_MENUS]
-    rep.add("G-03", f"{SCOPE} 화면 {len(w1)} — placeholder 0 (DOC·RPT 11 은 W3·W4)", not w1_ph,
+    rep.add("G-03", f"{SCOPE} 화면 {len(w1)} — placeholder 0 (DOC 2 는 W4)", not w1_ph,
             f"{SCOPE} placeholder {len(w1_ph)} · 전체 placeholder {len(ph)}", w1_ph)
 
     # 메뉴 — 칸 밖 화면이 메뉴에 없고, 칸 있는 화면은 메뉴에 있다
@@ -328,8 +333,13 @@ def check_writes(clients, rep: Report) -> list[dict]:
             f"{sum(x['ok'] for x in denied)}/{len(denied)}", [fmt(x) for x in denied if not x["ok"]])
     rep.add("G-19", f"쓰기 {nfn} × 계정 {len(clients)} — W 부서 권한 통과 (401/403/5xx 아님)", all(x["ok"] for x in allowed),
             f"{sum(x['ok'] for x in allowed)}/{len(allowed)}", [fmt(x) for x in allowed if not x["ok"]])
-    rep.add("G-19", "권한 예외 F-HOME-022 — 칸 R 부서 통과", bool(exc) and all(x["ok"] for x in exc),
+    rep.add("G-19", "권한 예외 F-HOME-022 · F-RPT-132 — 칸 R 부서 통과", bool(exc) and all(x["ok"] for x in exc),
             f"{sum(x['ok'] for x in exc)}/{len(exc)}", [fmt(x) for x in exc if not x["ok"]])
+    # api-contract §4 「권한 예외 쓰기 기능 … 칸이 없으면 → 403」 — RPT-130 은 ST · EX · ADM 만 칸이 있다(permission-matrix)
+    exc_denied = [x for x in denied if contracts.function(x["fid"]).permission_exception]
+    rep.add("G-19", "권한 예외 F-RPT-132 — 칸 없는 부서 → 403 (api-contract §4)", bool(exc_denied) and all(x["ok"] for x in exc_denied),
+            f"{sum(x['ok'] for x in exc_denied)}/{len(exc_denied)} ({' · '.join(sorted({x['login'] for x in exc_denied}))})",
+            [fmt(x) for x in exc_denied if not x["ok"]])
     return results
 
 
@@ -412,6 +422,20 @@ class World:
             self.steps.append(("QA1 사용자 로그인(영업부)", 200 if r.status_code == 303 else r.status_code, str(r.status_code)))
             if r.status_code == 303:
                 self.clients["qa1"] = qa1
+        # W3 — RPT-130 데이터 질의는 ST · EX · ADM 만 칸이 있다. 전략부 QA1 사용자로 질의해 `data_query_log` · `sys_ai_call_log` 를 user_id 로 지운다
+        I["user_st_pw"] = secrets.token_urlsafe(12)
+        I["user_st"] = self.post("사용자(전략부 · 데이터 질의용)", "/sys/users",
+                                 {"login_id": p + "ST", "user_name": p + "전략부 사용자 (예시)", "role_code": "ST", "password": I["user_st_pw"]}, key="id")
+        if I["user_st"]:
+            from fastapi.testclient import TestClient
+
+            from lcomfine.app.main import app
+
+            st = TestClient(app, raise_server_exceptions=False)
+            r = st.post("/login", data={"login_id": p + "ST", "password": I["user_st_pw"]}, follow_redirects=False)
+            self.steps.append(("QA1 사용자 로그인(전략부)", 200 if r.status_code == 303 else r.status_code, str(r.status_code)))
+            if r.status_code == 303:
+                self.clients["qa1st"] = st
         I["code"] = self.post("공통코드", "/sys/codes", {"group_code": "설비", "code": p + "EQ", "code_name": p + "설비 (예시)"}, key="id")
         I["noti_adm"] = conn.q1("insert into notification (event_key, to_role, message, link, dedupe_key) values "
                                 "('request_created', 'ADM', %s, '/', %s) returning id", (p + "알림", p + "N-ADM"))["id"]
@@ -588,6 +612,10 @@ class World:
             cur.execute("delete from item where id = any(%s)", (items,))
             cur.execute("delete from sys_common_code where code like %s", (like,))
             cur.execute("delete from notification_setting where user_id in (select user_id from sys_user where login_id like %s)", (like,))
+            # W3 — QA1 사용자가 남긴 데이터 질의 · AI 호출 로그(결과 행은 저장되지 않는다 · D-806). 다른 사용자의 로그는 건드리지 않는다
+            cur.execute("delete from data_query_log where user_id in (select user_id from sys_user where login_id like %s) or question like %s",
+                        (like, like))
+            cur.execute("delete from sys_ai_call_log where user_id in (select user_id from sys_user where login_id like %s)", (like,))
             cur.execute("delete from sys_user where login_id like %s", (like,))
         self.restore_map()
 
@@ -597,7 +625,7 @@ class World:
         like = self.p + "%"
         q = {"item": "item_code", "customer": "customer_code", "warehouse": "warehouse_code", "location": "location_code",
              "standard": "standard_code", "plate": "plate_code", "sys_user": "login_id", "sys_common_code": "code",
-             "notification": "dedupe_key", "erp_customer_map": "erp_code", "erp_upload_batch": "source_file"}
+             "notification": "dedupe_key", "erp_customer_map": "erp_code", "erp_upload_batch": "source_file", "data_query_log": "question"}
         out = {}
         for t, col in q.items():
             n = conn.q1(f"select count(*) as n from {t} where {col} like %s", (like,))["n"]
@@ -878,6 +906,11 @@ def cases(w: World) -> list[Case]:
         add("F-COL-032", "없는 거래처(본문) → 422", f"/col/customer-map/{I['map']}", {"customer_id": NOID}, 422)
         nf("F-COL-032", "/col/customer-map/{id}", {"customer_id": s(I["cust"])})
         nf("F-COL-033", "/col/customer-map/{id}/delete", {})
+    # RPT (W3) — F-RPT-132 질의 실행의 **AI 호출 전** 입력 오류(라우터 선검사 · 로그 0 · 실제 OpenAI 호출 0). fake 가 필요한 사례는 check_rpt_contract
+    add("F-RPT-132", "누락(빈 본문) → 422", "/rpt/query", {}, 422, login="qa1st", msg_has="질문")
+    add("F-RPT-132", "NUL 질문 → 422", "/rpt/query", {"question": p + NUL}, 422, login="qa1st", msg_has="NUL")
+    add("F-RPT-132", "10만 자 질문 → 422 (상한 1000자)", "/rpt/query", {"question": p + "q" * 100_000}, 422, login="qa1st", msg_has="1000자")
+    add("F-RPT-132", "공백만 → 422", "/rpt/query", {"question": "   "}, 422, login="qa1st", msg_has="질문")
     return C
 
 
@@ -960,6 +993,7 @@ def check_errors(clients: dict, rep: Report, keep: bool = False) -> tuple[World,
         if not res:
             rep.defects.append("[세계] 기준 행이 모자라 오류 계약 사례를 돌리지 못했다")
         html_world = world_html(w)                 # COL 계약 문장 확인(매핑 삭제 · 사용 중지)보다 먼저 — 행이 있는 화면
+        check_rpt_contract(w, rep)                 # W3 — RPT 8 · 데이터 질의 · SYS-040 (COL 매핑이 살아 있는 동안 — RPT-060 수금)
         check_col_contract(w, rep)
     finally:
         if not keep:
@@ -1175,6 +1209,454 @@ def check_col_contract(w: World, rep: Report) -> list[dict]:
             f"항목 {len(out)} · 어긋남 {len(bad)}", bad)
     for x in out:
         rep.summary.append((f"COL 계약 문장 — {x['item']}", ("OK — " if x["ok"] else "어긋남 — ") + x["actual"]))
+    return out
+
+
+# ── W3 RPT 대시보드 · 데이터 질의 · SYS-040 로그 탭 — 세계가 있는 동안 자동 확인 ─────
+RPT_SCREENS = ("RPT-010", "RPT-020", "RPT-030", "RPT-040", "RPT-050", "RPT-060", "RPT-070", "RPT-080")
+VOID_TAGS = {"input", "br", "img", "meta", "link", "hr", "col", "wbr", "source", "area", "base", "track", "embed", "param"}
+APP_JS = "/static/app.js"
+#: D-805 · progress-dev3 §1.5 의 표식 — 화면마다 있어야 하는 KPI · 차트(data-series) · 표(data-table) 이름 (정본 L3 · D-512 수치가 화면에 있다는 기계 증거)
+RPT_MARKS: dict[str, tuple[set[str], set[str], set[str]]] = {
+    "RPT-010": ({"requests", "qty", "customers", "not_started"}, {"requests", "qty", "due"}, {"top_customers", "not_started"}),
+    "RPT-020": ({"work_orders", "order_qty", "produced_qty", "good_qty", "loss_qty", "loss_rate", "utilization"},
+                {"good_qty", "produced_qty", "by_equipment"}, {"by_work_order", "by_equipment"}),
+    "RPT-030": ({"inspected_qty", "defect_qty", "loss_rate", "judgements", "rejected_lots", "rejudged"},
+                {"defect_qty", "inspected_qty", "defects"}, {"rejected", "rejudged"}),
+    "RPT-040": ({"material_receipts", "material_receipt_qty", "issues", "issue_qty", "product_receipts", "adjusts", "adjust_diff"},
+                {"receipt_qty", "issue_qty"}, {"top_moves", "long_stay", "adjusts"}),
+    "RPT-050": ({"shipments", "qty", "customers", "due_rate"}, {"qty", "shipments", "by_customer"}, {"by_customer", "by_item", "due_rows"}),
+    "RPT-060": ({"asof", "collected", "sales", "shipped_qty", "over90"}, {"collected", "shipped_qty", "aging"}, {"monthly", "by_customer", "over90"}),
+    "RPT-070": ({"requests", "shipped", "bottleneck"}, {"avg_days", "collected"}, {"stages", "rows", "collection_by_customer"}),
+    "RPT-080": (set(), {"shipment_qty", "issue_qty"}, set()),
+}
+
+
+class _Rpt(HTMLParser):
+    """RPT · SYS 화면 본문의 구조 증거 — data-series 묶음마다 SVG `<title>` 글자와 표 행(라벨 · 값) · `grid-wrap` 밖의 `<table>` ·
+    `<script>`(src) · KPI `data-kpi` 값 글자 · data-table 이름 · `<th>` 수."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, str, dict]] = []
+        self.series: dict[str, dict] = {}
+        self.kpis: dict[str, str] = {}
+        self.tables: set[str] = set()
+        self.unwrapped_tables: list[str] = []
+        self.scripts: list[str] = []
+        self.svgs = 0
+        self.th = 0
+        self._series: str | None = None
+        self._svg = 0
+        self._title: list[str] | None = None
+        self._stable = False
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+        self._kpi: str | None = None
+        self._kpi_text: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        cls = a.get("class") or ""
+        if tag == "section" and a.get("data-series"):
+            self._series = a["data-series"]
+            self.series.setdefault(self._series, {"titles": [], "rows": []})
+        if a.get("data-table"):
+            self.tables.add(a["data-table"])
+        if tag == "svg":
+            self._svg += 1
+            self.svgs += 1
+        if tag == "title" and self._svg and self._series:
+            self._title = []
+        if tag == "table":
+            if not any("grid-wrap" in c.split() for _, c, _ in self.stack):
+                self.unwrapped_tables.append(self._series or (self.stack[-1][2].get("data-table") if self.stack else "") or "?")
+            if a.get("data-series-table") and self._series:
+                self._stable = True
+        if tag == "th":
+            self.th += 1
+        if self._stable and tag == "tr":
+            self._row = []
+        if self._stable and tag == "td" and self._row is not None:
+            self._cell = []
+        if tag == "script":
+            self.scripts.append(a.get("src") or "inline")
+        if a.get("data-kpi"):
+            self._kpi = a["data-kpi"]
+        if tag == "strong" and self._kpi and "kpi__value" in cls.split():
+            self._kpi_text = []
+        if tag not in VOID_TAGS:
+            self.stack.append((tag, cls, a))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        if tag in VOID_TAGS:
+            return
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                popped = self.stack[i]
+                del self.stack[i:]
+                break
+        else:
+            return
+        a = popped[2]
+        if tag == "title" and self._title is not None:
+            self.series[self._series]["titles"].append(_norm("".join(self._title)))
+            self._title = None
+        if tag == "td" and self._cell is not None and self._row is not None:
+            self._row.append(_norm("".join(self._cell)))
+            self._cell = None
+        if tag == "tr" and self._row is not None:
+            if self._row:
+                self.series[self._series]["rows"].append(self._row)
+            self._row = None
+        if tag == "table" and self._stable:
+            self._stable = False
+        if tag == "svg":
+            self._svg -= 1
+        if tag == "section" and a.get("data-series"):
+            self._series = None
+        if tag == "strong" and self._kpi_text is not None:
+            self.kpis[self._kpi] = _norm("".join(self._kpi_text))
+            self._kpi_text = None
+        if a.get("data-kpi"):
+            self._kpi = None
+
+    def handle_data(self, data):
+        if self._title is not None:
+            self._title.append(data)
+        if self._cell is not None:
+            self._cell.append(data)
+        if self._kpi_text is not None:
+            self._kpi_text.append(data)
+
+
+def rpt_parse(html: str) -> _Rpt:
+    p = _Rpt()
+    p.feed(html)
+    return p
+
+
+def svg_table_mismatch(p: _Rpt) -> list[str]:
+    """data-series 묶음마다 SVG `<title>` 「라벨: 값」 목록 = 표 행(라벨 · 값) — 차트와 표가 같은 숫자(goal §3.4). SVG 가 없는 묶음(전부 미수집)은 뺀다."""
+    bad = []
+    for name, s in p.series.items():
+        if not s["titles"]:
+            continue
+        rows = [f"{r[0]}:{r[1]}" for r in s["rows"] if len(r) == 2]
+        if s["titles"] != rows:
+            bad.append(f"{name}: title {len(s['titles'])} {s['titles'][:3]} ≠ 표 {len(rows)} {rows[:3]}")
+    return bad
+
+
+def schema_columns(table: str) -> set[str]:
+    """contracts/db-schema.md §4 의 `### \\`table\\`` 표에서 컬럼 이름을 읽는다."""
+    text = (ROOT / "contracts" / "db-schema.md").read_text(encoding="utf-8")
+    m = re.search(rf"^### `{re.escape(table)}`.*?\n(.*?)(?=^### |^## |\Z)", text, re.S | re.M)
+    if not m:
+        return set()
+    return {mm.group(1) for line in m.group(1).splitlines() if (mm := re.match(r"\|\s*([a-z_]+)\s*\|", line))}
+
+
+def check_rpt_contract(w: World, rep: Report) -> list[dict]:
+    """W3 — RPT 8 대시보드 · RPT-130 데이터 질의 · SYS-040 로그 탭 6 · 좌측 메뉴 이름. 쓰기는 F-RPT-132 만(전략부 QA1 사용자 · fake AI · 자기 로그만).
+    실제 OpenAI 는 부르지 않는다 — 질문을 보내는 모든 POST 앞에 `ai.set_client(fake)`, 끝에 `set_client(None)` · `_config` 복원."""
+    from lcomfine.app import ai, dataquery, nav, stats
+    from lcomfine.app.routers import sys as sysr
+    from lcomfine.db import conn
+
+    I, p, c = w.ids, w.p, w.c
+    st = w.clients.get("qa1st")
+    out: list[dict] = []
+
+    def chk(item: str, ok: bool, actual: str) -> None:
+        out.append({"item": item, "ok": bool(ok), "actual": actual})
+
+    def text_of(resp) -> str:
+        return _norm(" ".join(parse(resp.text).text))
+
+    today = date.today()
+    f_, t_ = today.replace(day=1).isoformat(), today.isoformat()
+    cust = str(I.get("cust") or "")
+    cust_code = p + "C"
+
+    # 0 좌측 메뉴 — RPT 대메뉴 이름 「대시보드」 (D-505 · G-01). 옛 이름 「AI 리포트」 가 메뉴 어디에도(툴팁 포함) 없어야 한다
+    r = c.get("/", headers=HTML)
+    side = re.search(r'<nav class="side".*?</nav>', r.text, re.S)
+    side_t = side.group(0) if side else ""
+    label = re.search(r'data-menu="RPT">\s*<h3[^>]*>([^<]*)<', side_t)
+    menu_name = next((m.name for m in nav.MENUS if m.code == "RPT"), None)
+    chk("좌측 메뉴 — RPT 대메뉴 이름 「대시보드」(nav · 메뉴 글자) · 옛 이름 「AI 리포트」 가 메뉴(툴팁 포함)에 0 (D-505)",
+        menu_name == "대시보드" and label is not None and label.group(1).strip() == "대시보드" and "AI 리포트" not in side_t,
+        f"nav {menu_name!r} · 메뉴 글자 {label.group(1).strip() if label else None!r} · 「AI 리포트」 {side_t.count('AI 리포트')}회"
+        + (f" — {re.search(r'<h2[^>]*AI 리포트[^>]*>', side_t).group(0)[:120]}" if "AI 리포트" in side_t and re.search(r'<h2[^>]*AI 리포트[^>]*>', side_t) else ""))
+
+    # 1 RPT 8 — 200 · SVG <title> = 표 · grid-wrap · 스크립트 · 표식(KPI · 차트 · 표) · 미확정 글자 · 미수집
+    params = {sid: {"date_from": f_, "date_to": t_} for sid in RPT_SCREENS}
+    for sid in ("RPT-010", "RPT-050", "RPT-060", "RPT-070"):
+        params[sid]["customer"] = cust
+    params["RPT-080"] = {"tab": "monthly", "asof": t_, "customer": cust}
+    pages: dict[str, _Rpt] = {}
+    texts: dict[str, str] = {}
+    raws: dict[str, str] = {}
+    for sid in RPT_SCREENS:
+        r = c.get(nav.path_of(sid), params=params[sid], headers=HTML)
+        pg = rpt_parse(r.text)
+        pages[sid], texts[sid], raws[sid] = pg, text_of(r), r.text
+        mm = svg_table_mismatch(pg)
+        n_svg = sum(1 for s in pg.series.values() if s["titles"])
+        need_svg = sid in ("RPT-010", "RPT-020", "RPT-030", "RPT-040", "RPT-050")   # QA1 세계가 이번 달에 만든 행이 있다
+        chk(f"{sid} — 200 · 인라인 SVG <title> = 같은 숫자의 표 행 (묶음 {len(pg.series)} · SVG 있는 묶음 {n_svg})",
+            r.status_code == 200 and not mm and (n_svg >= 1 or not need_svg),
+            f"{r.status_code} · 어긋남 {len(mm)}" + (" — " + "; ".join(mm[:3]) if mm else ""))
+        bad_scripts = [s for s in pg.scripts if not s.startswith(APP_JS)]
+        chk(f"{sid} — 표는 전부 grid-wrap 안(390 가로 스크롤 0 · overflow 래퍼) · 외부·인라인 스크립트 0 (app.js 만)",
+            r.status_code == 200 and not pg.unwrapped_tables and not bad_scripts,
+            f"table 래퍼 밖 {len(pg.unwrapped_tables)} {pg.unwrapped_tables[:3]} · 스크립트 {pg.scripts}")
+        want_k, want_s, want_t = RPT_MARKS[sid]
+        chk(f"{sid} — 정본 L3 · D-512 수치 표식: KPI {sorted(want_k)} · 차트 {sorted(want_s)} · 표 {sorted(want_t)}",
+            want_k <= set(pg.kpis) and want_s <= set(pg.series) and want_t <= pg.tables,
+            f"KPI 빠짐 {sorted(want_k - set(pg.kpis))} · 차트 빠짐 {sorted(want_s - set(pg.series))} · 표 빠짐 {sorted(want_t - pg.tables)}")
+    k = pages["RPT-010"].kpis
+    chk("RPT-010 — 기간 · 거래처 필터로 QA1 의뢰가 잡힌다(KPI requests ≠ 미수집 · 거래처 상위 표에 QA1 거래처) · 미착수 = 지시서 없는 의뢰(표 not_started)",
+        k.get("requests") not in (None, "미수집") and cust_code in texts["RPT-010"] and "not_started" in pages["RPT-010"].tables,
+        f"requests={k.get('requests')!r} · 거래처 {cust_code in texts['RPT-010']} · not_started={k.get('not_started')!r}")
+    for sid in ("RPT-020", "RPT-030"):
+        k = pages[sid].kpis
+        chk(f"{sid} — 로스율은 `미확정 (D-519)` 글자(KPI loss_rate) + 원 수량(KPI 수치)", k.get("loss_rate") == "미확정(D-519)" and "미확정(D-519)" in texts[sid]
+            and (k.get("produced_qty" if sid == "RPT-020" else "inspected_qty") not in (None, "미수집")),
+            f"loss_rate={k.get('loss_rate')!r} · 원 수량 {k.get('produced_qty' if sid == 'RPT-020' else 'inspected_qty')!r}")
+    k = pages["RPT-040"].kpis
+    chk("RPT-040 — 입고·불출 KPI 가 QA1 세계의 입고(오늘)로 수치(≠ 미수집) · 장기 체류 LOT 표 · 실사 차이 표",
+        k.get("material_receipts") not in (None, "미수집") and {"long_stay", "adjusts"} <= pages["RPT-040"].tables,
+        f"material_receipts={k.get('material_receipts')!r} · issues={k.get('issues')!r}")
+    k = pages["RPT-050"].kpis
+    chk("RPT-050 — 확정 출하 KPI(≠ 미수집 · QA1 확정 1) · 거래처별 표에 QA1 거래처 · 납기 준수율 KPI(due_rate) · 모집단 표 due_rows",
+        k.get("shipments") not in (None, "미수집") and cust_code in texts["RPT-050"] and "due_rate" in k and "due_rows" in pages["RPT-050"].tables,
+        f"shipments={k.get('shipments')!r} · due_rate={k.get('due_rate')!r}")
+    asof = stats.erp_asof()
+    exp_asof = asof.isoformat() if asof else "미수집"
+    k = pages["RPT-060"].kpis
+    chk("RPT-060 — 「가장 최근 업로드 기준일」 명시(ERP 업로드 기준일 글자 + KPI asof = stats.erp_asof() · 없으면 미수집) · 90일 초과 거래처 표",
+        "ERP업로드기준일" in texts["RPT-060"] and k.get("asof") == _norm(exp_asof) and "over90" in pages["RPT-060"].tables,
+        f"asof KPI {k.get('asof')!r} · 기대 {exp_asof!r} · 글자 {'ERP업로드기준일' in texts['RPT-060']}")
+    k = pages["RPT-070"].kpis
+    chk("RPT-070 — 의뢰별 단계 소요일 표(QA1 의뢰번호 행) · 병목 = `미확정 (D-520)` 글자(KPI bottleneck · 행) · 수금은 거래처·월 단위",
+        f'data-request="{I.get("req_no")}"' in raws["RPT-070"]
+        and k.get("bottleneck") == "미확정(D-520)" and "미확정(D-520)" in texts["RPT-070"] and "건단위로짝짓지않음" in texts["RPT-070"],
+        f"의뢰 행 {('data-request=' + chr(34) + str(I.get('req_no')) + chr(34)) in raws['RPT-070']} · bottleneck={k.get('bottleneck')!r}")
+    # RPT-080 — 일일 · 주간 · 월간 탭 · 일일 = 040 · 050, 주간·월간 = + 010 · 020 · 060 (D-805) · 해설 문장 없음(D-505)
+    secs = {}
+    for tab in ("daily", "weekly", "monthly"):
+        r = c.get(nav.path_of("RPT-080"), params={"tab": tab, "asof": t_}, headers=HTML)
+        secs[tab] = (r.status_code, set(re.findall(r'data-section="([^"]+)"', r.text)), set(re.findall(r'data-tab="([^"]+)"', r.text)),
+                     all(x in r.text for x in ("일일", "주간", "월간")))
+    chk("RPT-080 — 탭 일일 · 주간 · 월간(data-tab 3 · 글자) · 일일 = RPT-040 · 050 · 주간 · 월간 = + RPT-010 · 020 · 060 (D-805 · 해설 없음 D-505)",
+        all(v[0] == 200 and v[2] == {"daily", "weekly", "monthly"} and v[3] for v in secs.values())
+        and secs["daily"][1] == {"RPT-040", "RPT-050"} and all(secs[t][1] == {"RPT-010", "RPT-020", "RPT-040", "RPT-050", "RPT-060"} for t in ("weekly", "monthly")),
+        " · ".join(f"{t}: {v[0]} {sorted(v[1])}" for t, v in secs.items()))
+
+    # 2 RPT 조회 칸 형식 오류 — 422 · 500 0 · 응답 모양(api-contract §2: Accept 에 text/html 없으면 JSON validation_error)
+    probes = {
+        "RPT-010 ?date_from=2026-13-45": c.get(nav.path_of("RPT-010"), params={"date_from": "2026-13-45"}),
+        "RPT-010 ?date_from=NUL": c.get(nav.path_of("RPT-010"), params={"date_from": NUL}),
+        "RPT-010 ?date_from>date_to": c.get(nav.path_of("RPT-010"), params={"date_from": t_, "date_to": "2000-01-01"}),
+        "RPT-010 ?customer=999999999(없는 거래처)": c.get(nav.path_of("RPT-010"), params={"customer": NOID}),
+        "RPT-010 ?customer=abc": c.get(nav.path_of("RPT-010"), params={"customer": "abc"}),
+        "RPT-050 ?date_to=2026-02-30": c.get(nav.path_of("RPT-050"), params={"date_to": "2026-02-30"}),
+        "RPT-080 ?tab=yearly": c.get(nav.path_of("RPT-080"), params={"tab": "yearly"}),
+        "RPT-080 ?asof=2026-13-45": c.get(nav.path_of("RPT-080"), params={"asof": "2026-13-45"}),
+        "RPT-080 ?customer=999999999": c.get(nav.path_of("RPT-080"), params={"customer": NOID}),
+    }
+    codes = {k_: r.status_code for k_, r in probes.items()}
+    chk("RPT 조회 칸 형식 오류(틀린 날짜 · NUL · 기간 역순 · 없는 거래처 · 거래처 값 틀림 · 탭 · 기준일) → 전부 422 · 500 0 · 사람이 읽는 문장",
+        all(v == 422 for v in codes.values()) and all(("형식" in r.text or "거래처" in r.text or "탭" in r.text or "늦습니다" in r.text or "NUL" in r.text)
+                                                       for r in probes.values()), str(codes))
+    rh = c.get(nav.path_of("RPT-010"), params={"date_from": "2026-13-45"}, headers=HTML)
+    rj = probes["RPT-010 ?date_from=2026-13-45"]
+    chk("RPT 422 응답 모양 — 브라우저 422 + 문장 · **Accept 에 text/html 이 없으면 JSON `{code: validation_error, message, fields}`**(api-contract §2)",
+        rh.status_code == 422 and "형식이 올바르지" in rh.text and rj.status_code == 422 and jget(rj, "code") == "validation_error",
+        f"브라우저 {rh.status_code} {rh.headers.get('content-type', '')[:20]} · JSON 요청 {rj.status_code} {rj.headers.get('content-type', '')[:24]} code={jget(rj, 'code')!r}")
+
+    # 3 RPT-130 데이터 질의 — 화면(전략부 QA1 사용자) · F-RPT-132 fake 주입 사례 · 로그 · 변경 로그 · SYS-040 탭
+    if st is None or not I.get("user_st"):
+        chk("세계 — 전략부 QA1 사용자 세션(RPT-130 질의용)", False, f"user_st {I.get('user_st')} · 세션 {st is not None}")
+    else:
+        r = st.get(nav.path_of("RPT-130"), headers=HTML)
+        t = text_of(r)
+        qi = re.search(r'<input[^>]*name="question"[^>]*>', r.text)
+        chk("RPT-130 — 질문 입력(required · maxlength 1000) → 생성된 쿼리 → 결과 표 글자 · 허용 뷰 8 표시 · 전략부는 수금 뷰 2 흐림(dim · D-513)",
+            r.status_code == 200 and qi is not None and "required" in qi.group(0) and 'maxlength="1000"' in qi.group(0)
+            and all(x in t for x in ("질문입력", "생성된쿼리", "결과표")) and all(v in r.text for v in dataquery.VIEWS)
+            and r.text.count('<code class="dim"') == 2 and "v_dq_collections" in r.text,
+            f"{r.status_code} · input {qi.group(0)[:80] if qi else None} · dim {r.text.count('<code class=\"dim\"')}")
+        uid = I["user_st"]
+        orig_config = ai._config
+        n_dq = n_ai = n_ai_fail = n_rej = 0
+        qnos: dict[str, str | None] = {}
+        ch_before = conn.q1("select count(*) as n from sys_change_log where function_id = 'F-RPT-132' and login_id = %s", (p + "ST",))["n"]
+
+        def post(label: str, fake, question: str, *, html: bool = False, no_key: bool = False):
+            nonlocal n_dq, n_ai, n_ai_fail
+            if no_key:
+                ai._config = lambda: ("", orig_config()[1])
+                ai.set_client(None)
+            else:
+                ai._config = orig_config
+                ai.set_client(fake)
+            try:
+                r_ = st.post(nav.path_of("RPT-130"), data={"question": question}, headers=HTML if html else None, follow_redirects=False)
+            finally:
+                ai.set_client(None)
+                ai._config = orig_config
+            n_dq += 1
+            n_ai += 1
+            if no_key or (fake is not None and getattr(fake, "boom", False)):
+                n_ai_fail += 1
+            return r_
+
+        def dq_row(q: str):
+            return conn.q1("select query_no, ok, sql_text, error, row_count from data_query_log where user_id = %s and question = %s order by id desc limit 1", (uid, q))
+
+        # a 거부 SQL → 422 「허용되지 않는 질의 — 이유」 · fields 질의 번호 · SQL · 로그 1행(ok false)
+        q = p + "질문 a — 쓰기 문"
+        r = post("거부", lambda m, s_, u: "delete from v_dq_orders", q)
+        row = dq_row(q)
+        n_rej += 1
+        names = [f_.get("name") for f_ in (jget(r, "fields") or [])]
+        chk("F-RPT-132 fake 거부 SQL(delete) → 422 「허용되지 않는 질의 — 이유」 · fields 질의 번호 · SQL · data_query_log ok=false 1행(거부 포함 · D-513)",
+            r.status_code == 422 and jget(r, "code") == "validation_error" and (jget(r, "message") or "").startswith(dataquery.REJECT_PREFIX + " — ")
+            and "질의 번호" in names and "SQL" in names and row is not None and row["ok"] is False and (row["error"] or "").startswith(dataquery.REJECT_PREFIX),
+            f"{r.status_code} {jget(r, 'message')!r} fields={names} · 로그 {row and dict(row)}")
+        qnos["a"] = row and row["query_no"]
+        # b 허용 SQL (JSON) → 200 http.saved + {query_no, sql, columns, rows, row_count, truncated, ms} · 로그 ok · 변경 로그 1행
+        q = p + "질문 b — 허용"
+        r = post("허용", lambda m, s_, u: "select * from v_dq_orders limit 5", q)
+        row = dq_row(q)
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        chk("F-RPT-132 fake 허용 SQL → JSON 200 `http.saved` {ok, message, query_no, sql, columns, rows, row_count, truncated, ms}(D-806) · data_query_log ok=true · row_count",
+            r.status_code == 200 and body.get("ok") is True and {"message", "query_no", "sql", "columns", "rows", "row_count", "truncated", "ms"} <= set(body)
+            and body.get("columns") and row is not None and row["ok"] is True and row["row_count"] == body.get("row_count") and row["query_no"] == body.get("query_no"),
+            f"{r.status_code} keys={sorted(body)[:12]} · 로그 {row and dict(row)}")
+        qnos["b"] = body.get("query_no")
+        ch_b = conn.q1("select count(*) as n from sys_change_log where function_id = 'F-RPT-132' and login_id = %s and target = %s",
+                       (p + "ST", f"data_query_log:{qnos['b']}"))["n"] if qnos.get("b") else 0
+        chk("F-RPT-132 성공 → `audit.log_change` 1행(function_id F-RPT-132 · target data_query_log:<질의 번호>) · 거부에는 변경 로그 0",
+            ch_b == 1 and conn.q1("select count(*) as n from sys_change_log where target = %s", (f"data_query_log:{qnos['a']}",))["n"] == 0,
+            f"성공 변경 로그 {ch_b} · 거부 변경 로그 {conn.q1('select count(*) as n from sys_change_log where target = %s', (f'data_query_log:{qnos[chr(97)]}',))['n']}")
+        # c 수금 뷰 — 전략부(ST)는 거부 · EX 는 validate_sql 통과 (D-513 부서 제한)
+        q = p + "질문 c — 수금 뷰"
+        r = post("부서 뷰 제한", lambda m, s_, u: "select * from v_dq_collections limit 1", q)
+        n_rej += 1
+        ok_ex = True
+        try:
+            dataquery.validate_sql("select * from v_dq_collections limit 1", dataquery.allowed_views("EX"))
+        except dataquery.QueryRejected as exc:
+            ok_ex = f"EX 거부 {exc}"
+        chk("F-RPT-132 수금 뷰 v_dq_collections — 전략부(ST) 422 「이 부서가 질의할 수 없는 뷰」 · EX 는 validate_sql 통과 (D-513 SL · AC · ADM · EX)",
+            r.status_code == 422 and "질의할 수 없는 뷰" in (jget(r, "message") or "") and ok_ex is True,
+            f"ST {r.status_code} {jget(r, 'message')!r} · EX {ok_ex}")
+        # d 키 없음 → 422 문장 그대로 · sys_ai_call_log 실패 1행 · data_query_log 거부 1행(sql null) (G-17 · 조용한 실패 금지)
+        q = p + "질문 d — 키 없음"
+        r = post("키 없음", None, q, no_key=True)
+        row = dq_row(q)
+        n_rej += 1
+        ai_row = conn.q1("select ok, error from sys_ai_call_log where user_id = %s order by id desc limit 1", (uid,))
+        chk("F-RPT-132 AI 키 없음 → 422 「AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY」 · sys_ai_call_log ok=false(같은 문장) · data_query_log 거부(sql null)",
+            r.status_code == 422 and jget(r, "message") == ai.NOT_CONFIGURED_MESSAGE and ai_row and ai_row["ok"] is False
+            and ai_row["error"] == ai.NOT_CONFIGURED_MESSAGE and row and row["ok"] is False and row["sql_text"] is None,
+            f"{r.status_code} {jget(r, 'message')!r} · ai {ai_row and dict(ai_row)} · dq sql={row and row['sql_text']!r}")
+        # e 호출 실패(fake 예외) → 422 「AI 호출 실패 — …」 · ai 로그 실패
+        def boom(m, s_, u):
+            raise RuntimeError("QA1 boom (예시)")
+        boom.boom = True
+        q = p + "질문 e — 호출 실패"
+        r = post("호출 실패", boom, q)
+        n_rej += 1
+        ai_row = conn.q1("select ok, error from sys_ai_call_log where user_id = %s order by id desc limit 1", (uid,))
+        chk("F-RPT-132 AI 호출 실패(fake 예외) → 422 「AI 호출 실패 — …」 · sys_ai_call_log ok=false 사유 · 하드코딩 결과 0",
+            r.status_code == 422 and (jget(r, "message") or "").startswith("AI 호출 실패 — ") and ai_row and ai_row["ok"] is False and "QA1 boom" in (ai_row["error"] or ""),
+            f"{r.status_code} {jget(r, 'message')!r} · ai {ai_row and dict(ai_row)}")
+        # f 브라우저(Accept text/html) 허용 → 303 이 아니라 같은 화면 200 + data-result + SQL + 결과 표 (api-contract §2 예외 · D-806)
+        q = p + "질문 f — 브라우저"
+        r = post("브라우저", lambda m, s_, u: "select * from v_dq_orders limit 5", q, html=True)
+        row = dq_row(q)
+        qno = row and row["query_no"]
+        pg = rpt_parse(r.text)
+        chk("F-RPT-132 브라우저(Accept text/html) 허용 → **같은 화면 200**(303 아님) · data-result=질의 번호 · 생성된 쿼리(SQL) · 결과 표(grid-wrap) · 최근 질의에 행",
+            r.status_code == 200 and qno and f'data-result="{qno}"' in r.text and "select * from v_dq_orders limit 5" in r.text
+            and f'data-query="{qno}"' in r.text and not pg.unwrapped_tables and "결과표" in text_of(r),
+            f"{r.status_code} · data-result {bool(qno and f'data-result=\"{qno}\"' in r.text)} · 래퍼 밖 표 {len(pg.unwrapped_tables)}")
+        qnos["f"] = qno
+        # g 실행 실패(검증 통과 · 없는 열) → 422 「실행 실패 — …」
+        q = p + "질문 g — 실행 실패"
+        r = post("실행 실패", lambda m, s_, u: "select qa1_no_such_column from v_dq_orders", q)
+        n_rej += 1
+        row = dq_row(q)
+        chk("F-RPT-132 실행 실패(검증 통과 · 없는 열) → 422 「실행 실패 — 사유」 · data_query_log ok=false",
+            r.status_code == 422 and (jget(r, "message") or "").startswith("실행 실패 — ") and row and row["ok"] is False,
+            f"{r.status_code} {jget(r, 'message')!r}")
+        # 로그 행 수 — 질의 7 → data_query_log 7(거부 5) · sys_ai_call_log 7(실패 2) · 업무 테이블에는 쓰지 않는다
+        dq_n = conn.q1("select count(*) as n, count(*) filter (where not ok) as rej from data_query_log where user_id = %s", (uid,))
+        ai_n = conn.q1("select count(*) as n, count(*) filter (where not ok) as fail from sys_ai_call_log where user_id = %s", (uid,))
+        chk(f"F-RPT-132 로그 — 질의 {n_dq} → data_query_log {n_dq}(거부 {n_rej}) · sys_ai_call_log {n_ai}(실패 {n_ai_fail}) — 거부 · 키 없음 · 실패도 1행씩(D-513 · D-806)",
+            dq_n["n"] == n_dq and dq_n["rej"] == n_rej and ai_n["n"] == n_ai and ai_n["fail"] == n_ai_fail,
+            f"dq {dict(dq_n)} · ai {dict(ai_n)}")
+        # 모든 질의가 최근 질의 목록에(거부 is-error)
+        r = st.get(nav.path_of("RPT-130"), headers=HTML)
+        chk("RPT-130 최근 질의 — 질의 7 전부 표에(data-query) · 거부 행 is-error · 사유 글자",
+            all(f'data-query="{v}"' in r.text for v in qnos.values() if v) and r.text.count('class="is-error"') >= n_rej and dataquery.REJECT_PREFIX in r.text,
+            f"행 {[bool(v and f'data-query=\"{v}\"' in r.text) for v in qnos.values()]} · is-error {r.text.count('class=\"is-error\"')}")
+
+        # 4 SYS-040 로그 탭 6 (admin) — 열 = db-schema 컬럼 · 탭마다 200 · 질의 · AI 호출 · ERP 회차가 보임 · 선택지 밖 422 (D-609 · F-SYS-041)
+        missing = {tab: sorted(set(cols) - schema_columns(src.split()[0])) for tab, (src, cols) in sysr.LOG_SOURCES.items()}
+        chk("SYS-040 탭 6 (access · change · erp · ai · dq · sso) — 보이는 열 전부 db-schema.md 컬럼 (새 열 · 캐시 없음 · D-609)",
+            tuple(sysr.LOG_TABS) == ("access", "change", "erp", "ai", "dq", "sso") and not any(missing.values()),
+            f"탭 {sysr.LOG_TABS} · 계약 밖 열 {dict((k_, v) for k_, v in missing.items() if v)}")
+        tabs_ok = {}
+        for tab, (src, cols) in sysr.LOG_SOURCES.items():
+            r = c.get(nav.path_of("SYS-040"), params={"tab": tab}, headers=HTML)
+            pg = rpt_parse(r.text)
+            tabs_ok[tab] = (r.status_code, pg.th == len(cols) or "미수집" in r.text, src.split()[0] in r.text, not pg.unwrapped_tables, [s_ for s_ in pg.scripts if not s_.startswith(APP_JS)])
+        chk("SYS-040 탭 6 → 200 · 표 머리 = 열 수(또는 미수집) · 표 밑에 원본 표 이름 · 표는 grid-wrap 안 · 스크립트 0",
+            all(v[0] == 200 and v[1] and v[2] and v[3] and not v[4] for v in tabs_ok.values()), str(tabs_ok))
+        r = c.get(nav.path_of("SYS-040"), params={"tab": "dq", "login": p + "ST"}, headers=HTML)
+        m_n, m_rej = re.search(r'data-n="(\d+)"', r.text), re.search(r'data-rejected="(\d+)"', r.text)
+        chk(f"SYS-040 데이터 질의 탭(?login=QA1 전략부) — 머리 건수 {n_dq} · 거부 {n_rej}(거부 포함 · D-513) · 질의 번호 전부 행에 · 「허용」 「거부」 글자",
+            r.status_code == 200 and m_n and int(m_n.group(1)) == n_dq and m_rej and int(m_rej.group(1)) == n_rej
+            and all(v in r.text for v in qnos.values() if v) and "거부" in r.text and "허용" in r.text,
+            f"{r.status_code} data-n={m_n and m_n.group(1)} data-rejected={m_rej and m_rej.group(1)} · 질의 번호 {[bool(v and v in r.text) for v in qnos.values()]}")
+        r = c.get(nav.path_of("SYS-040"), params={"tab": "ai", "login": p + "ST"}, headers=HTML)
+        m_n, m_f = re.search(r'data-n="(\d+)"', r.text), re.search(r'data-failed="(\d+)"', r.text)
+        chk(f"SYS-040 AI 호출 탭(?login=QA1 전략부) — 머리 건수 {n_ai} · 실패 {n_ai_fail} · 평균 ms · 키 없음 문장이 실패 사유 열에(키 값 0)",
+            r.status_code == 200 and m_n and int(m_n.group(1)) == n_ai and m_f and int(m_f.group(1)) == n_ai_fail and 'data-avg-ms="' in r.text
+            and ai.NOT_CONFIGURED_MESSAGE in r.text and "QA1 boom" in r.text,
+            f"{r.status_code} data-n={m_n and m_n.group(1)} data-failed={m_f and m_f.group(1)}")
+        if I.get("batch1") and I.get("batch2"):
+            b = {x["id"]: x["batch_no"] for x in conn.q("select id, batch_no from erp_upload_batch where id = any(%s)", ([I["batch1"], I["batch2"]],))}
+            r = c.get(nav.path_of("SYS-040"), params={"tab": "erp", "date_from": t_, "date_to": t_}, headers=HTML)
+            m_n = re.search(r'data-n="(\d+)"', r.text)
+            chk("SYS-040 ERP 업로드 탭(오늘) — QA1 회차 2 가 행에 · 1회차 교체 · 교체한 회차 = 2회차 번호 · 머리 건수 ≥ 2",
+                r.status_code == 200 and b.get(I["batch1"]) in r.text and b.get(I["batch2"]) in r.text and "교체" in r.text
+                and m_n is not None and int(m_n.group(1)) >= 2
+                and re.search(rf'{re.escape(b[I["batch1"]])}.*?교체.*?{re.escape(b[I["batch2"]])}', r.text, re.S) is not None,
+                f"{r.status_code} · 회차 {list(b.values())} 보임 {[v in r.text for v in b.values()]} · data-n={m_n and m_n.group(1)}")
+        bad_f = {k_: c.get(nav.path_of("SYS-040"), params=v).status_code for k_, v in {
+            "tab=nope": {"tab": "nope"}, "dq log_type=XYZ": {"tab": "dq", "log_type": "XYZ"}, "erp log_type=XYZ": {"tab": "erp", "log_type": "XYZ"},
+            "sso log_type=XYZ": {"tab": "sso", "log_type": "XYZ"}, "access log_type=XYZ": {"tab": "access", "log_type": "XYZ"},
+            "date_from=2026-13-45": {"tab": "access", "date_from": "2026-13-45"}, "login=NUL": {"tab": "access", "login": NUL}}.items()}
+        chk("SYS-040 필터 — 탭 · 구분 선택지 밖(access 로그인·조회·변경·오류·SSO · erp · dq · sso) · 틀린 날짜 · NUL → 422 (D-609 「선택지 밖은 422」)",
+            all(v == 422 for v in bad_f.values()), str(bad_f))
+
+    bad = [f"{x['item']} — {x['actual']}" for x in out if not x["ok"]]
+    rep.add("G-02", "RPT 계약 문장 (W3 · 정본 L3 · logic · D-512 · D-805 · D-806 · D-609 · goal §3.4 SVG+표 · 계약 §2 예외) — 자동 확인", not bad,
+            f"항목 {len(out)} · 어긋남 {len(bad)}", bad)
+    for x in out:
+        rep.summary.append((f"RPT 계약 문장 — {x['item']}", ("OK — " if x["ok"] else "어긋남 — ") + x["actual"]))
     return out
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """QA2 흐름 · 데이터 검사기 — G-05 ~ G-15 판정 (`make check-data` · `tools/gate.py` 가 부른다). 소유 QA2.
 
-W1 = G-05 ~ G-11 · W2 = G-11 `erp_upload_error` + G-12 ~ G-14(수금). G-15(대시보드)는 W3 화면이 없어 `FAIL  W3` 로 찍는다(게이트를 낮추지 않는다).
+W1 = G-05 ~ G-11 · W2 = G-11 `erp_upload_error` + G-12 ~ G-14(수금) · W3 = G-15(대시보드 8 독립 재계산) + G-05 RPT 8 화면 diff 0. `LATER` 없음 — 전부 잰다.
 
 하는 일 — **코드는 읽기만 한다. 만든 행은 끝에 지운다(접두 `QA2-`).**
   G-05  쓰기 경계 — 라우터 파일별 쓰기 SQL 정적 스캔(+ 그 라우터가 부르는 공용 모듈 · COL 은 `erp_upload.py` 포함) ↔ `function-list.md`
@@ -21,6 +21,11 @@ W1 = G-05 ~ G-11 · W2 = G-11 `erp_upload_error` + G-12 ~ G-14(수금). G-15(대
         매핑 뒤 반영 회차만 재해석(error is null) · 교체 회차 그대로 · COL-020 회차별 오류 행 · erp_upload_row 쓰기 = parsed · error 만(정적)
   G-14  출하 대비 수금 — E2E 의 확정 출하 + 같은 월 · 거래처의 ERP 매출 · 수금 → COL-070 화면 값 = QA2 독립 SQL(shipment_order 확정 confirmed_at 월
         × erp_upload_row 반영 · error 없음 · 사용 중 매핑 · txn_date 월) · 출하만 = MES 쪽만 · ERP 만 = ERP 쪽만 · 미매핑 코드 제외
+  G-15  대시보드 8 수치 — RPT-010~080 마다 `dashboard.<fn>(period, customer_id)` 반환(KPI · series · tables) = **QA2 가 따로 쓴 SQL**(D-805 정의 ·
+        group by · filter · 뷰 · stats 를 거치지 않음) = 화면 HTML(`data-kpi` 글자 · `data-series` SVG <title> 「라벨: 값」 · 표 둘째 열 · `data-table` 행).
+        세계 = 이 흐름의 달(S1 확정 월) · 거래처 C1(흐름) · C2(ERP 만). 020 · 030 · 040 은 전 DB 집계라 함수 · 독립 SQL · 화면 GET 을 **한 REPEATABLE READ
+        스냅샷**(`Flow.snapshot` — `conn.q/q1` 만 그 트랜잭션으로) 에서 읽는다(다른 QA 가 같은 DB 에 동시에 쓴다). 0건 → `미수집` · 로스율 `미확정 (D-519)` · 병목 `미확정 (D-520)` · RPT-060 asof 명시 ·
+        RPT-080 일일/주간/월간 구성(D-512) · 거래처 필터 010 · 050 · 060 · 070 · 080 만(D-805) · RPT 8 화면 GET 전후 업무 테이블 diff 0(G-05)
 
     uv run python tools/check_data.py                # 판정표 (종료코드 = FAIL 수)
     uv run python tools/check_data.py --transcript   # + E2E 기록(마크다운 표) — outputs/qa2-흐름데이터.md 에 붙인다
@@ -55,9 +60,11 @@ GATE_NAMES = {
     "G-10": "가용 재계산", "G-11": "알림 9종", "G-12": "회차 교체", "G-13": "오류 행 · 미매핑",
     "G-14": "출하 대비 수금", "G-15": "대시보드 8 수치",
 }
-LATER = {"G-15": "W3"}
+LATER: dict[str, str] = {}      # W3 까지 전부 잰다 — 잴 수 없는 것은 이유와 함께 FAIL
 #: 흐름이 앞에서 끊기면 행이 없어 PASS 로 보일 수 있는 것 — 행이 없으면 FAIL 을 넣는다 (게이트를 낮추지 않는다)
 MUST_MEASURE = {("G-11", "erp_upload_error"), ("G-12", "같은 기간 재업로드"), ("G-13", "오류 행 보존"), ("G-14", "COL-070 화면")}
+#: W3 대시보드 단계가 돌지 못하면 행이 없어 PASS 로 보일 수 있는 것
+MUST_MEASURE_W3 = {("G-15", "RPT-010"), ("G-15", "RPT-080"), ("G-05", "RPT 대시보드 8 화면")}
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -113,7 +120,7 @@ HELPERS = {"notify": "notify.py", "numbering": "numbering.py", "audit": "util/au
 ALWAYS = {"notification", "sys_change_log", "sys_access_log"}
 #: 읽기만 하는 모듈 (db-schema §2.1 규칙 4 · CLAUDE.md)
 READ_ONLY = {"trk.py": "TRK", "lot.py": "LOT", "prp.py": "PRP"}
-READ_ONLY_HELPERS = ("trace.py", "stats.py")
+READ_ONLY_HELPERS = ("trace.py", "stats.py", "dashboard.py")
 
 
 def _sql_writes(text: str) -> list[str]:
@@ -255,8 +262,28 @@ def static_scan(report: Report) -> None:
         t = (APP / fname).read_text(encoding="utf-8")
         if _sql_writes(t) or re.search(r"\b(conn\.x|conn\.tx)\(", t):
             ro_hits.append(f"{fname}:{_sql_writes(t)}")
-    report.add("G-05", "TRK · LOT · PRP · trace · stats 쓰기 0 (정적)", not ro_hits,
-               f"쓰기 문 {len(ro_hits)} {ro_hits or ''} — trk.py · lot.py · prp.py · trace.py · stats.py")
+    report.add("G-05", "TRK · LOT · PRP · trace · stats 쓰기 0 (정적) + dashboard.py", not ro_hits,
+               f"쓰기 문 {len(ro_hits)} {ro_hits or ''} — trk.py · lot.py · prp.py · trace.py · stats.py · dashboard.py")
+    # RPT — rpt.py 는 직접 쓰기 0 · 쓰는 것은 dataquery(data_query_log) · ai(sys_ai_call_log) · numbering 만 (F-RPT-132 「쓰는 테이블」 · D-513)
+    rpt_text = (ROUTERS / "rpt.py").read_text(encoding="utf-8") if (ROUTERS / "rpt.py").exists() else ""
+    rpt_own = set(_sql_writes(rpt_text))
+    dq_w = set(_sql_writes((APP / "dataquery.py").read_text(encoding="utf-8"))) if (APP / "dataquery.py").exists() else set()
+    ai_w = set(_sql_writes((APP / "ai.py").read_text(encoding="utf-8"))) if (APP / "ai.py").exists() else set()
+    rpt_contract = contract.get("RPT", set())
+    rpt_bad = sorted((rpt_own | dq_w | ai_w) - rpt_contract - ALWAYS)
+    # 질의(쓰기)를 부르는 곳 — dataquery.ask · ai.complete · conn.tx 가 POST 핸들러(run_query) 안에만 있어야 GET 8 이 로그를 쓰지 않는다
+    writers = []
+    for m in re.finditer(r"\b(dataquery\.ask|ai\.complete|conn\.tx)\(", rpt_text):
+        func = re.findall(r"^def (\w+)\(", rpt_text[: m.start()], re.M)
+        writers.append((m.group(1), func[-1] if func else "?"))
+    get_handlers = re.findall(r"@router\.get\([^)]*\)[^\n]*\ndef (\w+)\(", rpt_text)
+    post_handlers = re.findall(r"@router\.post\([^)]*\)[^\n]*\ndef (\w+)\(", rpt_text)
+    writers_ok = bool(writers) and all(fn in post_handlers for _, fn in writers)
+    report.add("G-05", "RPT 라우터 · dashboard.py 직접 쓰기 0 · 질의 로그는 dataquery · ai 뿐 · dataquery.ask 는 POST run_query 안에서만 (정적)",
+               bool(rpt_text) and not rpt_own and not rpt_bad and dq_w <= {"data_query_log"} and ai_w <= {"sys_ai_call_log"} and writers_ok,
+               f"rpt.py 직접 쓰기 {sorted(rpt_own) or 0} · dataquery.py 쓰기 {sorted(dq_w)} · ai.py 쓰기 {sorted(ai_w)} ⊆ F-RPT 「쓰는 테이블」 {sorted(rpt_contract)} · "
+               f"계약 밖 {rpt_bad or 0} · 쓰기 호출 {sorted(set(writers))} 전부 POST 핸들러 {post_handlers} 안 {writers_ok} · GET 핸들러 {len(get_handlers)} 에는 없음 · "
+               f"대시보드 집계 캐시 테이블 없음(dashboard.py 쓰기 0 — 위 행)")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -348,7 +375,9 @@ READ_SCREENS = ["/trk/orders", "/trk/due", "/trk/customers", "/lot/forward", "/l
                 "/prp/machines", "/prp/completion", "/wo/status", "/inv/stock", "/qc/history", "/shp/history", "/",
                 "/col/uploads", "/col/upload-history", "/col/customer-map", "/col/collections", "/col/receivables",
                 "/col/aging", "/col/shipment-vs-collection"]
-LOG_TABLES = {"sys_access_log"}
+#: 행 수 diff 에서 빼는 로그 테이블 — 조회 로그(모든 GET 이 쓴다) · 변경 로그 · 질의 · AI 로그는 **다른 세션의 쓰기**(동시에 도는 QA 의 POST · 질의)로
+#: 늘어난다. 대시보드 GET 이 질의 로그를 쓰지 않는 것은 정적 행(「RPT 라우터 … dataquery.ask 는 POST run_query 안에서만」)이 보증한다
+LOG_TABLES = {"sys_access_log", "sys_change_log", "data_query_log", "sys_ai_call_log"}
 
 
 def num(text: str) -> Decimal:
@@ -1131,7 +1160,7 @@ class Flow:
         self.r.add("G-05", "조회 화면 GET 전후 업무 테이블 diff 0",
                    not diff and all(c == 200 for c in codes),
                    f"admin GET {len(paths)} 화면(TRK 3 · LOT 2 · PRP 3 · WO-040 · INV-010 · QC-030 · SHP-030 · HOME · COL 7) "
-                   f"응답 {sorted(set(codes))} · 테이블 diff {diff or 0} (sys_access_log 제외)")
+                   f"응답 {sorted(set(codes))} · 테이블 diff {diff or 0} (로그 4 — 조회 · 변경 · 질의 · AI 로그 — 는 다른 세션이 동시에 쓰므로 제외 · 질의 로그는 정적 행이 보증)")
 
     # ════════════════════════════════════════════════════════════════════════
     # G-10 — F-SHP-012 라인 전부 제거 = 지시 취소 (function-list 계약 문장 · Ruling 21) → 할당 해제 · 가용 복원
@@ -1462,6 +1491,661 @@ class Flow:
                    f"모듈 C1 {mod.get(C1)} C2 {mod.get(C2)} · 뷰 C1 매출 · 수금 ({view_c1['s']}, {view_c1['c']}) = 테이블 직접 {ind1[2:]} · 건 단위 짝짓기 없음(월 · 거래처 합만)")
 
     # ════════════════════════════════════════════════════════════════════════
+    # W3 대시보드 — G-15 (dashboard 8 함수 = QA2 독립 SQL = 화면 KPI · 표 · SVG <title>) · G-05 RPT 8 화면 diff 0
+    # ════════════════════════════════════════════════════════════════════════
+    # ── 화면 조각 읽기 (템플릿 표식 — progress-dev3 §1.5: data-kpi · data-series · data-series-table · data-table · data-section) ──
+    @staticmethod
+    def _strip(s: str) -> str:
+        return " ".join(_html.unescape(re.sub("<[^>]+>", " ", s)).split())
+
+    def kpi_text(self, html: str, key: str) -> str | None:
+        """`data-kpi="<key>"` 카드의 값 글자 — 「2 건」 · 「80.000」 · 「미수집」 · 「미확정 (D-519)」. 카드가 없으면 None."""
+        m = re.search(r'<div class="kpi" data-kpi="' + re.escape(key) + r'">(.*?)</div>', html, re.S)
+        if not m:
+            return None
+        s = re.search(r'<strong class="kpi__value num">(.*?)</strong>', m.group(1), re.S)
+        return self._strip(s.group(1)) if s else None
+
+    def series_html(self, html: str, name: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]] | None:
+        """`data-series="<name>"` 구역의 SVG `<title>` 「라벨: 값」 과 `table[data-series-table]` 행(라벨, 값). 구역이 없으면 None."""
+        i = html.find(f'data-series="{name}"')
+        if i < 0:
+            return None
+        seg = html[i:html.find("</section>", i)]
+        titles = [(self._strip(a), self._strip(b)) for a, b in re.findall(r"<title>(.*): ([^<]*)</title>", seg)]
+        rows = [(self._strip(a), self._strip(b)) for a, b in re.findall(r'<tr><td>(.*?)</td><td class="num">(.*?)</td></tr>', seg, re.S)]
+        return titles, rows
+
+    def table_html(self, html: str, name: str) -> list[list[str]] | None:
+        """`data-table="<name>"` 구역의 tbody 행(td 글자). 구역이 없으면 None · 빈 표(미수집 문구)는 []."""
+        i = html.find(f'data-table="{name}"')
+        if i < 0:
+            return None
+        seg = html[i:html.find("</section>", i)]
+        body = re.search(r"<tbody>(.*?)</tbody>", seg, re.S)
+        if not body:
+            return []
+        return [[self._strip(td) for td in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+                for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", body.group(1), re.S)]
+
+    @staticmethod
+    def kpi_expected(k: dict) -> str:
+        """KPI 카드가 보여야 하는 글자 — 수 대신 text · None 은 미수집 · 그 밖 `num(digits)` + 단위 (템플릿 `rpt/_d.html` kpis 매크로의 규칙)."""
+        from lcomfine.app.util.screen import num as fmt
+
+        if k.get("text"):
+            return k["text"]
+        if k["value"] is None:
+            return "미수집"
+        return fmt(k["value"], k["digits"]) + (f" {k['unit']}" if k["unit"] else "")
+
+    def kpi_mismatch(self, html: str, data: dict, keys=None) -> list[str]:
+        """화면 KPI 글자 ≠ 함수 반환으로 기대되는 글자 인 키 목록(빈 리스트 = 전부 일치)."""
+        bad = []
+        for k in data["kpis"]:
+            if keys is not None and k["key"] not in keys:
+                continue
+            got = self.kpi_text(html, k["key"])
+            exp = self.kpi_expected(k)
+            if got != exp:
+                bad.append(f"{k['key']} 화면 {got!r} ≠ {exp!r}")
+        return bad
+
+    def series_mismatch(self, html: str, data: dict) -> list[str]:
+        """series 마다 SVG <title> 「라벨: 값」 · 표 둘째 열 = 함수 반환(`num` 소수 0 · None = 미수집) — 어긋난 것 목록."""
+        from lcomfine.app.util.screen import num as fmt
+
+        bad = []
+        for name, pts in data["series"].items():
+            got = self.series_html(html, name)
+            if got is None:
+                bad.append(f"{name}: 화면에 data-series 없음")
+                continue
+            titles, rows = got
+            exp = [(p["label"], "미수집" if p["value"] is None else fmt(p["value"])) for p in pts]
+            all_none = not pts or all(p["value"] is None for p in pts)
+            if rows != exp:
+                bad.append(f"{name}: 표 {rows[:4]}… ≠ {exp[:4]}…")
+            if all_none:
+                if titles:
+                    bad.append(f"{name}: 전부 미수집인데 SVG 가 있다 {titles[:3]}")
+            elif titles != exp:
+                bad.append(f"{name}: SVG title {titles[:4]}… ≠ {exp[:4]}…")
+        return bad
+
+    @staticmethod
+    def _eq(a, b) -> bool:
+        """수 · None 비교 — Decimal 80.000 == 80 · None == None."""
+        if a is None or b is None:
+            return a is None and b is None
+        return Decimal(str(a)) == Decimal(str(b))
+
+    def _kv(self, data: dict) -> dict:
+        return {k["key"]: k["value"] for k in data["kpis"]}
+
+    def _kt(self, data: dict) -> dict:
+        return {k["key"]: k["text"] for k in data["kpis"]}
+
+    @staticmethod
+    def _nz(x):
+        """QA2 쪽 규칙(D-805 「KPI 도 0건이면 None」) — 0 · None → None."""
+        return None if x is None or x == 0 else x
+
+    @staticmethod
+    def _rate100(a, denom) -> Decimal | None:
+        return (Decimal(a) * 100 / Decimal(denom)).quantize(Decimal("0.1")) if denom else None
+
+    @staticmethod
+    def _days(f: date, t: date) -> list[str]:
+        out, d = [], f
+        while d <= t:
+            out.append(d.isoformat())
+            d += timedelta(days=1)
+        return out
+
+    def _series_from(self, labels: list[str], rows: list[dict], key: str, val: str) -> list:
+        got = {str(r[key]): r[val] for r in rows}
+        return [got.get(lb) for lb in labels]
+
+    @staticmethod
+    def _snapshot_cm():
+        """한 스냅샷(REPEATABLE READ 트랜잭션 하나) 안에서 `conn.q` · `conn.q1` 을 읽는다 — 그 동안 dashboard · stats · 라우터(TestClient GET) ·
+        QA2 독립 SQL 이 **같은 순간의 DB** 를 본다(다른 QA 가 같은 DB 에 동시에 쓴다 · 쓰기 `conn.x` · `conn.tx` 는 건드리지 않는다 · 끝에 rollback)."""
+        import contextlib
+
+        import psycopg
+        from psycopg.rows import dict_row
+
+        from lcomfine.db import conn as _conn
+
+        @contextlib.contextmanager
+        def cm():
+            c = psycopg.connect(_conn.dsn(), row_factory=dict_row)
+            c.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+            lock = threading.Lock()
+            orig_q, orig_q1 = _conn.q, _conn.q1
+
+            def q(sql, params=None):
+                with lock, c.cursor() as cur:
+                    cur.execute(sql, params)
+                    return [dict(r) for r in cur.fetchall()] if cur.description is not None else []
+
+            def q1(sql, params=None):
+                rows = q(sql, params)
+                return rows[0] if rows else None
+
+            _conn.q, _conn.q1 = q, q1
+            try:
+                yield c
+            finally:
+                _conn.q, _conn.q1 = orig_q, orig_q1
+                c.rollback()
+                c.close()
+        return cm()
+
+    def snapshot(self):
+        return self._snapshot_cm()
+
+    def stable(self, indep, dash, html_fn=None, tries: int = 3):
+        """같은 DB 를 다른 QA 가 함께 쓴다 — 독립 SQL → 함수 → 화면 → 독립 SQL 을 한 번에 읽고, 앞뒤 독립값이 같을 때만 그 묶음을 쓴다(최대 tries 회)."""
+        last = None
+        for n in range(1, tries + 1):
+            a = indep()
+            d = dash()
+            h = html_fn() if html_fn else None
+            b = indep()
+            last = (a, d, h, n)
+            if a == b:
+                return a, d, h, n
+        return last
+
+    # ── 독립 SQL (D-805 의 정의를 QA2 가 따로 쓴 문장 — 집계는 SQL group by · filter · 뷰를 거치지 않는다) ──
+    def indep_orders(self, f: date, t: date, cid: int | None) -> dict:
+        p = {"f": f, "t": t, "c": cid}
+        where = "r.request_date between %(f)s and %(t)s and r.status <> '취소' and (%(c)s::bigint is null or r.customer_id = %(c)s::bigint)"
+        k = self.q1(f"""select count(*) as n, sum(r.qty) as qty, count(distinct r.customer_id) as customers,
+                               count(*) filter (where not exists (select 1 from work_order w where w.request_id = r.id and w.status <> '취소')) as not_started
+                          from production_request r where {where}""", p)
+        days = self.q(f"select r.request_date::text as d, count(*) as n, sum(r.qty) as qty from production_request r where {where} group by 1", p)
+        due = self.q(f"select to_char(r.due_date, 'YYYY-MM') as m, count(*) as n from production_request r where {where} group by 1 order by 1", p)
+        top = self.q(f"""select c.customer_code, count(*) as n, sum(r.qty) as qty from production_request r join customer c on c.id = r.customer_id
+                          where {where} group by 1 order by 2 desc, 3 desc, 1 limit 10""", p)
+        labels = self._days(f, t)
+        return {"requests": self._nz(k["n"]), "qty": k["qty"] if k["n"] else None, "customers": self._nz(k["customers"]),
+                "not_started": self._nz(k["not_started"]),
+                "s_requests": self._series_from(labels, days, "d", "n"), "s_qty": self._series_from(labels, days, "d", "qty"),
+                "s_due": [(d["m"], d["n"]) for d in due], "top": [(r["customer_code"], r["n"], r["qty"]) for r in top]}
+
+    def indep_production(self, f: date, t: date) -> dict:
+        p = {"f": f, "t": t}
+        k = self.q1("""select count(distinct work_order_id) as wos, sum(produced_qty) as produced, sum(good_qty) as good, sum(loss_qty) as loss,
+                              sum(run_minutes) as run, sum(stop_minutes) as stop, count(*) as n
+                         from production_daily where work_date between %(f)s and %(t)s""", p)
+        oq = self.q1("""select sum(w.qty) as q from work_order w
+                         where w.id in (select distinct work_order_id from production_daily where work_date between %(f)s and %(t)s)""", p)
+        days = self.q("select work_date::text as d, sum(good_qty) as good, sum(produced_qty) as produced from production_daily where work_date between %(f)s and %(t)s group by 1", p)
+        eq = self.q("select equipment_code, sum(good_qty) as good, sum(produced_qty) as produced from production_daily where work_date between %(f)s and %(t)s group by 1", p)
+        run, stop = k["run"], k["stop"]
+        total = (run or 0) + (stop or 0)
+        util = None if (run is None and stop is None) or total == 0 else (Decimal(run or 0) * 100 / Decimal(total)).quantize(Decimal("0.1"))
+        labels = self._days(f, t)
+        return {"work_orders": self._nz(k["wos"]), "order_qty": oq["q"] if k["n"] else None, "produced_qty": self._nz(k["produced"]),
+                "good_qty": self._nz(k["good"]), "loss_qty": k["loss"] if k["n"] else None, "utilization": util,
+                "s_good": self._series_from(labels, days, "d", "good"), "s_produced": self._series_from(labels, days, "d", "produced"),
+                "by_eq": {r["equipment_code"]: (r["good"], r["produced"]) for r in eq}}
+
+    def indep_quality(self, f: date, t: date) -> dict:
+        p = {"f": f, "t": t}
+        k = self.q1("select sum(inspected_qty) as insp, sum(defect_qty) as dft, count(*) as n from inspection_daily where work_date between %(f)s and %(t)s", p)
+        days = self.q("select work_date::text as d, sum(inspected_qty) as insp, sum(defect_qty) as dft from inspection_daily where work_date between %(f)s and %(t)s group by 1", p)
+        dtypes = self.q("""select e.key as code, sum(nullif(e.value, '')::numeric) as qty from inspection_daily d, jsonb_each_text(d.defects) e
+                            where d.work_date between %(f)s and %(t)s group by 1""", p)
+        j = self.q1("""select count(*) as n, count(*) filter (where seq > 1) as rejudged,
+                              count(distinct (kind, lot_id)) filter (where result = '불합격') as rejected
+                         from (select '입고' as kind, material_lot_id as lot_id, seq, result, inspected_at from incoming_inspection
+                               union all
+                               select '제품', product_lot_id, seq, result, inspected_at from product_inspection) x
+                        where x.inspected_at::date between %(f)s and %(t)s""", p)
+        labels = self._days(f, t)
+        return {"inspected_qty": self._nz(k["insp"]), "defect_qty": k["dft"] if k["n"] else None, "judgements": self._nz(j["n"]),
+                "rejected_lots": self._nz(j["rejected"]), "rejudged": self._nz(j["rejudged"]),
+                "s_defect": self._series_from(labels, days, "d", "dft"), "s_inspected": self._series_from(labels, days, "d", "insp"),
+                "defects": {r["code"]: r["qty"] for r in dtypes}}
+
+    def indep_inventory(self, f: date, t: date) -> dict:
+        p = {"f": f, "t": t}
+        rec = self.q1("""select count(*) as n, sum(s) as qty from (
+                            select r.id, sum(l.qty) as s from material_receipt r join material_lot l on l.receipt_id = r.id
+                             where r.canceled_at is null and l.canceled_at is null and l.parent_lot_id is null
+                               and r.received_on between %(f)s and %(t)s group by r.id) x""", p)
+        rec_days = self.q("""select r.received_on::text as d, sum(l.qty) as qty from material_receipt r join material_lot l on l.receipt_id = r.id
+                              where r.canceled_at is null and l.canceled_at is null and l.parent_lot_id is null
+                                and r.received_on between %(f)s and %(t)s group by 1""", p)
+        iss = self.q1("""select count(*) as n, sum(s) as qty from (
+                            select m.id, sum(l.qty) as s from material_issue m join material_issue_line l on l.issue_id = m.id
+                             where m.canceled_at is null and m.issued_on between %(f)s and %(t)s group by m.id) x""", p)
+        iss_days = self.q("""select m.issued_on::text as d, sum(l.qty) as qty from material_issue m join material_issue_line l on l.issue_id = m.id
+                              where m.canceled_at is null and m.issued_on between %(f)s and %(t)s group by 1""", p)
+        prod = self.q1("select count(*) as n, sum(qty) as qty from product_receipt where canceled_at is null and received_on between %(f)s and %(t)s", p)
+        adj = self.q1("select count(*) as n, sum(diff_qty) as diff from stock_adjust where adjusted_at::date between %(f)s and %(t)s", p)
+        top = self.q("""select sum(qty) as q from stock_move where moved_at::date between %(f)s and %(t)s group by lot_kind, lot_id
+                         order by 1 desc limit 10""", p)
+        stay = self.q("""select days from (
+                            select current_date - m.created_at::date as days from lot_stock s join material_lot m on s.lot_kind = '원자재' and m.id = s.lot_id where s.qty > 0
+                            union all
+                            select current_date - pl.created_at::date from lot_stock s join product_lot pl on s.lot_kind = '제품' and pl.id = s.lot_id where s.qty > 0) x
+                          order by days desc limit 10""")
+        labels = self._days(f, t)
+        return {"material_receipts": self._nz(rec["n"]), "material_receipt_qty": self._nz(rec["qty"]), "issues": self._nz(iss["n"]),
+                "issue_qty": self._nz(iss["qty"]), "product_receipts": self._nz(prod["n"]), "product_receipt_qty": self._nz(prod["qty"]),
+                "adjusts": self._nz(adj["n"]), "adjust_diff": adj["diff"] if adj["n"] else None,
+                "s_receipt": self._series_from(labels, rec_days, "d", "qty"), "s_issue": self._series_from(labels, iss_days, "d", "qty"),
+                "top_moves": [r["q"] for r in top], "long_stay": [r["days"] for r in stay]}
+
+    def indep_shipment(self, f: date, t: date, cid: int | None) -> dict:
+        p = {"f": f, "t": t, "c": cid}
+        base = """select o.id, o.customer_id, o.confirmed_at::date as d, sum(l.qty) as q
+                    from shipment_order o join shipment_line l on l.shipment_order_id = o.id
+                   where o.status = '확정' and o.confirmed_at::date between %(f)s and %(t)s
+                     and (%(c)s::bigint is null or o.customer_id = %(c)s::bigint) group by o.id, o.customer_id, o.confirmed_at"""
+        k = self.q1(f"select count(*) as n, sum(q) as qty, count(distinct customer_id) as customers from ({base}) x", p)
+        days = self.q(f"select d::text as d, count(*) as n, sum(q) as qty from ({base}) x group by 1", p)
+        cust = self.q(f"select c.customer_code, sum(x.q) as qty, count(*) as n from ({base}) x join customer c on c.id = x.customer_id group by 1 order by 2 desc, 1", p)
+        due = self.q1("""select count(*) filter (where done and last_on <= due_date) as on_time,
+                                count(*) filter (where done and last_on > due_date) as late_done,
+                                count(*) filter (where not done and due_date < current_date) as late_open,
+                                count(*) filter (where not done and due_date >= current_date) as in_progress
+                           from (select q.due_date, (q.qty > 0 and coalesce(s.sq, 0) >= q.qty) as done, s.last_on
+                                   from production_request q
+                                   left join (select o.request_id, sum(l.qty) as sq, max(o.confirmed_at)::date as last_on
+                                                from shipment_order o join shipment_line l on l.shipment_order_id = o.id
+                                               where o.status = '확정' group by o.request_id) s on s.request_id = q.id
+                                  where q.status <> '취소' and q.due_date between %(f)s and %(t)s
+                                    and (%(c)s::bigint is null or q.customer_id = %(c)s::bigint)) x""", p)
+        denom = due["on_time"] + due["late_done"] + due["late_open"]
+        labels = self._days(f, t)
+        return {"shipments": self._nz(k["n"]), "qty": k["qty"] if k["n"] else None, "customers": self._nz(k["customers"]),
+                "due_rate": self._rate100(due["on_time"], denom), "on_time": self._nz(due["on_time"]), "late_done": self._nz(due["late_done"]),
+                "late_open": self._nz(due["late_open"]),
+                "s_qty": self._series_from(labels, days, "d", "qty"), "s_shipments": self._series_from(labels, days, "d", "n"),
+                "by_customer": [(r["customer_code"], r["qty"], r["n"]) for r in cust]}
+
+    def indep_collection(self, f: date, t: date, cid: int | None) -> dict:
+        """RPT-060 — ERP 반영 회차 행을 테이블에서 직접(뷰 · stats 를 거치지 않음) · 월 라벨 = 기간의 달들 · 미수 연령은 기준일 − 일자."""
+        months, y, m = [], f.year, f.month
+        while date(y, m, 1) <= t:
+            months.append(f"{y:04d}-{m:02d}")
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        asof = self.q1("select max(period_to) as d from erp_upload_batch where status = '반영'")["d"]
+        sales_mapped = bool(self.q1("select 1 from erp_column_map where field = 'sales_amount' and coalesce(column_name, '') <> ''"))
+        per = {ym: self.indep_ship_vs_coll_any(ym, cid) for ym in months}
+        coll = [per[ym][3] for ym in months]
+        sales = [per[ym][2] for ym in months]
+        shipped = [per[ym][1] for ym in months]
+        some = lambda xs: sum((x for x in xs if x is not None), Decimal(0)) if any(x is not None for x in xs) else None  # noqa: E731
+        buckets = ["0~30일", "31~60일", "61~90일", "90일 초과"]
+        aging_series = [None] * 4
+        over90 = None
+        if asof is not None:
+            rows = self.q("""select m.customer_id,
+                                    case when %(asof)s::date - (u.parsed ->> 'txn_date')::date <= 30 then '0~30일'
+                                         when %(asof)s::date - (u.parsed ->> 'txn_date')::date <= 60 then '31~60일'
+                                         when %(asof)s::date - (u.parsed ->> 'txn_date')::date <= 90 then '61~90일' else '90일 초과' end as b,
+                                    sum(coalesce(nullif(u.parsed ->> 'sales_amount', '')::numeric, 0)) - sum(coalesce(nullif(u.parsed ->> 'collected_amount', '')::numeric, 0)) as net
+                               from erp_upload_row u join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
+                               join erp_customer_map m on m.erp_code = u.parsed ->> 'customer_code' and m.use_yn = 'Y'
+                              where u.error is null and (u.parsed ->> 'txn_date')::date <= %(asof)s
+                                and (%(c)s::bigint is null or m.customer_id = %(c)s::bigint)
+                              group by 1, 2""", {"asof": asof, "c": cid})
+            if sales_mapped:
+                if rows:
+                    aging_series = [sum((r["net"] for r in rows if r["b"] == b), Decimal(0)) for b in buckets]
+                over90 = self._nz(len({r["customer_id"] for r in rows if r["b"] == "90일 초과" and r["net"] > 0}))
+        return {"asof": asof, "asof_text": asof.isoformat() if asof else "미수집", "collected": some(coll),
+                "sales": some(sales) if sales_mapped else None, "sales_text": None if sales_mapped else "미확정 (D-516)",
+                "shipped_qty": some(shipped), "over90": over90,
+                "over90_text": "미수집" if asof is None else (None if sales_mapped else "미확정 (D-516)"),
+                "months": months, "s_collected": coll, "s_shipped": shipped, "s_aging": aging_series, "buckets": buckets}
+
+    def indep_ship_vs_coll_any(self, ym: str, cid: int | None) -> tuple:
+        """indep_ship_vs_coll 의 거래처 선택형(None = 전체) — (확정 출하 건수, 출하 수량, ERP 매출 합, ERP 수금 합)."""
+        p = {"c": cid, "ym": ym}
+        s = self.q1("""select count(distinct o.id) as n, sum(l.qty) as q from shipment_order o join shipment_line l on l.shipment_order_id = o.id
+                        where o.status = '확정' and (%(c)s::bigint is null or o.customer_id = %(c)s::bigint) and to_char(o.confirmed_at, 'YYYY-MM') = %(ym)s""", p)
+        e = self.q1("""select sum(nullif(u.parsed ->> 'sales_amount', '')::numeric) as s, sum(nullif(u.parsed ->> 'collected_amount', '')::numeric) as c, count(*) as n
+                         from erp_upload_row u join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
+                         join erp_customer_map m on m.erp_code = u.parsed ->> 'customer_code' and m.use_yn = 'Y'
+                        where u.error is null and (%(c)s::bigint is null or m.customer_id = %(c)s::bigint)
+                          and to_char((u.parsed ->> 'txn_date')::date, 'YYYY-MM') = %(ym)s""", p)
+        n = s["n"] or None
+        return (n, s["q"] if n else None, e["s"] if e["n"] else None, e["c"] if e["n"] else None)
+
+    STAGES = (("의뢰 → 지시", "request_date", "ordered_on"), ("지시 → 생산 완료", "ordered_on", "produced_on"),
+              ("생산 완료 → 제품 입고", "produced_on", "received_on"), ("제품 입고 → 출하", "received_on", "shipped_on"),
+              ("의뢰 → 출하", "request_date", "shipped_on"))     # D-805 RPT-070 의 단계 5 (QA2 가 결정문에서 옮겨 적음)
+
+    def indep_order_flow(self, f: date, t: date, cid: int | None) -> dict:
+        rows = self.q("""select r.request_no, r.request_date,
+                                min(w.created_at)::date as ordered_on, max(d.work_date) as produced_on,
+                                max(pr.received_on) as received_on, max(so.confirmed_at)::date as shipped_on
+                           from production_request r
+                           left join work_order w on w.request_id = r.id and w.status <> '취소'
+                           left join production_daily d on d.work_order_id = w.id
+                           left join product_receipt pr on pr.work_order_id = w.id and pr.canceled_at is null
+                           left join shipment_order so on so.request_id = r.id and so.status = '확정'
+                          where r.request_date between %(f)s and %(t)s and r.status <> '취소'
+                            and (%(c)s::bigint is null or r.customer_id = %(c)s::bigint)
+                          group by r.id, r.request_no, r.request_date order by r.request_date, r.id""", {"f": f, "t": t, "c": cid})
+        per = {}
+        vals = {name: [] for name, _, _ in self.STAGES}
+        for r in rows:
+            per[r["request_no"]] = {}
+            for name, a, b in self.STAGES:
+                d = (r[b] - r[a]).days if r[a] is not None and r[b] is not None else None
+                per[r["request_no"]][name] = d
+                if d is not None:
+                    vals[name].append(d)
+        avg = {name: ((Decimal(sum(v)) / Decimal(len(v))).quantize(Decimal("0.1")) if v else None) for name, v in vals.items()}
+        return {"requests": self._nz(len(rows)), "shipped": self._nz(sum(1 for r in rows if r["shipped_on"] is not None)),
+                "avg": avg, "count": {n: len(v) for n, v in vals.items()}, "max": {n: (max(v) if v else None) for n, v in vals.items()},
+                "rows": per}
+
+    # ── 단계 ──
+    def dashboards(self) -> None:
+        from lcomfine.app import dashboard
+
+        v, t = self.v, self.tag
+        C1, C2 = self.customer_id, self.customer2_id
+        ym = v["ym"]
+        m1 = date(int(ym[:4]), int(ym[5:7]), 1)
+        m_last = (m1 + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        P = (m1, m_last)
+        qs = f"date_from={m1.isoformat()}&date_to={m_last.isoformat()}"
+        who = "admin"       # 전 화면 R 이상 — 경영진(ex)도 RPT 8 전부 R 이다(permission-matrix)
+        g15 = v.setdefault("g15", {"period": P, "C1": C1, "C2": C2})
+
+        def page(step: str, path: str, login: str = who) -> str:
+            return self.get(step, login, path).text
+
+        # 8 화면 · 함수 · 독립 SQL · 화면(GET)을 **한 스냅샷** 에서 읽는다 — 다른 QA 의 동시 쓰기가 끼어들지 않는다(020 · 030 · 040 은 전 DB 집계)
+        with self.snapshot():
+            # ── RPT-010 수주 (거래처 C1 · 10월) ──
+            a, d, h, n = self.stable(lambda: self.indep_orders(m1, m_last, C1), lambda: dashboard.orders(P, C1),
+                                     lambda: page("RPT-010 수주 리포트(거래처 C1 · 이 달)", f"/rpt/orders?{qs}&customer={C1}"))
+            kv = self._kv(d)
+            kpi_ok = all(self._eq(kv[k], a[k]) for k in ("requests", "qty", "customers", "not_started"))
+            ser_ok = ([p["value"] for p in d["series"]["requests"]] == a["s_requests"] and [p["value"] for p in d["series"]["qty"]] == a["s_qty"]
+                      and [(p["label"], p["value"]) for p in d["series"]["due"]] == a["s_due"])
+            top_ok = [(r["customer_code"], r["requests"], r["qty"]) for r in d["tables"]["top_customers"]] == a["top"]
+            ns_ok = {r["request_no"] for r in d["tables"]["not_started"]} >= {v["R2"]} and v["R1"] not in {r["request_no"] for r in d["tables"]["not_started"]}
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            ht = self.table_html(h, "not_started")
+            ht_ok = ht is not None and len(ht) == len(d["tables"]["not_started"])
+            g15["orders"] = {"kpis": {k: kv[k] for k in ("requests", "qty", "customers", "not_started")}, "indep": {k: a[k] for k in ("requests", "qty", "customers", "not_started")}}
+            self.db(f"KPI 함수 {g15['orders']['kpis']} · 독립 {g15['orders']['indep']} · 미착수 {sorted(r['request_no'] for r in d['tables']['not_started'])} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-010 수주 — dashboard.orders = 독립 SQL = 화면 KPI · 표 · SVG title (거래처 C1 · 이 달)",
+                       kpi_ok and ser_ok and top_ok and ns_ok and not hk and not hs and ht_ok and d["bucket"] == "day",
+                       f"{ym} {t}-C: 의뢰 {kv['requests']} · 수량 {kv['qty']} · 거래처 {kv['customers']} · 미착수 {kv['not_started']} = 독립 SQL "
+                       f"{a['requests']} · {a['qty']} · {a['customers']} · {a['not_started']} · 구간(일 {len(a['s_requests'])}) 건수 · 수량 · 납기 월 분포 {a['s_due']} 같음 {ser_ok} · "
+                       f"거래처 상위 {top_ok} · 미착수에 {v['R2']} 있고 {v['R1']}(지시 있음) 없음 {ns_ok} · 화면 KPI 어긋남 {hk or 0} · SVG title/표 어긋남 {hs or 0} · 미착수 표 {len(ht or [])}행")
+
+            # ── RPT-020 생산 (기간만 — 전 DB · 앞뒤 독립값이 같은 묶음만) ──
+            a, d, h, n = self.stable(lambda: self.indep_production(m1, m_last), lambda: dashboard.production(P),
+                                     lambda: page("RPT-020 생산 리포트(이 달)", f"/rpt/production?{qs}"))
+            kv, kt = self._kv(d), self._kt(d)
+            keys = ("work_orders", "order_qty", "produced_qty", "good_qty", "loss_qty", "utilization")
+            kpi_ok = all(self._eq(kv[k], a[k]) for k in keys) and kv["loss_rate"] is None and kt["loss_rate"] == "미확정 (D-519)"
+            ser_ok = ([p["value"] for p in d["series"]["good_qty"]] == a["s_good"] and [p["value"] for p in d["series"]["produced_qty"]] == a["s_produced"])
+            eq_tab = {r["equipment_code"]: (r["good_qty"], r["produced_qty"]) for r in d["tables"]["by_equipment"] if r["good_qty"] is not None or r["produced_qty"] is not None}
+            eq_ok = eq_tab == a["by_eq"] and {p["value"] for p in d["series"]["by_equipment"] if p["value"] is not None} == {g for g, _ in a["by_eq"].values()}
+            mine = [r for r in d["tables"]["by_work_order"] if r["work_order_no"] == v["WO"]]
+            mine_ok = len(mine) == 1 and mine[0]["produced_qty"] == 100 and mine[0]["good_qty"] == 95 and mine[0]["loss_qty"] == 5 and mine[0]["order_qty"] == 100
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            g15["production"] = {"kpis": {k: kv[k] for k in keys}, "indep": {k: a[k] for k in keys}}
+            self.db(f"KPI 함수 {g15['production']['kpis']} · 독립 {g15['production']['indep']} · 설비 {a['by_eq']} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-020 생산 — dashboard.production = 독립 SQL = 화면 · 로스율 미확정 (D-519) · 가동률 D-801 · 기계별 (이 달 · 거래처 필터 없음)",
+                       kpi_ok and ser_ok and eq_ok and mine_ok and not hk and not hs and self.kpi_text(h, "loss_rate") == "미확정 (D-519)",
+                       f"{ym}: 지시 {kv['work_orders']} · 지시 수량 {kv['order_qty']} · 생산 {kv['produced_qty']} · 양품 {kv['good_qty']} · 로스 {kv['loss_qty']} · 가동률 {kv['utilization']} "
+                       f"= 독립 {[a[k] for k in keys]} · 로스율 text 「{kt['loss_rate']}」 · 화면 「{self.kpi_text(h, 'loss_rate')}」 · 구간 양품 · 생산 같음 {ser_ok} · "
+                       f"기계별(설비 코드 → 양품 · 생산) {eq_ok} · {v['WO']} 행 100/95/5 {mine_ok} · 화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0} · 읽기 {n}회")
+
+            # ── RPT-030 품질 ──
+            a, d, h, n = self.stable(lambda: self.indep_quality(m1, m_last), lambda: dashboard.quality(P),
+                                     lambda: page("RPT-030 품질 리포트(이 달)", f"/rpt/quality?{qs}"))
+            kv, kt = self._kv(d), self._kt(d)
+            keys = ("inspected_qty", "defect_qty", "judgements", "rejected_lots", "rejudged")
+            kpi_ok = all(self._eq(kv[k], a[k]) for k in keys) and kt["loss_rate"] == "미확정 (D-519)"
+            ser_ok = ([p["value"] for p in d["series"]["defect_qty"]] == a["s_defect"] and [p["value"] for p in d["series"]["inspected_qty"]] == a["s_inspected"])
+            dt_ok = {r["defect_code"]: r["qty"] for r in d["tables"]["defects_by_type"]} == a["defects"]
+            rj_ok = len(d["tables"]["rejudged"]) == (a["rejudged"] or 0) and all(j["seq"] > 1 for j in d["tables"]["rejudged"])
+            rc_ok = len({(j["inspection_kind"], j["lot_no"]) for j in d["tables"]["rejected"]}) == (a["rejected_lots"] or 0)
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            g15["quality"] = {"kpis": {k: kv[k] for k in keys}, "indep": {k: a[k] for k in keys}}
+            self.db(f"KPI 함수 {g15['quality']['kpis']} · 독립 {g15['quality']['indep']} · 불량유형 {a['defects']} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-030 품질 — dashboard.quality = 독립 SQL = 화면 · 검사 로스율 미확정 (D-519) · 불합격 LOT · 재판정 (이 달)",
+                       kpi_ok and ser_ok and dt_ok and rj_ok and rc_ok and not hk and not hs and self.kpi_text(h, "loss_rate") == "미확정 (D-519)",
+                       f"{ym}: 검사 {kv['inspected_qty']} · 불량 {kv['defect_qty']} · 판정 {kv['judgements']} · 불합격 LOT {kv['rejected_lots']} · 재판정 {kv['rejudged']} "
+                       f"= 독립 {[a[k] for k in keys]} · 로스율 「{kt['loss_rate']}」 화면 「{self.kpi_text(h, 'loss_rate')}」 · 구간 불량 · 검사 같음 {ser_ok} · "
+                       f"불량유형 합 {a['defects']} {dt_ok} · 재판정 표 seq>1 {rj_ok} · 불합격 표 (종류, LOT) 수 {rc_ok} · 화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0}")
+
+            # ── RPT-040 재고·창고 ──
+            a, d, h, n = self.stable(lambda: self.indep_inventory(m1, m_last), lambda: dashboard.inventory(P),
+                                     lambda: page("RPT-040 재고·창고 리포트(이 달)", f"/rpt/inventory?{qs}"))
+            kv = self._kv(d)
+            keys = ("material_receipts", "material_receipt_qty", "issues", "issue_qty", "product_receipts", "product_receipt_qty", "adjusts", "adjust_diff")
+            kpi_ok = all(self._eq(kv[k], a[k]) for k in keys)
+            ser_ok = ([p["value"] for p in d["series"]["receipt_qty"]] == a["s_receipt"] and [p["value"] for p in d["series"]["issue_qty"]] == a["s_issue"])
+            tm_ok = [r["qty"] for r in d["tables"]["top_moves"]] == a["top_moves"]
+            ls_ok = [r["days"] for r in d["tables"]["long_stay"]] == a["long_stay"]
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            tm_html = self.table_html(h, "top_moves")
+            tm_html_ok = tm_html is not None and len(tm_html) == len(d["tables"]["top_moves"])
+            g15["inventory"] = {"kpis": {k: kv[k] for k in keys}, "indep": {k: a[k] for k in keys}}
+            self.db(f"KPI 함수 {g15['inventory']['kpis']} · 독립 {g15['inventory']['indep']} · 변동 상위 {a['top_moves']} · 체류일 {a['long_stay']} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-040 재고·창고 — dashboard.inventory = 독립 SQL = 화면 · 변동 상위 · 장기 체류 · 실사 차이 (이 달)",
+                       kpi_ok and ser_ok and tm_ok and ls_ok and not hk and not hs and tm_html_ok,
+                       f"{ym}: 원자재 입고 {kv['material_receipts']}건 {kv['material_receipt_qty']} · 불출 {kv['issues']}건 {kv['issue_qty']} · 제품 입고 {kv['product_receipts']}건 {kv['product_receipt_qty']} · "
+                       f"조정 {kv['adjusts']} 차이 {kv['adjust_diff']} = 독립 {[a[k] for k in keys]} · 구간 입고 · 불출 같음 {ser_ok} · 변동 상위 10 수량 {tm_ok} · "
+                       f"장기 체류 10 체류일 {ls_ok} · 화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0} · 변동 상위 표 {len(tm_html or [])}행 · 읽기 {n}회")
+
+            # ── RPT-050 출하 (거래처 C1) ──
+            a, d, h, n = self.stable(lambda: self.indep_shipment(m1, m_last, C1), lambda: dashboard.shipment(P, C1),
+                                     lambda: page("RPT-050 출하 리포트(거래처 C1 · 이 달)", f"/rpt/shipment?{qs}&customer={C1}"))
+            kv = self._kv(d)
+            keys = ("shipments", "qty", "customers", "due_rate", "on_time", "late_done", "late_open")
+            kpi_ok = all(self._eq(kv[k], a[k]) for k in keys)
+            ser_ok = ([p["value"] for p in d["series"]["qty"]] == a["s_qty"] and [p["value"] for p in d["series"]["shipments"]] == a["s_shipments"]
+                      and [(p["label"], p["value"]) for p in d["series"]["by_customer"]] == [(c, q) for c, q, _ in a["by_customer"]][:10])
+            bc_ok = [(r["customer_code"], r["qty"], r["shipments"]) for r in d["tables"]["by_customer"]] == a["by_customer"]
+            s1 = [r for r in d["tables"]["recent"] if r["shipment_no"] == v["S1"]]
+            s1_ok = len(s1) == 1 and s1[0]["qty"] == 60 and s1[0]["request_no"] == v["R1"]
+            due_rows_ok = all(r["customer_code"] == f"{t}-C" for r in d["tables"]["due_rows"])
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            g15["shipment"] = {"kpis": {k: kv[k] for k in keys}, "indep": {k: a[k] for k in keys}}
+            self.db(f"KPI 함수 {g15['shipment']['kpis']} · 독립 {g15['shipment']['indep']} · 거래처별 {a['by_customer']} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-050 출하 — dashboard.shipment = 독립 SQL = 화면 · 납기 준수율 D-804(의뢰번호 있는 출하만) (거래처 C1 · 이 달)",
+                       kpi_ok and ser_ok and bc_ok and s1_ok and due_rows_ok and not hk and not hs,
+                       f"{ym} {t}-C: 출하 {kv['shipments']}건 {kv['qty']} · 거래처 {kv['customers']} · 준수율 {kv['due_rate']} (납기 안 {kv['on_time']} · 지연 완료 {kv['late_done']} · 지연 {kv['late_open']}) "
+                       f"= 독립 {[a[k] for k in keys]} · 구간 수량 · 건수 · 거래처별 같음 {ser_ok} {bc_ok} · {v['S1']} 60 · 의뢰 {v['R1']} {s1_ok} · 준수율 모집단 전부 {t}-C {due_rows_ok} · "
+                       f"화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0}")
+
+            # ── RPT-060 수금 (거래처 C1) — asof 명시 ──
+            a, d, h, n = self.stable(lambda: self.indep_collection(m1, m_last, C1), lambda: dashboard.collection(P, C1),
+                                     lambda: page("RPT-060 수금 리포트(거래처 C1 · 이 달)", f"/rpt/collection?{qs}&customer={C1}"))
+            kv, kt = self._kv(d), self._kt(d)
+            kpi_ok = (self._eq(kv["collected"], a["collected"]) and self._eq(kv["sales"], a["sales"]) and kt["sales"] == a["sales_text"]
+                      and self._eq(kv["shipped_qty"], a["shipped_qty"]) and self._eq(kv["over90"], a["over90"]) and kt["over90"] == a["over90_text"]
+                      and kt["asof"] == a["asof_text"] and d["asof"] == a["asof"])
+            ser_ok = ([(p["label"], p["value"]) for p in d["series"]["collected"]] == list(zip(a["months"], a["s_collected"]))
+                      and [(p["label"], p["value"]) for p in d["series"]["shipped_qty"]] == list(zip(a["months"], a["s_shipped"]))
+                      and [(p["label"], p["value"]) for p in d["series"]["aging"]] == list(zip(a["buckets"], a["s_aging"])))
+            asof_line = re.search(r"ERP 업로드 기준일:\s*<strong>([^<]+)</strong>", h)
+            asof_ok = asof_line is not None and asof_line.group(1).strip() == a["asof_text"] and self.kpi_text(h, "asof") == a["asof_text"]
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            mon = self.table_html(h, "monthly")
+            mon_ok = mon is not None and len(mon) == len(a["months"]) and all(
+                row[0] == m and row[4] == ("미수집" if c is None else f"{c:,.0f}") for row, m, c in zip(mon, a["months"], a["s_collected"]))
+            a060 = a
+            g15["collection"] = {"kpis": {k: kv[k] for k in ("collected", "sales", "shipped_qty", "over90")}, "asof": kt["asof"],
+                                 "indep": {k: a[k] for k in ("collected", "sales", "shipped_qty", "over90")}, "indep_asof": a["asof_text"]}
+            self.db(f"KPI 함수 {g15['collection']['kpis']} asof {kt['asof']} · 독립 {g15['collection']['indep']} asof {a['asof_text']} · 연령 {a['s_aging']} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-060 수금 — dashboard.collection = 독립 SQL(ERP 반영 회차 테이블 직접) = 화면 · ERP 업로드 기준일(asof) 머리 · KPI 명시 (거래처 C1)",
+                       kpi_ok and ser_ok and asof_ok and not hk and not hs and mon_ok,
+                       f"{ym} {t}-C: 수금 {kv['collected']} · 매출 {kv['sales']} · 출하 수량 {kv['shipped_qty']} · 90일 초과 {kv['over90']}/{kt['over90']} · asof {kt['asof']} "
+                       f"= 독립 {a['collected']} · {a['sales']} · {a['shipped_qty']} · {a['over90']}/{a['over90_text']} · asof {a['asof_text']}(= max(period_to) of 반영) · "
+                       f"월별 수금 · 출하 · 연령 4구간 {a['s_aging']} 같음 {ser_ok} · 화면 머리 「ERP 업로드 기준일: {asof_line.group(1) if asof_line else '없음'}」 {asof_ok} · "
+                       f"월 표 {len(mon or [])}행 {mon_ok} · 화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0}")
+
+            # ── RPT-070 주문 흐름 (거래처 C1) ──
+            a, d, h, n = self.stable(lambda: self.indep_order_flow(m1, m_last, C1), lambda: dashboard.order_flow(P, C1),
+                                     lambda: page("RPT-070 주문 흐름 리포트(거래처 C1 · 이 달)", f"/rpt/order-flow?{qs}&customer={C1}"))
+            kv, kt = self._kv(d), self._kt(d)
+            stages = [s["stage"] for s in d["tables"]["stages"]]
+            names = [nm for nm, _, _ in self.STAGES]
+            kpi_ok = (self._eq(kv["requests"], a["requests"]) and self._eq(kv["shipped"], a["shipped"]) and stages == names
+                      and all(self._eq(kv[f"avg_{i}"], a["avg"][nm]) for i, nm in enumerate(names, start=1))
+                      and kv["bottleneck"] is None and kt["bottleneck"] == "미확정 (D-520)")
+            st_ok = all(self._eq(s["avg_days"], a["avg"][s["stage"]]) and s["count"] == a["count"][s["stage"]] and self._eq(s["max_days"], a["max"][s["stage"]])
+                        for s in d["tables"]["stages"])
+            rows_ok = {r["request_no"]: r["days"] for r in d["tables"]["rows"]} == a["rows"] and all(r["bottleneck"] == "미확정 (D-520)" for r in d["tables"]["rows"])
+            r1 = a["rows"].get(v["R1"], {})
+            r1_ok = r1 and all(r1[nm] is not None for nm in names) and all(a["rows"].get(v["R2"], {nm: 0})[nm] is None for nm in names)
+            ser_ok = [(p["label"], p["value"]) for p in d["series"]["avg_days"]] == [(nm, a["avg"][nm]) for nm in names]
+            coll_ok = [(p["label"], p["value"]) for p in d["series"]["collected"]] == [(m, self.indep_ship_vs_coll_any(m, C1)[3]) for m in
+                                                                                       [p["label"] for p in d["series"]["collected"]]]
+            hk, hs = self.kpi_mismatch(h, d), self.series_mismatch(h, d)
+            html_rows = self.table_html(h, "rows")
+            row_html_ok = html_rows is not None and len(html_rows) == len(a["rows"]) and all(row[-1] == "미확정 (D-520)" for row in html_rows)
+            asof_in_070 = "ERP 업로드 기준일" in h          # 날짜 글자만으로는 안 본다(조회 조건의 종료일과 겹친다)
+            g15["order_flow"] = {"kpis": {"requests": kv["requests"], "shipped": kv["shipped"], **{f"avg_{i}": kv[f"avg_{i}"] for i in range(1, 6)}},
+                                 "indep": {"requests": a["requests"], "shipped": a["shipped"], **{f"avg_{i}": a["avg"][nm] for i, nm in enumerate(names, start=1)}},
+                                 "R1_days": r1, "asof": d["asof"], "asof_shown": asof_in_070}
+            self.db(f"KPI 함수 {g15['order_flow']['kpis']} · 독립 {g15['order_flow']['indep']} · {v['R1']} 소요일 {r1} · asof 반환 {d['asof']} · 화면에 기준일 {asof_in_070} · 읽기 {n}회")
+            self.r.add("G-15", "RPT-070 주문 흐름 — dashboard.order_flow = 독립 SQL = 화면 · 단계 5 소요일 · 병목 미확정 (D-520) · 수금 월 합 (거래처 C1)",
+                       kpi_ok and st_ok and rows_ok and r1_ok and ser_ok and coll_ok and not hk and not hs and row_html_ok,
+                       f"{ym} {t}-C: 의뢰 {kv['requests']} · 출하까지 {kv['shipped']} · 평균 소요일 {[kv[f'avg_{i}'] for i in range(1, 6)]} = 독립 {a['requests']} · {a['shipped']} · "
+                       f"{[a['avg'][nm] for nm in names]} · 의뢰별 소요일 표 {rows_ok} ({v['R1']} 5단계 전부 수 {dict(r1)} · {v['R2']} 미착수 전부 None) · 단계 요약 {st_ok} · "
+                       f"병목 KPI 「{kt['bottleneck']}」 · 표 병목 열 「미확정 (D-520)」 {row_html_ok} · 수금 월 합 = 독립 {coll_ok} · 화면 KPI 어긋남 {hk or 0} · SVG/표 어긋남 {hs or 0}")
+            self.r.add("G-15", "ERP 업로드 기준일(asof) — 수금 대시보드 RPT-060 머리 · KPI 명시(G-15 기대값) · RPT-070 · 080 반환 asof 와 화면",
+                       asof_ok,
+                       f"RPT-060 화면 머리 · KPI asof {a060['asof_text']} {asof_ok} / RPT-070 반환 asof {d['asof']} · 화면에 「ERP 업로드 기준일」 글자 {asof_in_070}"
+                       + (" — 거래처·월별 수금을 보이면서 기준일 글자가 없다 · 계약(F-RPT-071 · D-512 · D-805)이 070 에 명시를 요구하지 않아 게이트 수치는 아니다 · "
+                          "DEF-QA2-005 경미(개발3 · 아키텍트 판단)" if (not asof_in_070 and d["asof"] is not None) else "")
+                       + " / RPT-080 은 다음 행(주간 · 월간 머리에 표시 · 일일은 수금 절이 없어 없음)")
+
+            # ── RPT-080 경영 요약 — 일일 · 주간 · 월간 (D-512) · 절 KPI = 개별 함수 = 독립 SQL = 화면 ──
+            today = self.today
+            spans = {"daily": (today, today), "weekly": (today - timedelta(days=6), today), "monthly": (today.replace(day=1), today)}
+            sum_ok, sum_notes = True, []
+            for tab, (f, tt) in spans.items():
+                d = dashboard.summary((f, tt), C1)
+                h = page(f"RPT-080 경영 요약 {tab}(거래처 C1 · 기준일 오늘)", f"/rpt/summary?tab={tab}&asof={today.isoformat()}&customer={C1}")
+                secs = [s["screen_id"] for s in d["tables"]["sections"]]
+                exp_secs = ["RPT-040", "RPT-050"] + ([] if tab == "daily" else ["RPT-010", "RPT-020", "RPT-060"])
+                kind = {"daily": "일일", "weekly": "주간", "monthly": "월간"}[tab]
+                # 절 KPI = 개별 함수(같은 기간 · 거래처 규칙) = 독립 SQL
+                parts = {"RPT-040": (dashboard.inventory((f, tt)), self.indep_inventory(f, tt)),
+                         "RPT-050": (dashboard.shipment((f, tt), C1), self.indep_shipment(f, tt, C1))}
+                if tab != "daily":
+                    parts.update({"RPT-010": (dashboard.orders((f, tt), C1), self.indep_orders(f, tt, C1)),
+                                  "RPT-020": (dashboard.production((f, tt)), self.indep_production(f, tt)),
+                                  "RPT-060": (dashboard.collection((f, tt), C1), self.indep_collection(f, tt, C1))})
+                bad = []
+                for s in d["tables"]["sections"]:
+                    fn_d, ind = parts[s["screen_id"]]
+                    fn_kv, fn_kt = self._kv(fn_d), self._kt(fn_d)
+                    for k in s["kpis"]:
+                        if not self._eq(k["value"], fn_kv.get(k["key"])) or k["text"] != fn_kt.get(k["key"]):
+                            bad.append(f"{s['screen_id']}.{k['key']} 요약 {k['value']}/{k['text']} ≠ 함수 {fn_kv.get(k['key'])}/{fn_kt.get(k['key'])}")
+                        if k["key"] in ind and k["key"] != "asof" and not self._eq(k["value"], ind[k["key"]]):
+                            bad.append(f"{s['screen_id']}.{k['key']} 요약 {k['value']} ≠ 독립 {ind[k['key']]}")
+                        if k["key"] == "asof" and k["text"] != ind["asof_text"]:
+                            bad.append(f"RPT-060.asof 「{k['text']}」 ≠ 독립 「{ind['asof_text']}」")
+                    sec_html = re.search(r'<section class="panel" data-section="' + s["screen_id"] + r'">(.*?)</section>', h, re.S)
+                    if not sec_html:
+                        bad.append(f"{s['screen_id']} 화면 절 없음")
+                    else:
+                        bad += [f"{s['screen_id']} {x}" for x in self.kpi_mismatch(sec_html.group(1), {"kpis": s["kpis"]})]
+                hs = self.series_mismatch(h, d)
+                kind_ok = d["kind"] == kind and f"<strong>{kind}</strong>" in h
+                asof_ok80 = (("ERP 업로드 기준일" in h) == (d["asof"] is not None)) and (tab == "daily") == (d["asof"] is None)
+                ok = secs == exp_secs and kind_ok and not bad and not hs and asof_ok80
+                sum_ok &= ok
+                sum_notes.append(f"{kind}({f}~{tt}) 절 {secs} {'OK' if secs == exp_secs else '≠ ' + str(exp_secs)} · KPI {len(d['kpis'])}개 어긋남 {bad or 0} · "
+                                 f"구간 SVG/표 어긋남 {hs or 0} · 기준일 표시 {'있음' if 'ERP 업로드 기준일' in h else '없음'}(asof {d['asof']})")
+                self.db(f"{kind} 절 {secs} · KPI {len(d['kpis'])} · 어긋남 {len(bad)}")
+            g15["summary"] = sum_notes
+            self.r.add("G-15", "RPT-080 경영 요약 — 일일(040 · 050) · 주간 · 월간(+ 010 · 020 · 060) 구성(D-512) · 절 KPI = 개별 함수 = 독립 SQL = 화면 · 해설 없음",
+                       sum_ok, " / ".join(sum_notes))
+
+            # ── 미수집 · 미확정 글자 — 0건은 None → 화면 「미수집」 (거래처 C2 = 의뢰 · 출하 없음 · ERP 만) ──
+            d0 = dashboard.orders(P, C2)
+            h0 = page("RPT-010 수주 리포트(거래처 C2 · 의뢰 없음)", f"/rpt/orders?{qs}&customer={C2}")
+            none_kpi = all(k["value"] is None for k in d0["kpis"]) and all(self.kpi_text(h0, k["key"]) == "미수집" for k in d0["kpis"])
+            s_req = self.series_html(h0, "requests")
+            none_ser = s_req is not None and s_req[0] == [] and len(s_req[1]) == (m_last - m1).days + 1 and all(val == "미수집" for _, val in s_req[1])
+            empty_msg = re.search(r'data-series="requests">.*?<p class="empty" role="status">미수집</p>', h0, re.S) is not None
+            # 거래처 C1 의 일 구간 — 행이 없는 날은 미수집(0 으로 적지 않는다)
+            h1 = page("RPT-010 수주 리포트(거래처 C1 — 일 구간 미수집 확인)", f"/rpt/orders?{qs}&customer={C1}")
+            s1h = self.series_html(h1, "requests")
+            a1 = self.indep_orders(m1, m_last, C1)
+            day_none_ok = s1h is not None and [val for _, val in s1h[1]] == ["미수집" if x is None else f"{x:,.0f}" for x in a1["s_requests"]] \
+                and sum(1 for _, val in s1h[0] if val == "미수집") == sum(1 for x in a1["s_requests"] if x is None)
+            zero_text = "0</td>" in "".join(f"<td class=\"num\">{val}</td>" for _, val in s1h[1]) if s1h else True
+            self.r.add("G-15", "미수집 · 미확정 글자 — 0건 None → 「미수집」(KPI · 표 · SVG title) · 로스율 「미확정 (D-519)」 · 병목 「미확정 (D-520)」 · 0 으로 지어내지 않음",
+                       none_kpi and none_ser and empty_msg and day_none_ok and not zero_text,
+                       f"{t}-C2(의뢰 0): KPI 4 전부 None → 화면 「미수집」 {none_kpi} · 일 구간 {len(s_req[1]) if s_req else 0}칸 표 전부 미수집 · SVG 없음(empty) {none_ser and empty_msg} / "
+                       f"{t}-C(의뢰 있음): 행 없는 날 미수집 {sum(1 for x in a1['s_requests'] if x is None)}칸 = 화면 표 · SVG title 미수집 수 {day_none_ok} · 「0」 칸 {'있음' if zero_text else '없음'} / "
+                       f"로스율 · 병목 글자는 RPT-020 · 030 · 070 행에서 확인 / 매출 열 미매핑 → 「미확정 (D-516)」 분기는 이 DB 의 열 매핑(시드 7 · 매핑됨)을 바꾸지 않아 미실측")
+
+            # ── 거래처 필터 — 010 · 050 · 060 · 070 · 080 에만 (D-805) ──
+            f_ok, f_notes = True, []
+            for sid, path, fn in (("RPT-020", "production", dashboard.production), ("RPT-030", "quality", dashboard.quality), ("RPT-040", "inventory", dashboard.inventory)):
+                dn = fn(P)
+                dc = fn(P, C2)
+                hc = page(f"{sid} ?customer= 무시 확인", f"/rpt/{path}?{qs}&customer={C2}")
+                same = self._kv(dn) == self._kv(dc) and dn["series"] == dc["series"]
+                no_sel = 'name="customer"' not in hc
+                shown_same = not self.kpi_mismatch(hc, dn)
+                f_ok &= same and no_sel and shown_same
+                f_notes.append(f"{sid} 거래처 인자를 줘도 KPI · series 같음 {same}(반환 customer_id 는 인자를 되읊음 {dc['customer_id'] == C2} — 집계엔 안 씀) · "
+                               f"화면에 거래처 칸 없음 {no_sel} · 화면 값 = 필터 없음 {shown_same}")
+            d_c2 = {"RPT-010": dashboard.orders(P, C2), "RPT-050": dashboard.shipment(P, C2), "RPT-060": dashboard.collection(P, C2),
+                    "RPT-070": dashboard.order_flow(P, C2), "RPT-080": dashboard.summary((m1, today), C2)}
+            kv060 = self._kv(d_c2["RPT-060"])
+            ind060 = self.indep_collection(m1, m_last, C2)
+            applied = (all(k["value"] is None for k in d_c2["RPT-010"]["kpis"]) and all(k["value"] is None for k in d_c2["RPT-050"]["kpis"])
+                       and all(k["value"] is None for k in d_c2["RPT-070"]["kpis"])
+                       and self._eq(kv060["collected"], ind060["collected"]) and self._eq(kv060["sales"], ind060["sales"]) and kv060["shipped_qty"] is None
+                       and all(k["value"] is None for k in d_c2["RPT-080"]["kpis"] if k["group"] in ("수주", "출하"))
+                       and all(d_c2[s]["customer_id"] == C2 for s in d_c2))
+            hsel = page("RPT-050 출하 리포트(거래처 C2 — 필터 적용 확인)", f"/rpt/shipment?{qs}&customer={C2}")
+            sel_ok = f'<option value="{C2}" selected>' in hsel and self.kpi_text(hsel, "shipments") == "미수집"
+            f_notes.append(f"RPT-010 · 050 · 070 (C2 = 의뢰 · 출하 없음) KPI 전부 None · RPT-060 C2 수금 {kv060['collected']} 매출 {kv060['sales']} = 독립 {ind060['collected']} · {ind060['sales']} · 출하 None · "
+                           f"RPT-080 월간 C2 수주 · 출하 절 None · customer_id 반환 {applied} · 화면 select 에 C2 selected · 출하 미수집 {sel_ok}")
+            self.r.add("G-15", "거래처 필터 — RPT-010 · 050 · 060 · 070 · 080 에만 적용 · 020 · 030 · 040 은 기간만 (D-805)",
+                       f_ok and applied and sel_ok, " / ".join(f_notes))
+
+        # ── G-05 — 대시보드 8 화면 GET 전후 업무 테이블 diff 0 (캐시 테이블 없음) ──
+        paths = [f"/rpt/orders?{qs}&customer={C1}", f"/rpt/production?{qs}", f"/rpt/quality?{qs}", f"/rpt/inventory?{qs}",
+                 f"/rpt/shipment?{qs}&customer={C1}", f"/rpt/collection?{qs}&customer={C1}", f"/rpt/order-flow?{qs}&customer={C1}",
+                 f"/rpt/summary?tab=monthly&asof={today.isoformat()}&customer={C1}", "/rpt/summary?tab=daily", "/rpt/summary?tab=weekly",
+                 "/rpt/orders", "/rpt/collection"]
+        diff, codes = None, []
+        for _ in range(3):
+            before = self.table_counts()
+            codes = [self.c("ex").get(p).status_code for p in paths]
+            after = self.table_counts()
+            diff = {k: (before[k], after.get(k)) for k in before if before[k] != after.get(k)}
+            if not diff:
+                break
+        self.r.steps.append(Step("RPT 8 화면 GET 전후 행 수 (경영진 ex)", "ex", f"GET {len(paths)} 경로", sorted(set(codes)), f"diff {diff or 0}"))
+        self.r.add("G-05", "RPT 대시보드 8 화면 GET 전후 업무 테이블 diff 0 (캐시 없음 · D-512)",
+                   not diff and all(c == 200 for c in codes),
+                   f"ex GET {len(paths)} (RPT-010~080 · 기본 기간 2 · 요약 탭 3) 응답 {sorted(set(codes))} · 업무 테이블 {len(before)} diff {diff or 0} "
+                   f"(로그 4 제외 — 다른 세션이 동시에 쓴다 · GET 이 질의 로그를 쓰지 않는 것은 정적 행 「dataquery.ask 는 POST run_query 안에서만」)")
+
+    # ════════════════════════════════════════════════════════════════════════
     # 정리
     # ════════════════════════════════════════════════════════════════════════
     def cleanup(self) -> str:
@@ -1553,7 +2237,8 @@ class Flow:
                   ("G-07", "추적", self.traces), ("G-09", "차단", self.blocks), ("G-10", "할당", self.allocation),
                   ("G-07", "재판정 후 출하", self.rejudge_after_shipment), ("G-11", "알림", self.notifications),
                   ("G-05", "조회 diff", self.readonly_diff), ("G-10", "F-SHP-012 취소 = 할당 해제", self.shp012_cancel),
-                  ("G-12", "수금 — 회차 교체 · 오류 행 · erp_upload_error · 출하 대비 수금", self.collections)]
+                  ("G-12", "수금 — 회차 교체 · 오류 행 · erp_upload_error · 출하 대비 수금", self.collections),
+                  ("G-15", "대시보드 8 — 독립 재계산 · 화면 대조", self.dashboards)]
         if only:
             stages = [s for s in stages if s[2].__name__ in only]
         failed = None
@@ -1575,10 +2260,14 @@ class Flow:
                     failed = f"{name}: {type(exc).__name__} {exc}"
                     self.r.add(gate, f"{name}", FAIL, f"{type(exc).__name__}: {str(exc)[:300]}")
             # 재지 못한 게이트는 행이 없어 PASS 로 보이면 안 된다
+            need = set()
             if not only or "collections" in only:
-                for gate, prefix in sorted(MUST_MEASURE):
-                    if not any(c.gate == gate and c.item.startswith(prefix) for c in self.r.checks):
-                        self.r.add(gate, f"{prefix} ({GATE_NAMES[gate]})", FAIL, f"수금 단계가 돌지 못해 재지 못함 — {failed or '행 없음'}")
+                need |= MUST_MEASURE
+            if not only or "dashboards" in only:
+                need |= MUST_MEASURE_W3
+            for gate, prefix in sorted(need):
+                if not any(c.gate == gate and c.item.startswith(prefix) for c in self.r.checks):
+                    self.r.add(gate, f"{prefix} ({GATE_NAMES[gate]})", FAIL, f"수금 · 대시보드 단계가 돌지 못해 재지 못함 — {failed or '행 없음'}")
         finally:
             if keep:
                 self.r.notes.append(f"--keep — {self.tag} 행을 지우지 않았다")
@@ -1631,7 +2320,7 @@ def run_all(keep: bool = False) -> Report:
     except Exception as exc:  # noqa: BLE001
         report.add("G-06", "E2E 흐름", FAIL, f"흐름을 시작하지 못함 {type(exc).__name__}: {exc}")
     for gid, w in LATER.items():
-        report.add(gid, GATE_NAMES[gid], FAIL, f"{w} — 화면 · 기능이 아직 없다 (W2/W3 에서 잰다)")
+        report.add(gid, GATE_NAMES[gid], FAIL, f"{w} — 화면 · 기능이 아직 없다 (다음 웨이브에서 잰다)")
     return report
 
 
