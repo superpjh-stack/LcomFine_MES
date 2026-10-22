@@ -4,8 +4,8 @@
 # 그래서 여기서는 GitHub Actions(`.github/workflows/image.yml`)가 main 에 올린 이미지 ghcr.io 를 그대로 쓴다.
 #
 #   1) hPanel → Docker Manager → 앱 → .yaml 편집기에 이 파일을 넣는다.
-#   2) 「환경」 칸에 비밀 세 개를 넣는다 (값은 저장소·문서에 적지 않는다 — G-19):
-#        LCOMFINE_DB_PASSWORD · LCOMFINE_SESSION_SECRET · LCOMFINE_SEED_PASSWORD   (+ LCOMFINE_HOST_PORT — 비어 있는 포트)
+#   2) 「환경」 칸에 비밀을 넣는다 (값은 저장소·문서에 적지 않는다 — G-19):
+#        LCOMFINE_DB_PASSWORD · LCOMFINE_APP_DB_PASSWORD(D-524) · LCOMFINE_SESSION_SECRET · LCOMFINE_SEED_PASSWORD · LCOMFINE_SSO_SECRET   (+ LCOMFINE_HOST_PORT — 비어 있는 포트)
 #   3) 배포 → http://<호스트>:<포트>/health 가 {"system":"엘컴화인 MES", …}
 #
 # · 이 VPS 에서 8000 · 8010~8032 는 다른 사업이 쓴다 → 기본 8040 (D-31). DB 는 호스트로 포트를 내지 않는다.
@@ -21,6 +21,8 @@ x-app-env: &app-env
   LCOMFINE_SEED_PASSWORD: ${LCOMFINE_SEED_PASSWORD:?환경 칸에 LCOMFINE_SEED_PASSWORD 를 넣는다 (기본 비밀번호는 없다 — G-19)}
   LCOMFINE_SESSION_IDLE_MINUTES: ${LCOMFINE_SESSION_IDLE_MINUTES:-}
   LCOMFINE_BOARD_REFRESH_SECONDS: ${LCOMFINE_BOARD_REFRESH_SECONDS:-}
+  LCOMFINE_DOC_SSO_URL: ${LCOMFINE_DOC_SSO_URL:-}            # 비면 DOC-010 은 `미확정 (D-517)`
+  LCOMFINE_SSO_SECRET: ${LCOMFINE_SSO_SECRET:-}
   TZ: ${TZ:-Asia/Seoul}
 
 services:

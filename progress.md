@@ -81,6 +81,16 @@ QA 리포트 3종에 **치명 결함 0** · 열린 결함 0 이다. 남은 것�
 | 시각 맞추기 · 납기 | HTTP 로 넣은 뒤 `SMP-` 행의 시스템 시각(등록 · 판정 · 재고 이동 · 출하 확정 · 알림 · ERP 업로드)을 업무 날짜에 맞춰 과거로(한 트랜잭션 · 검산 10). `plan()` 납기는 그 확정 규칙과 짝(정시 = 납기 − 0~10일에 확정 · 지연 = 납기 ≤ 제품 입고일) — 다시 넣은 뒤 RPT-070 단계 평균 0.9 · 5.4 · 1.0 · 11.7 · 의뢰 → 출하 19.0일(최대 39) · RPT-050 납기 안 완료 50 · 지연 완료 5 · 지연 12 · 준수율 74.6% · 확정 출하 5~10월 16 · 20 · 11 · 11 · 11 · 14 | `uv run python tools/sample_data.py` (끝에 retime 자동 · `--retime` 단독) · `tools/check_data.py` rc 0 · pytest 통과 |
 | 로그인 | 로컬 개발용 — 시드 계정 8 의 비밀번호를 `.env` 의 `LCOMFINE_SEED_PASSWORD` 로 맞췄다(값은 `.env` 에만 · `admin` 으로 로그인) | `uv run python tools/reset_passwords.py` |
 
+## 2026-10-22 VPS 배포 (v2 · 새 앱)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 코드 | `main` 51 커밋 빨리감기 push → Actions `image` 성공 → `ghcr.io/superpjh-stack/lcomfine_mes:sha-6c7aae6…` · `latest` | `gh run view 39795900843` |
+| 앱 | Hostinger Docker Manager 새 앱 `lcomfine-mes-v2` · 포트 **8041** · 새 DB 볼륨 · 앱은 최소 권한 역할(D-524) · 이미지 커밋 고정 · 기존 `lcomfine-mes`(v1 · 8040)와 그 DB 는 손대지 않음 | hPanel |
+| 동작 | `/health` 200 (`screens 66 · placeholders 0 · db ok`) · `admin` 로그인 303 · HOME · WO-010 · RPT-080 · LOT-020 · COL-010 · DOC-010 200 · `/rpt/query` 404 · 상단 대시보드 메뉴 · v1 8040 200 그대로 | `curl http://187.52.127.215:8041/health` |
+| 비밀 | 환경 칸은 사람이 넣었다(DB 소유자 · 앱 역할 · 세션 · SSO · 시드 비밀번호 · 포트) — 값은 저장소에 없다 | hPanel 「환경」 |
+| 데이터 | 시드만(부서 8 · 계정 8 · 권한 257 · 채번 6 · `(예시)` 기준정보). 샘플 100건은 넣지 않았다 | `tools/docker_init.py` |
+
 ## 2026-10-22 W4 문서 SSO 실측 (개발1 · 아키텍트 → QA 3 → 결함 수정 → gate-full)
 
 | 항목 | 실측 | 검증 방법 |
