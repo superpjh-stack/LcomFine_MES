@@ -1,4 +1,4 @@
-"""FastAPI 앱 — 세션 · 오류 핸들러 · 라우터 include · 공통 화면(/login · /logout · /error · /ia) · /health.
+"""FastAPI 앱 — 세션 · 오류 핸들러 · 라우터 include · 공통 화면(/login · /logout · /error · /ia · /guide/usecases) · /health.
 
 **개발자는 이 파일을 만지지 않는다.** 라우터는 모듈명으로 자동 include 한다 — `routers/<모듈>.py` 의 `router`.
 라우터가 아직 GET 을 등록하지 않은 화면(nav.SCREENS 66) 경로는 `_placeholder.html` 로 **HTTP 200** + "미구현 — 담당 개발N" +
@@ -21,7 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..db import conn
-from . import auth, contracts, nav, rbac, templating
+from . import auth, contracts, nav, rbac, templating, usecases
 from .settings import get_settings
 from .templating import STATIC_DIR, render
 from .util import audit, http
@@ -193,6 +193,13 @@ def create_app() -> FastAPI:
                        "matrix": rbac.matrix(), "cell_counts": rbac.counts(), "fn_total": len(fns),
                        "fn_per_screen": per_screen, "fn_rows": fns,
                        "fn_write": sum(1 for f in fns if f.is_write)})
+
+    @app.get(usecases.PATH, response_class=HTMLResponse)
+    def usecases_screen(request: Request, user: rbac.User = Depends(rbac.require_login)) -> HTMLResponse:
+        """참고 화면 — 업무별 유스케이스 10 (D-530). 화면 · 경로는 nav, 하는 부서는 권한 칸, 알림은 notify.EVENTS 에서 계산한다.
+        정본 화면이 아니다(nav · 권한 칸 · 기능 목록 밖 — /ia 와 같다). 읽기만 한다."""
+        return render(request, "guide_usecases.html",
+                      {"page_title": usecases.TITLE, "top_current": "usecases", **usecases.page(user)})
 
     @app.get("/openapi.json", include_in_schema=False)
     def openapi_spec(user: rbac.User = Depends(rbac.require_login)) -> JSONResponse:

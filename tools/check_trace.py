@@ -8,7 +8,7 @@
         RPT 이름 「대시보드」 · RPT-090~120 없음(D-505) · RPT-130 없음(D-529). ia.json = 정본 HTML · permission-matrix.md = 정본 · screen-map.md §1 = nav.
   G-02  `contracts/function-list.md` 줄마다 API 열의 메서드 · 경로가 앱 라우트에 **글자 그대로** 있다(경로 매개변수 `{id}` 도 그대로).
         고아 3종 — 라우트 없는 계약 · 계약 없는 라우트 · 표식 없는 기능 — 을 각각 목록으로 찍는다. 셋 다 0 이어야 PASS.
-        placeholder GET(main.py 가 붙인 미구현 화면)과 공통 라우트(/login · /logout · /error · /ia · /health · /openapi.json)는 라우트 집계에서 뺀다.
+        placeholder GET(main.py 가 붙인 미구현 화면)과 공통 라우트(/login · /logout · /error · /ia · /guide/usecases · /health · /openapi.json)는 라우트 집계에서 뺀다.
         표식은 `tests/` 의 `@pytest.mark.fn("F-…")` 를 ast 로 읽는다(본문에 ID 가 우연히 적힌 것은 세지 않는다).
 
 출력 행 형식: `G-nn  항목  PASS|FAIL  실측` (tools/gate.py 가 읽는다). 종료코드: 0 = 둘 다 PASS, 1 = 하나라도 FAIL.
@@ -36,7 +36,7 @@ TESTS_DIR = ROOT / "tests"
 EXPECT = {"묶음": 8, "대메뉴": 17, "화면": 66, "흐름": 7}   # 화면 = goal.md §2.0 의 67 − RPT-130 (D-529)
 REMOVED = ("RPT-090", "RPT-100", "RPT-110", "RPT-120", "RPT-130")   # D-505 · D-529
 #: 기능 계약 밖의 공통 라우트 (main.py — Task 8)
-COMMON_ROUTES = {"/login", "/login/quick", "/logout", "/error", "/ia", "/health", "/openapi.json"}
+COMMON_ROUTES = {"/login", "/login/quick", "/logout", "/error", "/ia", "/guide/usecases", "/health", "/openapi.json"}   # /guide/usecases = D-530
 SKIP_METHODS = {"HEAD", "OPTIONS"}
 
 

@@ -1,0 +1,176 @@
+{# /guide/usecases 업무별 유스케이스 10 (D-530) — 공통 참고 페이지. 정본 화면이 아니다(nav · 권한 칸 · 기능 목록 밖).
+   데이터는 `app/usecases.py` 한 곳 — 화면 이름 · 경로는 nav, 하는 부서는 W 칸 · 조회 부서는 R 칸, 알림 수신 부서는 notify.EVENTS 에서 계산한다.
+   링크는 지금 사용자가 볼 수 있는 화면만(`screen_visible`) — 나머지는 글자 + 「권한 없음」. 스크립트 없음 · 색은 CSS 토큰. #}
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% macro sref(r, menu=true) -%}
+{% if screen_visible(r.screen_id) %}<a href="{{ r.path }}" data-screen-link="{{ r.screen_id }}">{% if menu %}<span class="uc-menu">{{ r.menu }} ›</span> {% endif %}{{ r.name }}</a>
+{%- else %}<span class="uc-off" data-screen-off="{{ r.screen_id }}">{% if menu %}<span class="uc-menu">{{ r.menu }} ›</span> {% endif %}{{ r.name }} <small class="chip chip--muted">권한 없음</small></span>{% endif %}
+{%- endmacro %}
+
+{% macro dept_chips(names, strong) -%}
+{% for n in names %}<span class="uc-dept{% if strong %} uc-dept--w{% endif %}">{{ n }}</span>{% endfor %}
+{%- endmacro %}
+
+{% block body %}
+<section class="panel uc-head">
+  {% call ui.screen_head(page_title) %}{% endcall %}
+  <p class="uc-lead">주요 업무 10가지가 <strong>메뉴 · 화면 · 부서</strong> 사이에서 어떻게 넘어가는지 보여 줍니다. 화면 이름 · 하는 부서 · 알림은 지금 시스템의 메뉴 · 권한 · 알림 설정에서 그립니다.</p>
+  <nav class="uc-toc" aria-label="유스케이스 목차">
+    <ol>
+      {% for v in usecases %}<li><a href="#{{ v.anchor }}"><span class="uc-toc__n">{{ v.uc.no }}</span>{{ v.uc.title }}</a></li>{% endfor %}
+    </ol>
+  </nav>
+</section>
+
+<section class="panel" aria-labelledby="uc-map-h" data-section="flow-map">
+  <h2 id="uc-map-h">전체 흐름 지도</h2>
+  <p class="muted uc-note">위 줄은 업무 흐름 7단계, 아래 막대는 각 유스케이스가 걸리는 구간입니다. 막대 안은 등록 · 처리하는 부서입니다.</p>
+  <div class="uc-scroll">
+    <div class="ucmap" style="--stages: {{ flow_map | length }}">
+      <div class="ucmap__corner">업무 흐름</div>
+      {% for st in flow_map %}
+      <div class="ucmap__stage" data-stage="{{ st.screen_id }}"><span class="ucmap__sn">{{ loop.index }}</span>{{ sref(st, menu=false) }}</div>
+      {% endfor %}
+      {% for v in usecases %}
+      <a class="ucmap__name" href="#{{ v.anchor }}"><span class="uc-toc__n">{{ v.uc.no }}</span>{{ v.uc.title }}</a>
+      <div class="ucmap__bar" style="grid-column: {{ v.uc.stages[0] + 2 }} / {{ v.uc.stages[1] + 3 }}" data-uc-bar="{{ v.uc.no }}">
+        {% for d in v.depts if d.level == 'W' and d.code not in ('ADM',) %}<span>{{ d.name }}</span>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <h3 class="uc-sub">유스케이스 × 부서</h3>
+  <p class="uc-legend"><span class="uc-lv uc-lv--w">처리</span> 그 유스케이스에서 등록 · 처리하는 부서(화면 W 칸) <span class="uc-lv uc-lv--r">조회</span> 조회 · 알림만 받는 부서</p>
+  <div class="grid-wrap">
+    <table class="grid uc-matrix" data-table="uc-dept">
+      <thead><tr><th>유스케이스</th>{% for r in roles %}<th class="c">{{ r.name }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for v in usecases %}
+        <tr>
+          <td><a href="#{{ v.anchor }}">{{ v.uc.no }}. {{ v.uc.title }}</a></td>
+          {% for r in roles %}{% set lv = v.involve.get(r.code) %}
+          <td class="c" data-role="{{ r.code }}" data-level="{{ lv or '' }}">{% if lv == 'W' %}<span class="uc-lv uc-lv--w">처리</span>{% elif lv == 'R' %}<span class="uc-lv uc-lv--r">조회</span>{% else %}<span class="muted" aria-label="관여 없음">·</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted uc-note">{{ laneless | join(", ") }}은(는) 처리 칸이 있는 모든 화면을 대신 처리할 수 있어 워크플로우 그림에 줄을 따로 두지 않습니다(단계 표에는 나옵니다).</p>
+</section>
+
+{% for v in usecases %}
+{% set uc = v.uc %}
+<details class="panel uc" id="{{ v.anchor }}" data-usecase="{{ uc.no }}"{% if loop.first %} open{% endif %}>
+  <summary>
+    <span class="uc__no">{{ uc.no }}</span>
+    <span class="uc__title">{{ uc.title }}</span>
+    <span class="uc__meta">단계 {{ v.steps | length }} · 부서 {{ v.depts | length }}{% if v.events %} · 알림 {{ v.events | length }}{% endif %}</span>
+  </summary>
+  <div class="uc__body">
+    <p class="uc__purpose"><span class="uc-k">목적</span> {{ uc.purpose }}</p>
+    <dl class="uc__facts">
+      <div><dt>관련 부서</dt><dd>{% for d in v.depts %}<span class="uc-dept{% if d.level == 'W' %} uc-dept--w{% endif %}">{{ d.name }}</span>{% endfor %}</dd></div>
+      <div><dt>시작 조건</dt><dd>{{ uc.start }}</dd></div>
+      {% if v.undecided %}<div><dt>정해지지 않은 것</dt><dd>{% for dn, meaning in v.undecided %}{{ ui.undecided(dn, meaning) }} <span class="muted">{{ meaning }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</dd></div>{% endif %}
+    </dl>
+
+    {% set sw = v.swim %}
+    <h3 class="uc-sub">워크플로우</h3>
+    <div class="uc-scroll uc-scroll--swim">
+      <svg class="swim" viewBox="0 0 {{ sw.width }} {{ sw.height }}" style="max-width: {{ sw.width }}px; min-width: {{ (sw.width * 0.7) | round | int }}px" role="img" aria-labelledby="{{ v.anchor }}-swim-t" data-swim="{{ uc.no }}">
+        <title id="{{ v.anchor }}-swim-t">{{ uc.title }} — {% for c in sw.cards %}{{ c.n }} {{ c.title }}{% if not loop.last %} → {% endif %}{% endfor %}</title>
+        <defs>
+          <marker id="{{ v.anchor }}-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="swim__head"/></marker>
+          <marker id="{{ v.anchor }}-ahn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="swim__head swim__head--note"/></marker>
+        </defs>
+        {% for ln in sw.lanes %}
+        <g class="swim__lane" data-lane="{{ ln.code }}">
+          <rect x="0" y="{{ ln.y }}" width="{{ sw.width }}" height="{{ sw.lane_h }}" class="swim__band{% if loop.index is even %} swim__band--alt{% endif %}"/>
+          <text x="12" y="{{ ln.y + sw.lane_h / 2 + 4 }}" class="swim__lname">{{ ln.name }}</text>
+        </g>
+        {% endfor %}
+        {% for a in sw.arrows %}
+        <path d="{{ a.d }}" class="swim__arrow{% if a.dashed %} swim__arrow--note{% endif %}" marker-end="url(#{{ v.anchor }}-{{ 'ahn' if a.dashed else 'ah' }})"/>
+        {% if a.label %}<text x="{{ a.lx }}" y="{{ a.ly }}" class="swim__label">{{ a.label }}</text>{% endif %}
+        {% endfor %}
+        {% for p in sw.pills %}
+        <g class="swim__pill" data-pill="{{ p.to }}">
+          <title>{{ p.text }} → {{ p.to }}</title>
+          <rect x="{{ p.x }}" y="{{ p.y }}" width="{{ p.w }}" height="{{ p.h }}" rx="{{ p.h / 2 }}"/>
+          <text x="{{ p.x + p.w / 2 }}" y="{{ p.y + p.h / 2 + 4 }}">{{ p.text }}</text>
+        </g>
+        {% endfor %}
+        {% for c in sw.cards %}
+        {% set step = uc.steps[c.n - 1] %}
+        {% set open_ok = step.screen_id and screen_visible(step.screen_id) %}
+        <g class="swim__card{% if step.screen_id and not open_ok %} is-locked{% endif %}{% if not step.screen_id %} is-batch{% endif %}" data-step="{{ c.n }}">
+          {% if open_ok %}<a href="{{ c.href or nav.path_of(step.screen_id) }}">{% endif %}
+          <title>{{ c.n }}. {{ c.sub }} › {{ c.title }}{% if step.screen_id and not open_ok %} (권한 없음){% endif %}</title>
+          <rect x="{{ c.x }}" y="{{ c.y }}" width="{{ sw.col_w }}" height="{{ sw.card_h }}" rx="6" class="swim__box"/>
+          <circle cx="{{ c.x + 14 }}" cy="{{ c.y + 14 }}" r="9" class="swim__badge"/>
+          <text x="{{ c.x + 14 }}" y="{{ c.y + 18 }}" class="swim__n">{{ c.n }}</text>
+          <text x="{{ c.x + 28 }}" y="{{ c.y + 18 }}" class="swim__sub">{{ c.sub }}</text>
+          {% if step.screen_id and not open_ok %}<text x="{{ c.x + sw.col_w - 6 }}" y="{{ c.y + 18 }}" class="swim__tag">권한 없음</text>
+          {% elif c.optional %}<text x="{{ c.x + sw.col_w - 6 }}" y="{{ c.y + 18 }}" class="swim__tag">필요 시</text>{% endif %}
+          <text class="swim__name">{% for line in c.lines %}<tspan x="{{ c.x + 10 }}" y="{{ c.y + (36 if c.lines | length > 1 else 42) + loop.index0 * 15 }}">{{ line }}</tspan>{% endfor %}</text>
+          {% if open_ok %}</a>{% endif %}
+        </g>
+        {% endfor %}
+      </svg>
+    </div>
+    <p class="uc-legend"><span class="uc-ln"></span> 다음 단계 <span class="uc-ln uc-ln--note"></span> 알림으로 넘어감(알림 이름) <span class="uc-pill">○○ 알림</span> 알림만 받는 부서 · 카드를 누르면 그 화면이 열립니다</p>
+
+    <h3 class="uc-sub">단계</h3>
+    <div class="grid-wrap">
+      <table class="grid uc-steps" data-table="uc-steps-{{ uc.no }}">
+        <thead><tr><th class="num">순번</th><th>부서</th><th>메뉴 › 화면</th><th>하는 일</th><th>결과(상태 변화)</th><th>알림 → 받는 부서</th></tr></thead>
+        <tbody>
+          {% for s in v.steps %}
+          <tr data-step="{{ loop.index }}" data-screen="{{ s.step.screen_id or '' }}" data-fn="{{ s.step.fn or '' }}">
+            <td class="num" data-label="순번">{{ loop.index }}</td>
+            <td data-label="부서" data-doers="{{ s.doer_codes | join(' ') }}" data-viewers="{{ s.viewer_codes | join(' ') }}">
+              <strong>{{ s.lane_name }}</strong>
+              {% if s.write %}<div class="uc-who"><span class="muted">처리</span> {{ dept_chips(s.doers, true) }}</div>{% endif %}
+              {% if s.viewers %}<div class="uc-who"><span class="muted">조회</span> {{ dept_chips(s.viewers, false) }}</div>{% endif %}
+            </td>
+            <td data-label="메뉴 › 화면">{% if s.screen %}{{ sref(s.screen) }}{% else %}<span class="uc-menu">{{ s.lane_name }}</span> <code>{{ s.step.command }}</code>{% endif %}</td>
+            <td data-label="하는 일">{{ s.step.does }}{% if s.step.optional %} <span class="chip chip--muted">필요 시</span>{% endif %}
+              {% for dn, meaning in s.step.undecided %} {{ ui.undecided(dn, meaning) }}{% endfor %}</td>
+            <td data-label="결과">{{ s.step.result }}</td>
+            <td data-label="알림">{% if s.step.event %}<span class="uc-ev">{{ s.event_label }}</span> → {{ s.recipients | join(" · ") }}
+              <div class="uc-who"><span class="muted">알림이 여는 화면</span> {{ sref(s.event_screen, menu=false) }}</div>{% else %}<span class="muted">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="uc-cols">
+      <section>
+        <h3 class="uc-sub">막히는 경우</h3>
+        <p class="muted uc-note">시스템이 저장을 막고 입력하던 화면에 이유를 보여 줍니다.</p>
+        <ul class="uc-blocks" data-blocks="{{ uc.no }}">
+          {% for b in v.blocks %}<li>{{ b.text }}</li>{% endfor %}
+        </ul>
+        {% if uc.notes %}<ul class="uc-notes">{% for n in uc.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+      </section>
+      <section>
+        <h3 class="uc-sub">확인 화면</h3>
+        <ul class="uc-checks">
+          {% for r in v.checks %}<li>{{ sref(r) }}</li>{% endfor %}
+        </ul>
+      </section>
+    </div>
+
+    <p class="uc__next">
+      {% if v.next %}<a class="btn" href="#{{ v.next.anchor }}">다음 유스케이스 → {{ v.next.no }}. {{ v.next.title }}</a>
+      {% else %}<a class="btn" href="#{{ usecases[0].anchor }}">처음 유스케이스로 → 1. {{ usecases[0].uc.title }}</a>{% endif %}
+    </p>
+  </div>
+</details>
+{% endfor %}
+{% endblock %}

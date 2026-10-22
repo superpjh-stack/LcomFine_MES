@@ -60,6 +60,16 @@ QA 리포트 3종에 **치명 결함 0** · 열린 결함 0 이다. 남은 것�
 4. 백업은 `docker compose run --rm seed /app/.venv/bin/python tools/backup.py backup` · 복구 검사는 같은 방식의 `restore-check`(createdb 는 소유자 역할에만 있다).
 5. 이미 데이터가 있는 DB 의 스키마 변경은 ALTER 이관으로 하고 `schema.sql` 과 맞춘다.
 
+## 2026-10-23 업무별 유스케이스 (D-530 · 아키텍트)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 페이지 | `/guide/usecases` 「업무별 유스케이스」 — 공통 참고 페이지(`main.py` · `/ia` 방식 · nav 66 · 기능 134 · 칸 257 그대로) · 로그인 200 · 미로그인 303 · 상단 바 「내 할 일 · 대시보드 · 업무별 유스케이스」(8 부서 · 디자인·개발실은 대시보드 없이) | `tests/test_arch_usecases.py` 15 passed |
+| 내용 | 유스케이스 10 · 단계 39 · 알림 9종 전부 등장 · 스윔레인(인라인 SVG) 10 · 흐름 지도 · 유스케이스 × 부서 표. 정의는 `app/usecases.py` 한 곳 — 이름 · 경로 = nav, 하는 부서 = W 칸, 알림 수신 = `notify.EVENTS` | 테스트가 기능 ↔ 화면 · W 칸 ↔ permission-matrix · emit 위치 · 알림 link 화면 · 422 문장을 소스에서 대조 |
+| 읽기만 | 열기 전후 public 표 전부 행 수 같음 | `test_page_writes_no_business_rows` |
+| 화면 | 1280(admin · sl · pr) · 390(admin) · 다크 — 가로 스크롤 0(scrollWidth = 뷰포트 · 그림은 상자 안에서만 민다 · 390 단계 표는 세로 카드) | Playwright 캡처 `scratchpad/ui/usecases/` |
+| 게이트 | `uv run pytest -q` 420 passed · `make gate` PASS 20 · 제외 2 · BLOCKED 1(D-525) · 미검증 1(G-23 — gate-full 몫) | 2026-10-23 00:23 |
+
 ## 2026-10-22 데이터 질의 제거 (D-529 · 아키텍트)
 
 | 항목 | 실측 | 검증 방법 |

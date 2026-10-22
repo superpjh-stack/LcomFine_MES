@@ -21,15 +21,16 @@
 <header class="hdr">
   <button type="button" class="btn btn-ghost hdr__menu" data-menu-toggle aria-controls="side-menu" aria-expanded="false">메뉴</button>
   <a class="brand" href="/">{{ system_name }}</a>
-  {% if dash_home %}
+  {% if user %}
   <nav class="topnav" aria-label="주 메뉴">
     <a href="/"{% if screen_id == 'HOME-010' %} aria-current="page"{% endif %}>내 할 일</a>
-    <a href="{{ dash_home.path }}"{% if screen and screen.menu_code == 'RPT' %} aria-current="page"{% endif %}>대시보드</a>
+    {% if dash_home %}<a href="{{ dash_home.path }}"{% if screen and screen.menu_code == 'RPT' %} aria-current="page"{% endif %}>대시보드</a>{% endif %}
+    <a href="{{ usecases_path }}"{% if top_current == 'usecases' %} aria-current="page"{% endif %}>업무별 유스케이스</a>
   </nav>
   {% endif %}
   {% if screen and not screen.common %}
   <span class="crumb">{{ screen.menu }} <span aria-hidden="true">›</span> <strong>{{ screen.name }}</strong> <code>{{ screen.screen_id }}</code></span>
-  {% elif page_title %}
+  {% elif page_title and not top_current %}
   <span class="crumb"><strong>{{ page_title }}</strong></span>
   {% endif %}
   <div class="hdr__r">

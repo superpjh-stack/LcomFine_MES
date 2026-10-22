@@ -30,7 +30,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from . import contracts, nav, notify, rbac
+from . import contracts, nav, notify, rbac, usecases
 from .settings import get_settings
 from .util import audit, http, screen, viz
 
@@ -102,6 +102,8 @@ def screen_context(request: Request, screen_id: str | None) -> dict[str, Any]:
         # 상단 바 「대시보드」 · 대시보드 탭 — 볼 수 있는 RPT 화면만(권한 칸) · 첫 화면은 경영 요약(RPT-080)이 있으면 그것
         "dash_screens": (dash := [s for node in bundles for m in node["menus"] if m.code == "RPT" for s in m.screens]),
         "dash_home": next((s for s in dash if s.screen_id == "RPT-080"), dash[0] if dash else None),
+        "usecases_path": usecases.PATH,   # 상단 바 「업무별 유스케이스」 (D-530 · 공통 참고 페이지)
+        "top_current": "",
         "flow": flow_steps(user, screen_id) if user else [],
         # TODO: notify 에 count(*) 전용 `unread_count(user)` 가 생기면 그것으로 (notify.py 는 아키텍트 소관)
         "unread": len(notify.unread(user)) if user else 0,
