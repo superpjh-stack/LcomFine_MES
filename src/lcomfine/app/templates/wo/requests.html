@@ -1,27 +1,38 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "거래처의 발주 내용을 생산의뢰로 등록하고, 단가 · 납기를 확인한 뒤 「확정」으로 바꿉니다.") }}
+{{ ui.help_rule("의뢰번호는 저장할 때 자동으로 붙습니다. 이 번호가 생산지시 → 생산일보 → 제품 입고 → 출하까지 이어지는 연결 번호입니다.") }}
+{{ ui.help_rule("생산지시서가 있는 의뢰는 거래처 · 제품을 바꿀 수 없습니다. 「지시완료」는 지시서를 작성하면 저절로 바뀝니다.") }}
+{{ ui.help_next("WO-020", "확정된 의뢰로 생산지시서 작성") }}
+{{ ui.help_next("TRK-010", "의뢰 한 건의 진행 단계 보기") }}
+{% endblock %}
 {% block body %}
 {% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
 {% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">이 화면의 의뢰가 IA 전체의 "수주" 기준이다 · 의뢰번호가 생산지시서 → 일보 → 제품 입고 → 출하로 이어지는 연결 키가 된다 ·
-    영업지원의 발주서는 FINE_MES에 남고, 발주 내용을 의뢰로 등록한다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "의뢰번호·거래처·제품", form.q) }}
+{% set err_back = flash and flash.kind == "warn" %}
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-WO-011") and not edit %}<a class="btn btn-primary" href="#req-form">＋ 의뢰 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="의뢰번호 · 거래처 · 제품"></label>
+  {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+  {% call ui.filters_more(open=(form.customer or form.due_from or form.due_to)) %}
     {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
-    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
     {{ f.input("due_from", "납기 시작", form.due_from, type="date") }}
     {{ f.input("due_to", "납기 끝", form.due_to, type="date") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.status or form.customer or form.due_from or form.due_to %}<a class="btn btn-ghost" href="{{ nav.path_of('WO-010') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
 {% set ed_opts = [] %}{% for s in editable_statuses %}{% set _ = ed_opts.append((s, s)) %}{% endfor %}
 {% if edit.status == "지시완료" %}{% set _ = ed_opts.append(("지시완료", "지시완료")) %}{% endif %}
-{% call f.form_panel("의뢰 수정 — " ~ edit.request_no, "/wo/requests/" ~ edit.id, "F-WO-012", cancel=nav.path_of("WO-010")) %}
+{% call ui.form_details("의뢰 수정 — " ~ edit.request_no, open=true, allowed=fn_allowed.get("F-WO-012"), icon="✎") %}
+<form method="post" action="/wo/requests/{{ edit.id }}" id="req-form">
+  <div class="form-grid">
   {{ f.input("request_no", "의뢰번호", edit.request_no, readonly=true) }}
   {{ f.select("customer_id", "거래처", cust_opts, edit.customer_id, required=true) }}
   {{ f.item_select(items, edit.item_id) }}
@@ -29,19 +40,29 @@
   {{ f.input("due_date", "납기", edit.due_date, type="date", required=true) }}
   {{ f.select("status", "상태 (단가·납기 확인 후 확정)", ed_opts, edit.status, required=true, blank=none) }}
   {{ f.input("note", "비고 (발주 내용 요약)", edit.note) }}
+  </div>
+  <div class="actions"><a class="btn" href="{{ nav.path_of('WO-010') }}">취소</a><button type="submit" class="btn btn-primary">저장</button></div>
+</form>
 {% endcall %}
 {% else %}
-{% call f.form_panel("의뢰 등록 — 다음 번호 " ~ next_no, "/wo/requests", "F-WO-011") %}
+{% call ui.form_details("의뢰 등록", open=err_back, allowed=fn_allowed.get("F-WO-011")) %}
+<form method="post" action="/wo/requests" id="req-form">
+  <p class="muted form-note">다음 의뢰번호 <strong>{{ next_no }}</strong></p>
+  <div class="form-grid">
   {{ f.select("customer_id", "거래처", cust_opts, "", required=true) }}
   {{ f.item_select(items) }}
   {{ f.input("qty", "수량", type="number", required=true, step="0.001") }}
   {{ f.input("due_date", "납기", type="date", required=true) }}
   {{ f.input("request_date", "의뢰일 (비우면 오늘)", type="date") }}
   {{ f.input("note", "비고 (발주 내용 요약)") }}
+  </div>
+  <div class="actions"><button type="submit" class="btn btn-primary">저장</button></div>
+</form>
 {% endcall %}
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>의뢰 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>의뢰번호</th><th>의뢰일</th><th>거래처</th><th>제품</th><th class="num">수량</th><th>납기</th><th class="num">D-day</th>

@@ -87,7 +87,9 @@ auth.hash_password(pw) · auth.verify_password(pw, stored)    # PBKDF2-SHA256
 templating.render(request, "bas/items.html", ctx, *, screen_id="BAS-010", status_code=200) -> HTMLResponse
 templating.placeholder(request, screen_id) -> HTMLResponse
 ```
-- 헤더 · 좌측 메뉴 · 계약 패널을 채우고 **화면 조회 로그**(`sys_access_log` 구분 `조회`)를 남긴다. 레이아웃은 Task 8 에서 다시 쓴다.
+- 헤더 · 좌측 메뉴 · 오른쪽 **「화면 도움말」** 패널(`aside.help` — `{% block help %}` 또는 기능 이름 목록 + 내 권한)을 채우고 **화면 조회 로그**(`sys_access_log` 구분 `조회`)를 남긴다.
+  개발 계약 문장(기능 ID · API · 계약)은 화면에 두지 않고 `/ia` 「기능 계약」 표에만. 화면 틀 매크로(`screen_head` · `filters_more` · `form_details` · `help_*` · `undecided`)는 `_macros.html`,
+  대시보드 차트(`chart_panel` · `columns` · `line` · `bars_h` · `donut` · `stack` · `stacked` · `meter` · `kpi_tile`)는 `_charts.html`(기하 `util/viz.py`) — 사용법 `docs/ui-guide.md`.
 
 라우터 한 개의 모양 (`app/routers/<모듈>.py` — `router = APIRouter()` 만 있으면 `main.py` 가 자동 include):
 

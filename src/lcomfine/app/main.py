@@ -191,7 +191,7 @@ def create_app() -> FastAPI:
         return render(request, "ia.html",
                       {"page_title": "화면 구조 · 권한", "tree": nav.menu_tree(), "roles": rbac.roles(),
                        "matrix": rbac.matrix(), "cell_counts": rbac.counts(), "fn_total": len(fns),
-                       "fn_per_screen": per_screen,
+                       "fn_per_screen": per_screen, "fn_rows": fns,
                        "fn_write": sum(1 for f in fns if f.is_write)})
 
     @app.get("/openapi.json", include_in_schema=False)

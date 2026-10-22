@@ -1,0 +1,241 @@
+{# 대시보드 차트 매크로 — `{% import "_charts.html" as ch %}`. 아키텍트 소유 · 사용법은 docs/ui-guide.md §5.
+   인라인 SVG 뿐(외부 라이브러리 0 · 스크립트 0) · 색은 style.css 토큰(--viz-1 … --viz-6 · --cyan · 상태색)만 · 라이트/다크는 토큰이 바꾼다.
+   위치 계산은 util/viz.py(Jinja 전역 viz_*) — 값은 받은 그대로이고, 글자는 `num` 필터 하나로 찍는다.
+
+   규칙 (QA 가 기계로 본다)
+   - 값 하나에 SVG `<title>` 하나: 「라벨: 값」(값 None = 「미수집」). 같은 묶음의 데이터 표 행(라벨 · 값)과 순서 · 글자가 같다.
+     `<title>` 은 한 줄에 하나(QA2 정규식이 줄 단위로 읽는다) · KPI 는 `<div class="kpi" data-kpi>` 안에 div 를 넣지 않는다 · 값은 `<strong class="kpi__value num">`.
+   - 데이터 표는 지우지 않는다 — `<details class="data-table">` 로 접어 HTML 에 남긴다(쪽 넘김 없음 · 표 전체).
+   - None(미수집) · 음수 · 0 건 · 빈 목록에서 깨지지 않는다. 빈 목록 = 「미수집」 한 줄.
+
+   매크로
+     chart_panel(name, title, series, label_hdr, value_hdr, kind="bar", sub="", height=200, sort=false)
+                                      — 차트 + 접힌 데이터 표를 담은 section.panel[data-series=name] (대시보드 기본 단위)
+     columns(series, height=200)      — 세로 막대(축 · 눈금 · 값 라벨)       kind="bar"
+     line(series, height=200)         — 선(추세 · 점 · 옅은 면)              kind="line"
+     bars_h(series, sort=false)       — 가로 막대(상위 N 순위 · 긴 이름)     kind="hbar"
+     donut(series, total_label="합계") — 구성비(가운데 합계 · 범례 · 몫 %)   kind="donut"
+     stack(series)                    — 100% 누적 막대 한 줄(구성비 · 상태별) kind="stack"
+     stacked(rows, keys)              — 여러 줄 누적 막대(단계별 · 상태별) — 행마다 parts. 자체 접힌 표(열 = keys). data-series 밖에 둔다
+     meter(label, value, max=100, unit="%", digits=1, tone="accent", note="") — 진행 막대(준수율 · 가동률)
+     kpi_tile(key, label, value, unit="", digits=0, text="", note="", spark=none, meter_max=none, hero=false)
+     data_table(name, series, label_hdr, value_hdr) — 접힌 데이터 표(행 = 라벨 · 값) #}
+{% import "_macros.html" as ui %}
+
+{% macro _val(v) -%}{{ "미수집" if v is none else (v | num) }}{%- endmacro %}
+
+{# ── 접힌 데이터 표 — 차트와 같은 숫자. data-series-table 은 QA 표식 ── #}
+{% macro data_table(name, series, label_hdr, value_hdr) -%}
+<details class="data-table">
+  <summary>데이터 표 <small class="muted">{{ series | length }}행</small></summary>
+  <div class="grid-wrap"><table class="grid" data-series-table="{{ name }}">
+    <thead><tr><th scope="col">{{ label_hdr }}</th><th scope="col" class="num">{{ value_hdr }}</th></tr></thead>
+    <tbody>
+    {% for p in series %}<tr><td>{{ p.label }}</td><td class="num">{{ _val(p.value) }}</td></tr>{% else %}<tr><td colspan="2" class="muted">미수집</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{%- endmacro %}
+
+{# ── 세로 막대 ── #}
+{% macro columns(series, height=200) -%}
+{% if not series %}{{ ui.empty() }}{% else %}
+{% set g = viz_columns(series) %}
+<figure class="viz viz--col" style="--n: {{ g.n }}; --h: {{ height }}px">
+  <div class="viz__plot">
+    <div class="viz__y" aria-hidden="true">{% for t in g.ticks %}<span style="top: {{ t.y }}%">{{ t.text }}</span>{% endfor %}</div>
+    <div class="viz__area">
+      <svg class="viz__svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="세로 막대 {{ g.n }}개 값">
+        {% for t in g.ticks %}<line class="viz__grid" x1="0" x2="100" y1="{{ t.y }}" y2="{{ t.y }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+        {% for it in g.cols %}
+        <rect class="viz__bar{% if it.neg %} viz__bar--neg{% endif %}{% if it.none %} viz__bar--none{% endif %}" x="{{ it.bx }}" y="{{ it.top }}" width="{{ it.bw }}" height="{{ it.h }}"><title>{{ it.label }}: {{ _val(it.value) }}</title></rect>
+        {% endfor %}
+        <line class="viz__base" x1="0" x2="100" y1="{{ g.y0 }}" y2="{{ g.y0 }}" vector-effect="non-scaling-stroke"/>
+      </svg>
+      {% for it in g.cols if it.show_v %}<span class="viz__val{% if it.neg %} viz__val--neg{% endif %}" style="left: {{ it.x }}%; top: {{ it.top if not it.neg else it.top + it.h }}%" aria-hidden="true">{{ it.value | num }}</span>{% endfor %}
+    </div>
+  </div>
+  <ol class="viz__x" aria-hidden="true">{% for it in g.cols %}<li{% if it.none %} class="dim"{% endif %}>{{ it.short if it.show_x else "" }}</li>{% endfor %}</ol>
+</figure>
+{% endif %}
+{%- endmacro %}
+
+{# ── 선 — None 에서 끊긴다 · 점은 둥근 끝 0 길이 선(가로세로 비율이 바뀌어도 원) · 칸마다 투명 띠에 title ── #}
+{% macro line(series, height=200) -%}
+{% if not series %}{{ ui.empty() }}{% else %}
+{% set g = viz_columns(series, value_labels="auto") %}
+<figure class="viz viz--line" style="--n: {{ g.n }}; --h: {{ height }}px">
+  <div class="viz__plot">
+    <div class="viz__y" aria-hidden="true">{% for t in g.ticks %}<span style="top: {{ t.y }}%">{{ t.text }}</span>{% endfor %}</div>
+    <div class="viz__area">
+      <svg class="viz__svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="선 그래프 {{ g.n }}개 값">
+        {% for t in g.ticks %}<line class="viz__grid" x1="0" x2="100" y1="{{ t.y }}" y2="{{ t.y }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+        {% for a in g.area %}<polygon class="viz__wash" points="{{ a }}"/>{% endfor %}
+        <line class="viz__base" x1="0" x2="100" y1="{{ g.y0 }}" y2="{{ g.y0 }}" vector-effect="non-scaling-stroke"/>
+        {% for s in g.segments %}<polyline class="viz__line" points="{{ s }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+        {% if g.n <= 45 %}{% for it in g.cols if not it.none %}<line class="viz__ring" x1="{{ it.x }}" y1="{{ it.y }}" x2="{{ it.x }}" y2="{{ it.y }}" vector-effect="non-scaling-stroke"/><line class="viz__dot" x1="{{ it.x }}" y1="{{ it.y }}" x2="{{ it.x }}" y2="{{ it.y }}" vector-effect="non-scaling-stroke"/>{% endfor %}{% endif %}
+        {% for it in g.cols %}
+        <rect class="viz__hit" x="{{ it.x - it.w / 2 }}" y="0" width="{{ it.w }}" height="100"><title>{{ it.label }}: {{ _val(it.value) }}</title></rect>
+        {% endfor %}
+      </svg>
+      {% for it in g.cols if it.show_v %}<span class="viz__val" style="left: {{ it.x }}%; top: {{ it.y }}%" aria-hidden="true">{{ it.value | num }}</span>{% endfor %}
+    </div>
+  </div>
+  <ol class="viz__x" aria-hidden="true">{% for it in g.cols %}<li{% if it.none %} class="dim"{% endif %}>{{ it.short if it.show_x else "" }}</li>{% endfor %}</ol>
+</figure>
+{% endif %}
+{%- endmacro %}
+
+{# ── 가로 막대(순위) — 행마다 라벨 | 막대 | 값. sort=true 면 큰 값부터(데이터 표도 같은 순서로 — chart_panel 이 맞춘다) ── #}
+{% macro bars_h(series, sort=false) -%}
+{% if not series %}{{ ui.empty() }}{% else %}
+{% set g = viz_bars_h(series, sort=sort) %}
+<figure class="viz viz--hbar">
+  <ol class="hbar">
+  {% for r in g.rows %}
+    <li class="hbar__row{% if r.none %} dim{% endif %}">
+      <span class="hbar__label" title="{{ r.label }}">{{ r.label }}</span>
+      <svg class="hbar__svg" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="{{ r.label }}">
+        <rect class="hbar__track" x="0" y="0" width="100" height="10"/>
+        <rect class="viz__bar{% if r.neg %} viz__bar--neg{% endif %}" x="{{ r.x0 }}" y="0" width="{{ r.w }}" height="10"><title>{{ r.label }}: {{ _val(r.value) }}</title></rect>
+      </svg>
+      <span class="hbar__val num">{{ _val(r.value) }}</span>
+    </li>
+  {% endfor %}
+  </ol>
+</figure>
+{% endif %}
+{%- endmacro %}
+
+{# ── 도넛(구성비) — 가운데 합계 · 범례(이름 · 값 · 몫). 0 이하 · None 은 그리지 않고 범례 · title 에 남는다 ── #}
+{% macro donut(series, total_label="합계") -%}
+{% if not series %}{{ ui.empty() }}{% else %}
+{% set g = viz_parts(series) %}
+<figure class="viz viz--donut">
+  <div class="donut">
+    <svg class="donut__svg" viewBox="0 0 42 42" role="img" aria-label="구성비 {{ series | length }}개 값 · {{ total_label }} {{ _val(g.total) }}">
+      <circle class="donut__track" cx="21" cy="21" r="15.915"/>
+      {% for p in g.parts %}
+      <circle class="donut__seg viz-s{{ p.slot }}" cx="21" cy="21" r="15.915" stroke-dasharray="{{ p.len }} {{ 100 - p.len }}" stroke-dashoffset="{{ 25 - p.start }}"><title>{{ p.label }}: {{ _val(p.value) }}</title></circle>
+      {% endfor %}
+    </svg>
+    <div class="donut__center" aria-hidden="true"><strong>{{ _val(g.total) }}</strong><span>{{ total_label }}</span></div>
+  </div>
+  <ul class="legend">
+    {% for p in g.parts %}<li{% if not p.slot %} class="dim"{% endif %}><i class="sw viz-s{{ p.slot }}" aria-hidden="true"></i><span class="legend__name">{{ p.label }}</span><span class="legend__v num">{{ _val(p.value) }}</span><span class="legend__pct num">{{ p.share }}%</span></li>{% endfor %}
+  </ul>
+</figure>
+{% endif %}
+{%- endmacro %}
+
+{# ── 100% 누적 막대 한 줄 — 구성비를 좁은 자리에서 ── #}
+{% macro stack(series) -%}
+{% if not series %}{{ ui.empty() }}{% else %}
+{% set g = viz_parts(series, gap=0.4) %}
+<figure class="viz viz--stack">
+  <svg class="stack__svg" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="구성비 {{ series | length }}개 값">
+    <rect class="hbar__track" x="0" y="0" width="100" height="10"/>
+    {% for p in g.parts %}
+    <rect class="stack__seg viz-s{{ p.slot }}" x="{{ p.start }}" y="0" width="{{ p.len }}" height="10"><title>{{ p.label }}: {{ _val(p.value) }}</title></rect>
+    {% endfor %}
+  </svg>
+  <ul class="legend legend--row">
+    {% for p in g.parts %}<li{% if not p.slot %} class="dim"{% endif %}><i class="sw viz-s{{ p.slot }}" aria-hidden="true"></i><span class="legend__name">{{ p.label }}</span><span class="legend__v num">{{ _val(p.value) }}</span><span class="legend__pct num">{{ p.share }}%</span></li>{% endfor %}
+  </ul>
+</figure>
+{% endif %}
+{%- endmacro %}
+
+{# ── 여러 줄 누적 막대 — rows: [{label, parts: [{label, value}]}] · keys: 조각 이름 순서(색 순서 · 최대 6).
+   막대 길이 = 그 행의 합 ÷ 가장 큰 행의 합. title 은 「행 · 조각: 값」 — 2열 데이터 표와 짝이 아니므로 data-series 묶음 밖에 둔다. ── #}
+{% macro stacked(rows, keys, label_hdr="구분", name="") -%}
+{% if not rows %}{{ ui.empty() }}{% else %}
+{% set ns = namespace(mx=0) %}
+{% for r in rows %}{% set t = viz_parts(r.parts, gap=0).total %}{% if t is not none and t > ns.mx %}{% set ns.mx = t %}{% endif %}{% endfor %}
+<figure class="viz viz--stacked">
+  <ul class="legend legend--row" aria-hidden="true">{% for k in keys %}<li><i class="sw viz-s{{ loop.index }}"></i><span class="legend__name">{{ k }}</span></li>{% endfor %}</ul>
+  <ol class="hbar">
+  {% for r in rows %}
+    {% set g = viz_parts(r.parts, gap=0) %}
+    {% set scale_ = ((g.total / ns.mx) if (ns.mx and g.total is not none and g.total > 0) else 0) | float %}
+    <li class="hbar__row">
+      <span class="hbar__label" title="{{ r.label }}">{{ r.label }}</span>
+      <svg class="hbar__svg" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="{{ r.label }}">
+        <rect class="hbar__track" x="0" y="0" width="100" height="10"/>
+        {% for p in g.parts %}
+        {% set kidx = (keys.index(p.label) + 1) if p.label in keys else 0 %}
+        <rect class="stack__seg viz-s{{ kidx }}" x="{{ p.start * scale_ }}" y="0" width="{{ [p.len * scale_ - 0.3, 0] | max }}" height="10"><title>{{ r.label }} · {{ p.label }}: {{ _val(p.value) }}</title></rect>
+        {% endfor %}
+      </svg>
+      <span class="hbar__val num">{{ _val(g.total) }}</span>
+    </li>
+  {% endfor %}
+  </ol>
+</figure>
+<details class="data-table">
+  <summary>데이터 표 <small class="muted">{{ rows | length }}행</small></summary>
+  <div class="grid-wrap"><table class="grid"{% if name %} data-stacked-table="{{ name }}"{% endif %}>
+    <thead><tr><th scope="col">{{ label_hdr }}</th>{% for k in keys %}<th scope="col" class="num">{{ k }}</th>{% endfor %}<th scope="col" class="num">합계</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    {% set m = {} %}{% for p in r.parts %}{% set _ = m.update({p.label: p.value}) %}{% endfor %}
+    <tr><td>{{ r.label }}</td>{% for k in keys %}<td class="num">{{ _val(m.get(k)) }}</td>{% endfor %}<td class="num">{{ _val(viz_parts(r.parts).total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endif %}
+{%- endmacro %}
+
+{# ── 진행 막대(준수율 · 가동률) — tone: accent | ok | warn | bad (상태색은 상태에만) ── #}
+{% macro meter(label, value, max=100, unit="%", digits=1, tone="accent", note="") -%}
+{% set g = viz_meter(value, max) %}
+<div class="meter meter--{{ tone }}">
+  <div class="meter__head"><span class="meter__label">{{ label }}</span><strong class="meter__v num">{% if g.none %}미수집{% else %}{{ value | num(digits) }}{% if unit %} <small>{{ unit }}</small>{% endif %}{% endif %}</strong></div>
+  <svg class="meter__svg" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="{{ label }}">
+    <rect class="meter__track" x="0" y="0" width="100" height="6"/>
+    <rect class="meter__fill" x="0" y="0" width="{{ g.pct }}" height="6"><title>{{ label }}: {{ "미수집" if g.none else (value | num(digits)) }}</title></rect>
+  </svg>
+  {% if note %}<span class="meter__note">{{ note }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# ── KPI 타일 — 값 · 단위 · 보조 문장 · (선택) 스파크라인 · (선택) 진행 막대(meter_max).
+   text 가 있으면 수 대신 그 글자(예 `미확정 (D-519)` → 칩). data-kpi · .kpi__value 는 QA 표식 — 값 글자만 담는다. ── #}
+{% macro kpi_tile(key, label, value, unit="", digits=0, text="", note="", spark=none, meter_max=none, hero=false) -%}
+<div class="kpi{% if hero %} kpi--hero{% endif %}"{% if key %} data-kpi="{{ key }}"{% endif %}>
+  <span class="kpi__label">{{ label }}</span>
+  <strong class="kpi__value num">{% if text %}{{ ui.undecided_text(text) }}{% elif value is none %}<span class="kpi__none">미수집</span>{% else %}{{ value | num(digits) }}{% if unit %} <small>{{ unit }}</small>{% endif %}{% endif %}</strong>
+  {% if meter_max is not none and value is not none and not text %}
+  {% set g = viz_meter(value, meter_max) %}
+  <svg class="meter__svg" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="meter__track" x="0" y="0" width="100" height="6"/><rect class="meter__fill" x="0" y="0" width="{{ g.pct }}" height="6"/></svg>
+  {% endif %}
+  {% if spark %}{% set pts = viz_spark(spark) %}{% if pts %}
+  <svg class="kpi__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="{{ pts }}" vector-effect="non-scaling-stroke"/></svg>
+  {% endif %}{% endif %}
+  {% if note %}<span class="kpi__note">{{ note }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# ── 차트 묶음(대시보드 기본 단위) — 차트 + 접힌 데이터 표 · data-series 는 QA 표식.
+   kind: bar | line | hbar | donut | stack. 값이 하나도 없으면 차트 대신 「미수집」(표는 남는다). ── #}
+{% macro chart_panel(name, title, series, label_hdr, value_hdr, kind="bar", sub="", height=200, sort=false, wide=false) -%}
+{% set rows = (viz_bars_h(series, sort=true).rows if (kind == "hbar" and sort) else series) or [] %}
+<section class="panel viz-panel{% if wide %} viz-panel--wide{% endif %}" data-series="{{ name }}">
+  <header class="viz-panel__head"><h2>{{ title }}</h2>{% if sub %}<span class="viz-panel__sub">{{ sub }}</span>{% endif %}</header>
+  {% if not rows or (rows | map(attribute="value") | reject("none") | list | length) == 0 %}
+  {{ ui.empty() }}
+  {% elif kind == "line" %}{{ line(rows, height) }}
+  {% elif kind == "hbar" %}{{ bars_h(rows) }}
+  {% elif kind == "donut" %}{{ donut(rows) }}
+  {% elif kind == "stack" %}{{ stack(rows) }}
+  {% else %}{{ columns(rows, height) }}
+  {% endif %}
+  {{ data_table(name, rows, label_hdr, value_hdr) }}
+</section>
+{%- endmacro %}
+
+{# ── 대시보드 격자 — KPI 줄 아래 2열(1280) · 1열(좁은 화면). `{% call ch.grid() %}…chart_panel…{% endcall %}` ── #}
+{% macro grid() -%}
+<div class="viz-grid">{{ caller() }}</div>
+{%- endmacro %}

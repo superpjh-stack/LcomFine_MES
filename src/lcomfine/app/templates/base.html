@@ -1,6 +1,6 @@
 {# 공통 레이아웃 v2 — 머리(시스템 이름 · 사용자(부서) · 알림 종 · 테마 · 로그아웃) / 흐름 띠(nav.FLOW 7단계) /
-   좌측 메뉴(묶음 ⓪~⑦ > 대메뉴 > 화면 — rbac.visible_menu: 볼 화면이 없는 묶음·대메뉴는 아예 없다) / 본문 / 계약 패널.
-   블록: head · body(search · grid · actions) · aside(계약 패널).
+   좌측 메뉴(묶음 ⓪~⑦ > 대메뉴 > 화면 — rbac.visible_menu: 볼 화면이 없는 묶음·대메뉴는 아예 없다) / 본문 / 화면 도움말.
+   블록: head · body(search · grid · actions) · help(화면 도움말 내용) · aside(패널 통째 — 비우면 패널 없음).
    스크립트는 static/app.js 하나 — 템플릿에 인라인 스크립트를 쓰지 않는다(테마는 app.js 가 <head> 에서 바로 적용한다). #}
 <!DOCTYPE html>
 <html lang="ko">
@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 <script src="/static/app.js?v={{ asset_v }}"></script>
 {% block head %}{% endblock %}
+{% if false %}{% block help %}{% endblock %}{% endif %}
 </head>
 <body data-grid-page-size="{{ grid_page_size }}">
 <a class="skip" href="#main">본문으로 건너뛰기</a>
@@ -99,20 +100,27 @@
     {% endblock %}
   </main>
 
+  {# 오른쪽 「화면 도움말」 — 운영자용. 화면이 `{% block help %}` 를 채우면 그것, 아니면 기능 이름 목록. 「내 권한」 은 항상.
+     개발 계약(기능 ID · 함수 · 오류 코드 · D 번호 나열)은 여기 두지 않는다 → /ia 「기능 계약」 표. #}
   {% block aside %}
-  {% if functions %}
-  <aside class="contract" aria-label="계약 패널">
-    <details{% if dev %} open{% endif %}>
-      <summary>계약 <small>기능 {{ functions | length }}</small></summary>
-      <ul>
-        {% for f in functions %}
-        <li{% if not fn_allowed[f.id] %} class="is-off" title="이 부서는 할 수 없는 기능"{% endif %}>
-          <code>{{ f.id }}</code> {{ f.name }}
-          <span class="contract__meta">{{ f.kind }} · {% if f.roles_w %}W {{ f.roles_w | join('·') }}{% else %}R 이상{% endif %}</span>
-          <span class="contract__text">{{ f.contract }}</span>
-        </li>
-        {% endfor %}
-      </ul>
+  {% if screen and not screen.common and user %}
+  {% set help_html = self.help() | trim %}
+  <aside class="help" aria-label="화면 도움말">
+    <details class="help__box" open>
+      <summary>화면 도움말</summary>
+      <div class="help__body">
+        {% if help_html %}
+        {{ help_html | safe }}
+        {% elif functions %}
+        <div class="help__item">
+          <h3>이 화면에서 할 수 있는 일</h3>
+          <ul class="help__list">
+            {% for f in functions %}<li{% if not fn_allowed[f.id] %} class="is-off"{% endif %}>{{ f.name }}{% if not fn_allowed[f.id] %}<span class="sr-only"> (권한 없음)</span>{% endif %}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <p class="help__perm"><span class="muted">내 권한</span> {% if can_write %}<span class="chip chip--ok">등록·수정 가능</span>{% else %}<span class="chip chip--muted">조회만</span>{% endif %}</p>
+      </div>
     </details>
   </aside>
   {% endif %}

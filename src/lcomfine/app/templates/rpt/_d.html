@@ -1,11 +1,13 @@
-{# RPT 대시보드 공용 조각 — `{% import "rpt/_d.html" as d %}`. 스크립트 없음 · 색은 style.css 토큰만 · 차트는 `_macros.html` 의 인라인 SVG(svg_bar · svg_line)
-   와 **같은 숫자의 표**를 항상 함께 그린다(goal §3.4 · 접근성). 값 None = 미수집 · `text` 가 있으면 수 대신 그 글자(미확정 (D-nn)). #}
+{# RPT 대시보드 공용 조각 — `{% import "rpt/_d.html" as d %}`. 스크립트 없음 · 색은 style.css 토큰만 · 차트는 `_charts.html` 의 인라인 SVG
+   와 **같은 숫자의 표**(접힌 `details.data-table`)를 항상 함께 그린다(goal §3.4 · 접근성). 값 None = 미수집 · `text` 가 있으면 수 대신 그 글자(미확정 칩).
+   본보기: rpt/production.html — 머리(head) → KPI 줄(kpis) → 2열 차트 격자(ch.grid + chart_table) → 상세 표(table). #}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
 
 {# 조회 조건 — 기간(시작일 · 종료일) · 거래처(with_customer 일 때) #}
 {% macro filters(form, customers, with_customer) -%}
-<form class="search" method="get" role="search">
+<form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.input("date_from", "시작일", form.date_from, type="date") }}
   {{ f.input("date_to", "종료일", form.date_to, type="date") }}
   {% if with_customer %}
@@ -14,41 +16,23 @@
     {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == (form.customer | string) %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
     </select></label>
   {% endif %}
-  <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
 </form>
 {%- endmacro %}
 
-{# KPI 카드 — kpis: [{key, label, value, digits, unit, text, note}] #}
-{% macro kpis(items) -%}
+{# KPI 줄 — kpis: [{key, label, value, digits, unit, text, note}] · sparks: {key: series}(선택 · 스파크라인) · 단위 % 는 진행 막대를 단다 #}
+{% macro kpis(items, sparks={}) -%}
 <div class="kpis">
   {% for k in items %}
-  <div class="kpi" data-kpi="{{ k.key }}">
-    <span class="kpi__label">{{ k.label }}</span>
-    <strong class="kpi__value num">{% if k.text %}<span class="undecided">{{ k.text }}</span>{% elif k.value is none %}미수집{% else %}{{ k.value | num(k.digits) }}{% if k.unit %} <small>{{ k.unit }}</small>{% endif %}{% endif %}</strong>
-    {% if k.note %}<span class="kpi__note">{{ k.note }}</span>{% endif %}
-  </div>
+  {{ ch.kpi_tile(k.key, k.label, k.value, unit=k.unit, digits=k.digits, text=k.text, note=k.note, spark=sparks.get(k.key), meter_max=(100 if k.unit == "%" else none)) }}
   {% endfor %}
 </div>
 {%- endmacro %}
 
-{# 차트 + 같은 숫자의 표 — series: [{label, value}] · kind: bar | line #}
-{% macro chart_table(name, title, series, label_hdr, value_hdr, digits=0, kind="bar") -%}
-{# digits 는 받되 표에 쓰지 않는다(SVG 제목과 같은 형식을 지킨다) #}
-<section class="panel" data-series="{{ name }}">
-  <h2>{{ title }}</h2>
-  {% if not series or (series | map(attribute="value") | reject("none") | list | length) == 0 %}
-  {{ ui.empty() }}
-  {% else %}
-  {% if kind == "line" %}{{ ui.svg_line(series) }}{% else %}{{ ui.svg_bar(series) }}{% endif %}
-  {% endif %}
-  <div class="grid-wrap"><table class="grid" data-series-table="{{ name }}">
-    <thead><tr><th scope="col">{{ label_hdr }}</th><th scope="col" class="num">{{ value_hdr }}</th></tr></thead>
-    <tbody>
-    {# 표의 숫자 형식은 SVG <title> 과 똑같이 `num`(소수 0) — 차트와 표가 같은 숫자를 담는다 #}
-    {% for p in series %}<tr><td>{{ p.label }}</td><td class="num">{{ "미수집" if p.value is none else (p.value | num) }}</td></tr>{% else %}<tr><td colspan="2" class="muted">미수집</td></tr>{% endfor %}
-    </tbody>
-  </table></div>
-</section>
+{# 차트 + 같은 숫자의 접힌 표 — series: [{label, value}] · kind: bar | line | hbar | donut | stack (`_charts.html` chart_panel)
+   digits 는 받되 쓰지 않는다(SVG 제목 · 표 모두 `num` 소수 0 — 차트와 표가 같은 숫자) #}
+{% macro chart_table(name, title, series, label_hdr, value_hdr, digits=0, kind="bar", sub="", wide=false, sort=false) -%}
+{{ ch.chart_panel(name, title, series, label_hdr, value_hdr, kind=kind, sub=sub, wide=wide, sort=sort) }}
 {%- endmacro %}
 
 {# 표 — cols: [(key, label, digits | none)] · digits none = 글자, 수 = 숫자 열 #}
@@ -75,7 +59,12 @@
 </section>
 {%- endmacro %}
 
-{# links: [(경로, 이름)] — 매크로는 템플릿 컨텍스트(nav)를 보지 못해 호출하는 쪽이 nav 로 만들어 준다 #}
+{# 화면 머리(대시보드) — 제목 한 줄 + 오른쪽에 기간 · 구간. 설명 문단 없음(설명은 {% block help %}) #}
+{% macro head(screen, data) -%}
+{% call ui.screen_head(screen.name) %}{% if data %}<span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }} · {{ "일" if data.bucket == "day" else "월" }} 단위</span>{% endif %}{% endcall %}
+{%- endmacro %}
+
+{# (옛 머리 — 각 담당이 head + help 블록으로 옮기면 지운다) links: [(경로, 이름)] — 매크로는 템플릿 컨텍스트(nav)를 보지 못해 호출하는 쪽이 nav 로 만들어 준다 #}
 {% macro header(screen, lead, data, links=[]) -%}
 <h1>{{ screen.name }}</h1>
 <p class="muted">{{ lead }}{% if links %} 연결: {% for path, name in links %}<a href="{{ path }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.{% endif %}</p>

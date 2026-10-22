@@ -1,4 +1,4 @@
-{# /ia 참고 화면 — 사이트맵(nav) · 권한 매트릭스(DB sys_permission) · 기능 수(contracts).
+{# /ia 참고 화면 — 사이트맵(nav) · 권한 매트릭스(DB sys_permission) · 기능 수 · 기능 계약 표(contracts — 화면 도움말에서 뺀 개발 계약 문장은 여기에만).
    정본 글은 옮기지 않는다. 수는 전부 nav · DB · 계약에서 센다(`data-count`). #}
 {% extends "base.html" %}
 {% block body %}
@@ -53,6 +53,28 @@
       <tr><th scope="row" colspan="2">W</th>{% for r in roles %}<td class="c num">{{ matrix | map(attribute='cells') | map(attribute=loop.index0) | select('equalto', 'W') | list | length }}</td>{% endfor %}</tr>
       <tr><th scope="row" colspan="2">R</th>{% for r in roles %}<td class="c num">{{ matrix | map(attribute='cells') | map(attribute=loop.index0) | select('equalto', 'R') | list | length }}</td>{% endfor %}</tr>
     </tfoot>
+  </table>
+  </div>
+</section>
+
+<section class="panel" id="functions">
+  <h2>기능 계약 <small class="muted">contracts/function-list.md · 기능 {{ fn_rows | length }} — 개발 참고(운영 화면에는 보이지 않는다)</small></h2>
+  <div class="grid-wrap grid-wrap--tall">
+  <table class="grid plain">
+    <thead><tr><th scope="col">기능 ID</th><th scope="col">화면</th><th scope="col">기능</th><th scope="col">유형</th><th scope="col">API</th><th scope="col">W 부서</th><th scope="col">계약 문장</th></tr></thead>
+    <tbody>
+    {% for fn in fn_rows %}
+      <tr data-fn="{{ fn.id }}" id="fn-{{ fn.id }}">
+        <td><code>{{ fn.id }}</code></td>
+        <td><a href="{{ nav.path_of(fn.screen_id) }}"><code>{{ fn.screen_id }}</code></a></td>
+        <td>{{ fn.name }}</td>
+        <td>{{ fn.kind }}</td>
+        <td><code>{{ fn.api }}</code></td>
+        <td>{% if fn.roles_w %}{{ fn.roles_w | join('·') }}{% else %}R 이상{% endif %}</td>
+        <td class="wrap">{{ fn.contract }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
   </table>
   </div>
 </section>

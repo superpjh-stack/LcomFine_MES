@@ -1,13 +1,73 @@
-{# 공용 매크로 — `{% import "_macros.html" as ui %}` 로 쓴다.
-   kpi · table · chip · empty · undecided · svg_bar · svg_line.
-   차트는 인라인 SVG 뿐(외부 라이브러리 없음) — 표와 함께 쓴다. 값마다 <title> 이 있어 화면 읽기 프로그램이 읽는다. #}
+{# 공용 매크로 — `{% import "_macros.html" as ui %}` 로 쓴다. 사용법은 docs/ui-guide.md.
+   화면 틀: screen_head · filters_more · form_details · help_item · help_rule · help_next · undecided_note
+   값 표시: kpi · table · chip · empty · undecided(칩) · undecided_text
+   차트: svg_bar · svg_line(옛 이름 — `_charts.html` 의 columns · line 으로 그린다). 새 대시보드는 `_charts.html` 을 직접 쓴다. #}
 
 {% macro empty(text="미수집") -%}
 <p class="empty" role="status">{{ text }}</p>
 {%- endmacro %}
 
-{% macro undecided(dn) -%}
-<span class="undecided">미확정 ({{ dn }})</span>
+{# 미확정 칩 — 글자 `미확정 (D-nn)` 은 그대로(QA 가 본문 글자를 본다) · 뜻은 툴팁(title) 한 줄 #}
+{% macro undecided(dn, meaning="") -%}
+<span class="chip chip--undecided undecided" title="{{ meaning or '아직 정해지지 않은 값 — 숫자를 지어내지 않는다' }}">미확정 ({{ dn }})</span>
+{%- endmacro %}
+
+{# 이미 만들어진 글자(`미확정 (D-519)` · `로스율 산식 미확정 (D-519)` 등)를 칩으로 #}
+{% macro undecided_text(text, meaning="") -%}
+<span class="chip chip--undecided undecided" title="{{ meaning or '아직 정해지지 않은 값 — 숫자를 지어내지 않는다' }}">{{ text }}</span>
+{%- endmacro %}
+
+{# ── 화면 머리 — 제목 한 줄 + (있으면) 오른쪽 주요 단추.
+   actions: [(href, label)] 또는 [(href, label, "primary")] · 단추가 폼이면 `{% call ui.screen_head(title) %}…{% endcall %}` #}
+{% macro screen_head(title, actions=[], sub="") -%}
+<header class="screen-head">
+  <h1>{{ title }}{% if sub %} <small class="screen-head__sub">{{ sub }}</small>{% endif %}</h1>
+  {% if actions or caller is defined %}
+  <div class="screen-head__actions">
+    {% for a in actions %}<a class="btn{% if a | length > 2 and a[2] == 'primary' %} btn-primary{% endif %}" href="{{ a[0] }}">{{ a[1] }}</a>{% endfor %}
+    {% if caller is defined %}{{ caller() }}{% endif %}
+  </div>
+  {% endif %}
+</header>
+{%- endmacro %}
+
+{# ── 필터 바의 접히는 고급 조건 — `<form class="filters">` 안 맨 끝에. open: 고급 조건에 값이 있으면 true ── #}
+{% macro filters_more(open=false, label="상세 조건") -%}
+<details class="filters__more"{% if open %} open{% endif %}>
+  <summary>{{ label }}</summary>
+  <div class="filters__more-body">{{ caller() }}</div>
+</details>
+{%- endmacro %}
+
+{# ── 접히는 등록·수정 폼 패널 — `<details class="panel panel--form">` 「＋ 의뢰 등록」.
+   open: 수정 모드 · 입력 오류로 돌아온 경우(flash.kind == "warn") 열린 채로. allowed=false 면 아무것도 그리지 않는다(조회만 부서) ── #}
+{% macro form_details(label, open=false, allowed=true, icon="＋") -%}
+{% if allowed %}
+<details class="panel panel--form"{% if open %} open{% endif %}>
+  <summary><span class="panel--form__icon" aria-hidden="true">{{ icon }}</span> {{ label }}</summary>
+  <div class="panel--form__body">{{ caller() }}</div>
+</details>
+{% endif %}
+{%- endmacro %}
+
+{# ── 화면 도움말 패널(오른쪽) 항목 — `{% block help %}` 안에서 쓴다 ── #}
+{% macro help_item(title, text) -%}
+<div class="help__item"><h3>{{ title }}</h3><p>{{ text }}</p></div>
+{%- endmacro %}
+
+{% macro help_rule(text) -%}
+<p class="help__rule"><span class="help__rule-mark" aria-hidden="true">!</span>{{ text }}</p>
+{%- endmacro %}
+
+{# 다음 단계 링크 — 화면 이름은 nav 에서(전역). text 를 주면 이름 뒤 설명 #}
+{% macro help_next(screen_id, text="") -%}
+{% set sc = nav.by_id(screen_id) %}
+<p class="help__next"><a href="{{ sc.path }}">{{ sc.name }} <span aria-hidden="true">→</span></a>{% if text %} <span class="muted">{{ text }}</span>{% endif %}</p>
+{%- endmacro %}
+
+{# 미확정 항목 설명 — 패널에 「미확정 (D-nn)」 칩과 한 줄 뜻 #}
+{% macro undecided_note(dn, meaning) -%}
+<p class="help__undecided">{{ undecided(dn, meaning) }} <span>{{ meaning }}</span></p>
 {%- endmacro %}
 
 {% macro kpi(label, value, note="") -%}
@@ -59,69 +119,11 @@
 {% endif %}
 {%- endmacro %}
 
-{# 차트 축 — 값이 None 인 점은 미수집(막대·선을 그리지 않고 <title> 에 미수집). 음수는 0 선 아래로 그린다.
-   위·아래 끝 = None 아닌 값과 0 의 최대·최소. 전부 None·0 이면 폭 1. #}
-
-{# series: [{"label": "1월", "value": 12}, ...] — 막대. 목록이 비면 empty() #}
+{# 옛 차트 이름 — `_charts.html` 의 columns · line 으로 그린다(값마다 <title> 「라벨: 값」 · None = 미수집 · 음수는 0 선 아래). #}
 {% macro svg_bar(series, height=160) -%}
-{% if not series %}{{ empty() }}{% else %}
-{% set vals = series | map(attribute="value") | reject("none") | list %}
-{% set hi = (vals + [0]) | max %}
-{% set lo = (vals + [0]) | min %}
-{% set span = (hi - lo) if hi != lo else 1 %}
-{% set plot = height - 16 %}
-{% set y0 = 8 + (hi / span) * plot %}
-{% set n = series | length %}
-{% set w = 100.0 / n %}
-<svg class="chart chart--bar" viewBox="0 0 100 {{ height }}" preserveAspectRatio="none" role="img"
-     aria-label="막대 그래프 {{ n }}개 값" style="height: {{ height }}px">
-  {% for p in series %}
-    {% if p.value is none %}
-  <rect class="chart__bar chart__bar--none" x="{{ (loop.index0 * w + w * 0.15) | round(3) }}" y="{{ y0 | round(3) }}"
-        width="{{ (w * 0.7) | round(3) }}" height="0"><title>{{ p.label }}: 미수집</title></rect>
-    {% else %}
-    {% set yv = 8 + ((hi - p.value) / span) * plot %}
-  <rect class="chart__bar{% if p.value < 0 %} chart__bar--neg{% endif %}" x="{{ (loop.index0 * w + w * 0.15) | round(3) }}" y="{{ ([yv, y0] | min) | round(3) }}"
-        width="{{ (w * 0.7) | round(3) }}" height="{{ ([(yv - y0) | abs, 0] | max) | round(3) }}"><title>{{ p.label }}: {{ p.value | num }}</title></rect>
-    {% endif %}
-  {% endfor %}
-  <line x1="0" y1="{{ y0 | round(3) }}" x2="100" y2="{{ y0 | round(3) }}" class="chart__axis"/>
-</svg>
-<ol class="chart__labels" style="--n: {{ n }}">{% for p in series %}<li{% if p.value is none %} class="dim"{% endif %}>{{ p.label }}</li>{% endfor %}</ol>
-{% endif %}
+{% import "_charts.html" as ch %}{{ ch.columns(series, height) }}
 {%- endmacro %}
 
-{# series: [{"label": "1월", "value": 12}, ...] — 꺾은선. None 인 점에서 선이 끊긴다.
-   점(원)은 그리지 않는다 — preserveAspectRatio="none" 에서 찌그러진다. 값마다 투명한 세로 띠에 <title> 을 둔다. #}
 {% macro svg_line(series, height=160) -%}
-{% if not series %}{{ empty() }}{% else %}
-{% set vals = series | map(attribute="value") | reject("none") | list %}
-{% set hi = (vals + [0]) | max %}
-{% set lo = (vals + [0]) | min %}
-{% set span = (hi - lo) if hi != lo else 1 %}
-{% set plot = height - 16 %}
-{% set y0 = 8 + (hi / span) * plot %}
-{% set n = series | length %}
-{% set step = 100.0 / ([n - 1, 1] | max) %}
-{% set ns = namespace(segs=[], cur=[]) %}
-{% for p in series %}
-  {% if p.value is none %}
-    {% if ns.cur %}{% set ns.segs = ns.segs + [ns.cur] %}{% set ns.cur = [] %}{% endif %}
-  {% else %}
-    {% set ns.cur = ns.cur + [((loop.index0 * step) | round(3)) ~ "," ~ ((8 + ((hi - p.value) / span) * plot) | round(3))] %}
-  {% endif %}
-{% endfor %}
-{% if ns.cur %}{% set ns.segs = ns.segs + [ns.cur] %}{% endif %}
-<svg class="chart chart--line" viewBox="0 0 100 {{ height }}" preserveAspectRatio="none" role="img"
-     aria-label="꺾은선 그래프 {{ n }}개 값" style="height: {{ height }}px">
-  <line x1="0" y1="{{ y0 | round(3) }}" x2="100" y2="{{ y0 | round(3) }}" class="chart__axis"/>
-  {% for seg in ns.segs %}
-  <polyline class="chart__line" vector-effect="non-scaling-stroke" points="{{ seg | join(' ') }}"/>
-  {% endfor %}
-  {% for p in series %}
-  <rect class="chart__hit" x="{{ ([loop.index0 * step - step / 2, 0] | max) | round(3) }}" y="0" width="{{ step | round(3) }}" height="{{ height }}"><title>{{ p.label }}: {{ "미수집" if p.value is none else (p.value | num) }}</title></rect>
-  {% endfor %}
-</svg>
-<ol class="chart__labels" style="--n: {{ n }}">{% for p in series %}<li{% if p.value is none %} class="dim"{% endif %}>{{ p.label }}</li>{% endfor %}</ol>
-{% endif %}
+{% import "_charts.html" as ch %}{{ ch.line(series, height) }}
 {%- endmacro %}

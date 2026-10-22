@@ -8,8 +8,8 @@ H = {"accept": "text/html"}
 
 
 def _body(html: str) -> str:
-    """화면 본문(<main>) 만 — 좌측 메뉴 · 계약 패널(aside.contract)을 뺀다."""
-    return html.split('<main class="main"', 1)[1].split('<aside class="contract"', 1)[0]
+    """화면 본문(<main>) 만 — 좌측 메뉴 · 화면 도움말(aside.help)을 뺀다."""
+    return html.split('<main class="main"', 1)[1].split('<aside class="help"', 1)[0]
 
 
 @pytest.mark.fn("F-PRD-011")
@@ -67,7 +67,7 @@ def test_loss_rate_is_undecided_with_raw_qty(world, pr):
     r = pr.get("/prd/loss-rate", params={"wo": world.wo_no}, headers=H)
     assert r.status_code == 200 and "미확정 (D-519)" in r.text and world.wo_no in r.text and ">38<" in r.text  # 생산 = 33 + 5
     assert "%" not in r.text.split(world.wo_no, 1)[1].split("</tr>")[0]                                  # 비율을 지어내지 않는다
-    assert "미확정 (D-519)" in _body(r.text)                                                             # 계약 패널 말고 본문에
+    assert "미확정 (D-519)" in _body(r.text)                                                             # 화면 도움말 말고 본문에
     r = pr.get("/prd/loss-rate", params={"wo": world.p + "없음"}, headers=H)                              # 행이 없어도 본문에
     assert r.status_code == 200 and "미확정 (D-519)" in _body(r.text)
 

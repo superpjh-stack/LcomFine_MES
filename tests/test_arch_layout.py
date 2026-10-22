@@ -227,3 +227,70 @@ def test_health_returns_503_when_db_down(app, monkeypatch):
     body = r.json()
     assert body["ok"] is False and body["db"] != "ok"
     assert "test: DB down" not in r.text    # 원문은 응답에 싣지 않는다
+
+
+# ── 화면 도움말 패널 · 미확정 칩 · /ia 기능 계약 표 (UI 공용 틀 — docs/ui-guide.md) ──
+
+def _help(html: str) -> str:
+    m = re.search(r'<aside class="help" aria-label="화면 도움말">.*?</aside>', html, re.S)
+    assert m, "화면 도움말 패널(aside.help) 없음"
+    return m.group(0)
+
+
+def test_help_panel_default_lists_function_names_without_contract_text(app):
+    """help 블록을 채우지 않은 화면: 기능 **이름** 목록 + 내 권한. 기능 ID · 계약 문장 · 옛 계약 패널은 화면에 없다."""
+    sid = "BAS-010"
+    r = _client(app, "admin").get(nav.path_of(sid), headers=HTML)
+    assert r.status_code == 200
+    panel = _help(r.text)
+    for f in contracts.functions_of(sid):
+        assert f.name in panel, f.name
+        assert f.id not in panel and f.contract not in panel
+    assert "내 권한" in panel and ("등록·수정 가능" in panel or "조회만" in panel)
+    assert 'class="contract"' not in r.text and "계약 패널" not in r.text
+    assert "</main>" in r.text and r.text.index("</main>") < r.text.index('<aside class="help"')   # 본문(<main>) 밖 — 본문 대조에서 빠진다
+
+
+def test_help_panel_permission_follows_rbac(app):
+    sid = "WO-010"
+    for login in ("sl", "ex"):
+        panel = _help(_client(app, login).get(nav.path_of(sid), headers=HTML).text)
+        w = rbac.can(rbac.load_user(login), sid, "W")
+        assert ("등록·수정 가능" in panel) == w and ("조회만" in panel) == (not w), login
+
+
+def test_help_block_and_undecided_chip_on_exemplars(app):
+    """본보기 2 화면: help 블록(업무 문장 · 다음 단계 링크)이 기본 목록을 대신한다 · 미확정 글자는 본문에 칩으로 남는다."""
+    c = _client(app, "admin")
+    r = c.get(nav.path_of("WO-010"), headers=HTML)
+    panel = _help(r.text)
+    assert f'href="{nav.path_of("WO-020")}"' in panel and "이 화면에서 할 일" in panel
+    assert 'class="panel panel--form"' in r.text and 'class="filters"' in r.text
+    r = c.get(nav.path_of("RPT-020"), headers=HTML)
+    body = r.text.split('<main class="main"', 1)[1].split("</main>", 1)[0]
+    assert re.search(r'<span class="chip chip--undecided undecided" title="[^"]+">미확정 \(D-519\)</span>', body)
+    assert '<details class="data-table">' in body and 'data-series-table="good_qty"' in body
+    assert f'href="{nav.path_of("PRD-040")}"' in _help(r.text)
+
+
+def test_ia_lists_function_contracts(app):
+    r = _client(app, "admin").get("/ia", headers=HTML)
+    rows = re.findall(r'<tr data-fn="(F-[A-Z]+-\d+)"', r.text)
+    assert rows == [f.id for f in contracts.functions()]
+    f0 = contracts.functions()[0]
+    assert f0.contract.split("·")[0].strip()[:20] in r.text
+
+
+def test_viz_geometry_is_safe_for_none_negative_and_empty():
+    from lcomfine.app.util import viz
+    g = viz.columns([{"label": "a", "value": None}, {"label": "b", "value": -5}, {"label": "c", "value": 10}])
+    assert [c["none"] for c in g["cols"]] == [True, False, False] and g["cols"][1]["neg"]
+    assert 0 <= g["y0"] <= 100 and all(0 <= c["top"] <= 100 for c in g["cols"])
+    assert viz.columns([{"label": "a", "value": None}])["ticks"]                 # 전부 None — 눈금 폭 1
+    assert viz.columns([{"label": "a", "value": 0}])["segments"] == ["50.0,100.0"]
+    p = viz.parts([{"label": "x", "value": 3}, {"label": "y", "value": None}, {"label": "z", "value": -1}])
+    assert p["total"] == 2 and [q["slot"] for q in p["parts"]] == [1, 0, 0]
+    assert viz.parts([])["total"] is None and viz.bars_h([])["rows"] == []
+    assert viz.meter(None)["none"] and viz.meter(150)["pct"] == 100 and viz.meter(150)["over"]
+    assert viz.spark([{"value": None}, {"value": 1}]) == ""
+    assert viz.short_label("2026-10-01") == "10-01" and viz.short_label("2026-10") == "2026-10"

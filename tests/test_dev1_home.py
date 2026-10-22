@@ -1,6 +1,8 @@
 # tests/test_dev1_home.py — HOME 내 할 일 · 알림함 · 알림 설정 — 실제 DB · 시드 뒤 · 만든 행은 지운다
 from datetime import date
 
+import re
+
 import pytest
 
 from lcomfine.app import nav, notify, stats
@@ -119,7 +121,7 @@ def test_notification_settings_view(p):
     assert r.status_code == 200 and "부서 기본" in r.text and "미확정 (D-518)" in r.text
     assert "<code>order_issued</code>" in r.text and "<code>shipment_confirmed</code>" not in r.text   # PR 수신분만 · 개인 추가 칸 없음
     assert 'chip--muted">개인 추가' not in r.text
-    assert "개인 추가 알림의 범위는 <span class=\"undecided\">미확정 (D-526)</span>" in r.text   # D-526 차단 — 화면 본문에 보인다
+    assert re.search(r'개인 추가 알림의 범위는 <span class="[^"]*\bundecided\b[^"]*"[^>]*>미확정 \(D-526\)</span>', r.text)   # D-526 차단 — 화면 본문에 보인다(미확정 칩 · ui.undecided)
     # 수신하는 이벤트가 없는 부서(전산 관리자) — 칸 없음 · 저장 버튼 없음
     r = client("admin").get("/home/notification-settings")
     assert r.status_code == 200 and "수신하는 알림이 없다" in r.text and 'name="events"' not in r.text

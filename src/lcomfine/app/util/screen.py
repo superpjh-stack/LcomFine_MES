@@ -25,6 +25,15 @@ def num(v: Any, digits: int = 0, blank: str = EMPTY) -> str:
     return f"{Decimal(str(v)):,.{digits}f}"
 
 
+def qty(v: Any, blank: str = EMPTY) -> str:
+    """수량 — 천 단위 쉼표 · 뒤의 0 을 뗀다(`12480.000` → `12,480` · `1.500` → `1.5`). 저장값은 numeric(14,3) 그대로."""
+    if v is None or v == "":
+        return blank
+    d = Decimal(str(v))
+    s = f"{d:,.3f}".rstrip("0").rstrip(".")
+    return "0" if s in ("-0", "") else s
+
+
 def dt(v: Any, fmt: str = "%Y-%m-%d %H:%M", blank: str = EMPTY) -> str:
     if v is None:
         return blank

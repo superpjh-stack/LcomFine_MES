@@ -108,7 +108,7 @@ def test_customer_receivable_from_erp_upload(p, monkeypatch):
         assert f'data-asof="{cr["asof"].isoformat()}"' in r.text and "ERP 업로드 기준일" in r.text
         seg = r.text.split('data-receivable="ok"')[1]
         assert "1,500" in seg and "1,200" in seg and "1985-01-20" in seg and erp.code in seg and "D-803" in seg
-        assert "수금 칸은 W2 에 개발3 의" not in r.text                        # W1 자리표시 문장은 없다(계약 패널의 문장은 남는다)
+        assert "수금 칸은 W2 에 개발3 의" not in r.text                        # W1 자리표시 문장은 없다(계약 문장은 /ia 기능 계약 표에 남는다)
         assert _counts() == before                                            # 읽기만
         # 매출액 열이 매핑되지 않은 모양(status 미확정) — 전역 열 매핑을 건드리지 않고 공표 반환 모양으로 화면만 검사한다
         und = dict(cr, status="미확정 (D-516)", decision="D-516", sales_amount=None, receivable_amount=None)

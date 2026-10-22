@@ -92,7 +92,7 @@
       });
       rows.forEach(function (r) { tbody.appendChild(r); });
       table.dataset.page = "1";
-      applyPage(table);
+      if (!table.closest(".data-table")) applyPage(table);
     });
   });
 
@@ -119,7 +119,8 @@
     bar.querySelector('[data-pg="prev"]').onclick = function () { table.dataset.page = String(cur - 1); applyPage(table); };
     bar.querySelector('[data-pg="next"]').onclick = function () { table.dataset.page = String(cur + 1); applyPage(table); };
   }
-  document.querySelectorAll("table.grid:not(.plain)").forEach(function (t) { applyPage(t); });
+  /* 대시보드의 접힌 데이터 표(`details.data-table`)는 쪽 넘김 없이 표 전체 — 차트와 같은 숫자를 한눈에 */
+  document.querySelectorAll("table.grid:not(.plain)").forEach(function (t) { if (!t.closest(".data-table")) applyPage(t); });
 
   /* 스캔칸 · 알림 팝업 (G-13 · D-04: 스캐너 = 키보드 입력 + Enter)
      스캔칸(`[data-scan]`)이 있는 화면에서는 **스캔칸이 포커스의 주인**이다:
