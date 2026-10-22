@@ -2,14 +2,14 @@
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
 {% block help %}
-{{ ui.help_item("이 화면에서 할 일", "누가 언제 접속하고 무엇을 바꿨는지, ERP 업로드 · AI 호출 · 데이터 질의 · 문서관리 SSO 기록을 탭별로 조회합니다.") }}
+{{ ui.help_item("이 화면에서 할 일", "누가 언제 접속하고 무엇을 바꿨는지, ERP 업로드 · 문서관리 SSO 기록을 탭별로 조회합니다.") }}
 {{ ui.help_rule("기록은 조회만 할 수 있고 고치거나 지울 수 없습니다. 한 번에 최근 " ~ limit ~ "행까지 보입니다.") }}
 <div class="help__item"><h3>원본 기록</h3><p><code>{{ source[0] }}</code> · {% for c in source[1] %}<code>{{ c }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</p></div>
 {{ f.next("SYS-010", "사용자 관리") }}
 {% endblock %}
 {% block body %}
-{# 탭 = 정본 L3 「접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그」 — 업로드·AI 호출 로그는 표 셋(ERP 업로드 · AI 호출 · 데이터 질의)으로, SSO 는 W4 의 구분 SSO 행(D-609) #}
-{% set TABS = [("access", "접속 로그"), ("change", "변경 감사 로그"), ("erp", "ERP 업로드"), ("ai", "AI 호출"), ("dq", "데이터 질의"), ("sso", "SSO")] %}
+{# 탭 = 정본 L3 「접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그」 — 업로드 로그는 ERP 업로드 표로, SSO 는 W4 의 구분 SSO 행(D-609). AI 호출 · 데이터 질의 탭은 D-529 로 없앴다 #}
+{% set TABS = [("access", "접속 로그"), ("change", "변경 감사 로그"), ("erp", "ERP 업로드"), ("sso", "SSO")] %}
 {{ ui.screen_head(screen.name, sub="최근 " ~ limit ~ "행") }}
 <nav class="search" aria-label="로그 탭">
   {% for k, label in TABS %}<a class="btn{% if tab == k %} btn-primary{% endif %}" href="?tab={{ k }}"{% if tab == k %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
@@ -23,10 +23,6 @@
   {{ f.input("log_type", "기능 ID", form.log_type, placeholder="F-WO-011") }}
   {% elif tab == "erp" %}
   {{ f.select("log_type", "회차 상태", [("반영", "반영"), ("교체", "교체")], form.log_type, blank="전체") }}
-  {% elif tab == "ai" %}
-  {{ f.input("log_type", "호출 용도", form.log_type) }}
-  {% elif tab == "dq" %}
-  {{ f.select("log_type", "허용/거부", [("허용", "허용"), ("거부", "거부")], form.log_type, blank="전체") }}
   {% else %}
   {{ f.select("log_type", "결과", [("성공", "성공"), ("실패", "실패")], form.log_type, blank="전체") }}
   {% endif %}
@@ -40,8 +36,6 @@
 {% if summary %}
 <section class="panel" data-log-tab="{{ tab }}" data-n="{{ summary.n }}"
   {%- if tab == "erp" %} data-live="{{ summary.live }}" data-replaced="{{ summary.replaced }}" data-errors="{{ summary.errors }}"
-  {%- elif tab == "ai" %} data-failed="{{ summary.failed }}" data-avg-ms="{{ summary.avg_ms if summary.avg_ms is not none else '' }}"
-  {%- elif tab == "dq" %} data-rejected="{{ summary.rejected }}" data-avg-ms="{{ summary.avg_ms if summary.avg_ms is not none else '' }}"
   {%- else %} data-failed="{{ summary.failed }}"{% endif %}>
   <div class="kpis">
   {% if tab == "erp" %}
@@ -50,14 +44,6 @@
   {{ ui.kpi("교체", summary.replaced | num if summary.n else none) }}
   {{ ui.kpi("읽은 행", summary.rows_total | num if summary.n else none) }}
   {{ ui.kpi("오류 행", summary.errors | num if summary.n else none) }}
-  {% elif tab == "ai" %}
-  {{ ui.kpi("AI 호출", summary.n | num if summary.n else none) }}
-  {{ ui.kpi("실패", summary.failed | num if summary.n else none) }}
-  {{ ui.kpi("평균 응답(ms)", summary.avg_ms | num if summary.avg_ms is not none else none) }}
-  {% elif tab == "dq" %}
-  {{ ui.kpi("데이터 질의", summary.n | num if summary.n else none) }}
-  {{ ui.kpi("거부", summary.rejected | num if summary.n else none) }}
-  {{ ui.kpi("평균 응답(ms)", summary.avg_ms | num if summary.avg_ms is not none else none) }}
   {% else %}
   {{ ui.kpi("SSO 호출", summary.n | num if summary.n else none) }}
   {{ ui.kpi("실패", summary.failed | num if summary.n else none) }}
@@ -73,10 +59,6 @@
   {{ ui.table([("at", "일시"), ("login_id", "누가"), ("role_code", "부서"), ("function_id", "기능"), ("screen_id", "화면"), ("target", "무엇을"), ("detail", "내용"), ("path", "경로"), ("client_ip", "IP")], rows) }}
   {% elif tab == "erp" %}
   {{ ui.table([("at", "업로드 일시"), ("batch_no", "회차 번호"), ("period_from", "기준 기간 시작"), ("period_to", "기준 기간 끝"), {"key": "round_no", "label": "회차", "num": true}, ("status", "상태"), ("replaced_by", "교체한 회차"), ("source_file", "올린 파일"), {"key": "row_count", "label": "읽은 행 수", "num": true}, {"key": "error_count", "label": "오류·미매핑 행 수", "num": true}, ("created_by", "올린 사람")], rows) }}
-  {% elif tab == "ai" %}
-  {{ ui.table([("at", "호출 일시"), ("kind", "호출 용도"), ("model", "모델"), ("ok", "성공 여부"), {"key": "ms", "label": "걸린 시간(ms)", "num": true}, ("error", "실패 사유"), ("login_id", "부른 사용자")], rows) }}
-  {% elif tab == "dq" %}
-  {{ ui.table([("at", "질의 일시"), ("query_no", "로그 번호"), ("question", "질문"), ("sql_text", "생성 SQL"), ("ok", "허용/거부"), {"key": "row_count", "label": "행 수", "num": true}, ("error", "거부·실패 사유"), {"key": "ms", "label": "걸린 시간(ms)", "num": true}, ("role_code", "부서"), ("login_id", "질의한 사용자")], rows) }}
   {% else %}
   {{ ui.table([("at", "일시"), ("login_id", "사용자"), ("role_code", "부서"), ("result", "성공 여부"), ("path", "경로"), ("target", "대상"), ("detail", "내용"), ("client_ip", "IP")], rows) }}
   {% endif %}

@@ -1,11 +1,11 @@
-# 화면 맵 — 화면 67 + 공통 4 (아키텍트 · 2026-10-21)
+# 화면 맵 — 화면 66 + 공통 4 (아키텍트 · 2026-10-21)
 
 > 메뉴 · 경로의 원본은 `src/lcomfine/app/nav.py` 다. **§1 은 그 파일의 렌더본**이라 손으로 고치지 않는다
 > (`uv run python tools/gen_contracts.py --only screens`). 화면 ID · 이름 · 유형 · 묶음은 정본 그대로이고 게이트가
 > `contracts/ia.json` + `ia-overrides.json` 과 대조한다. 경로(slug) · 담당은 정본에 없어 아키텍트가 정한 `가설` 이다(D-507).
 > 화면별 기능은 `function-list.md`, 부서별 칸은 `permission-matrix.md`.
 
-## 1. 화면 67 → 경로 · 담당 (렌더본)
+## 1. 화면 66 → 경로 · 담당 (렌더본)
 
 <!-- BEGIN:generated screens -->
 | ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당 |
@@ -70,7 +70,6 @@
 | RPT-060 | 수금 리포트 | 리포트 | `/rpt/collection` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | RPT-070 | 주문 흐름 리포트 | 리포트 | `/rpt/order-flow` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | RPT-080 | 경영 요약 | 리포트 | `/rpt/summary` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
-| RPT-130 | 데이터 질의 | 조회 | `/rpt/query` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | DOC-010 | 문서관리 바로가기 | 외부 연계(SSO) | `/doc/go` | DOC 문서관리 | ⑦ 지원 | 개발1 |
 | DOC-020 | 문서관리 계정 매핑 | 목록·등록 | `/doc/account-map` | DOC 문서관리 | ⑦ 지원 | 개발1 |
 | SYS-010 | 사용자 관리 | 목록·등록 | `/sys/users` | SYS 시스템 | ⑦ 지원 | 개발1 |
@@ -99,10 +98,10 @@
 |---|---|---|
 | **개발1** 기준·지시·시스템 | HOME 내 업무(3) · BAS 기준정보(3) · STD 인쇄 기준(6) · WO 작업지시(4) · SYS 시스템(4) · TRK 통합 조회(3) · DOC 문서관리(2, W4) — **25** | `app/routers/{home,bas,std,wo,sys,trk,doc}.py` · `templates/{home,bas,std,wo,sys,trk,doc}/` · `jobs.py`(배치 `due-check`) · `sso.py`(W4) · `db/seed_dev1.py` · `tests/test_dev1_*.py` · `progress-dev1.md` |
 | **개발2** 자재·생산·품질·재고 | MAT 자재·입고(4) · PRD 생산일보(4) · INS 검사일보(4) · QC 품질 검사(3) · INV 재고(3) · LOT LOT 추적(2) — **20** | `app/routers/{mat,prd,ins,qc,inv,lot}.py` · `templates/{mat,prd,ins,qc,inv,lot}/` · `trace.py`(정·역방향 LOT 추적 — **가장 먼저 공표**) · `db/seed_dev2.py` · `tests/test_dev2_*.py` · `progress-dev2.md` |
-| **개발3** 출하·수금·분석 | SHP 출하(3) · PRP 생산 보고서(3) · COL 수금리포트(7, W2) · RPT 대시보드(9, W3) — **22** | `app/routers/{shp,prp,col,rpt}.py` · `templates/{shp,prp,col,rpt}/` · `stats.py` · `erp_upload.py` · `dashboard.py` · `ai.py` · `dataquery.py` · `db/seed_dev3.py` · `tests/test_dev3_*.py` · `progress-dev3.md` |
+| **개발3** 출하·수금·분석 | SHP 출하(3) · PRP 생산 보고서(3) · COL 수금리포트(7, W2) · RPT 대시보드(8, W3) — **21** | `app/routers/{shp,prp,col,rpt}.py` · `templates/{shp,prp,col,rpt}/` · `stats.py` · `erp_upload.py` · `dashboard.py` · `db/seed_dev3.py` · `tests/test_dev3_*.py` · `progress-dev3.md` |
 | **QA1** 기능·계약 | G-01~G-04 · 기능 목록 1:1 · 오류 계약 · 화면별 계약 문장 대조 | `tools/check_screens.py` · `tests/test_qa1_*` · `outputs/qa1-기능계약.md` |
 | **QA2** 흐름·데이터 | G-05~G-15 | `tools/check_data.py` · `tests/test_qa2_*` · `outputs/qa2-흐름데이터.md` |
 | **QA3** 보안·운영 | G-16~G-24 | `tools/check_security.py` · `tests/test_qa3_*` · `outputs/qa3-보안운영.md` · `outputs/e2e/` |
 | **아키텍트** | 공통 화면(§2) | `src/lcomfine/db/schema.sql` · `nav.py` · `main.py` · `contracts/*` · `rbac` · `templating` · `notify` · `numbering` (+ `conn` · `audit` · `http` · `settings` · `static/` · `templates/base.html` · `tools/gate.py` · `tools/gen_function_list.py` · `tools/gen_permissions.py` · `tools/gen_contracts.py` · `tools/check_trace.py` · `tools/check_routes.py` · `tools/check_schema.py` · `tools/backup.py` · `tests/test_arch_*.py` · `Makefile`) |
 
-합계 **25 + 20 + 22 = 67**. 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다. 공용 함수 · 시그니처는 먼저 정한 사람이 `progress-devN.md` §1 에 공표하고, 시그니처 원본은 `contracts/interfaces.md`.
+합계 **25 + 20 + 21 = 66**. 소유 밖 파일이 필요하면 `progress-devN.md` §3 에 요청한다. 공용 함수 · 시그니처는 먼저 정한 사람이 `progress-devN.md` §1 에 공표하고, 시그니처 원본은 `contracts/interfaces.md`.

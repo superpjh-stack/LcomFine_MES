@@ -6,7 +6,7 @@
 > 새 컬럼은 `schema.sql` 에서도 그 테이블의 맨 끝에 적는다(`ADD COLUMN` 이 맨 끝에 붙으므로 컬럼 순서가 같아야 한다).
 > 스키마를 고치는 사람은 아키텍트뿐이다. 개발자는 `progress-devN.md` §3 에 요청을 남긴다.
 
-DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **48** (업무 39 + SYS 9) · 뷰 **9**.
+DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **46** (업무 38 + SYS 8) · 뷰 **1**. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
 G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수로 판정하지 않는다. 테이블을 더하거나 빼면 스펙 §4.1 표와 이 표를 함께 고친다.
 
 공통 규칙 — 모든 테이블 `id bigserial primary key`(자연키가 분명한 `sys_role` · `sys_permission` · `sys_number_rule` · `sys_number_seq` · `sso_token` 은 그 키,
@@ -53,7 +53,6 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | COL | `erp_upload_row` | 업로드 행 — 원문 · 매핑 값 · 오류 |
 | COL | `erp_customer_map` | ERP 거래처코드 ↔ MES 거래처 |
 | COL | `erp_column_map` | ERP 엑셀 열 이름 ↔ MES 항목(D-516) |
-| RPT | `data_query_log` | 데이터 질의 로그 — 거부 포함 모든 질의(D-513) |
 | DOC | `doc_account_map` | MES 사용자 ↔ 문서관리 계정 ID (1:1) |
 | DOC | `sso_token` | 일회용 SSO 토큰 — jti · 만료 · 사용 시각(D-514) |
 | HOME | `notification` | 알림 — 수신 부서마다 1행 · (dedupe_key, to_role) 유일(D-522) |
@@ -64,23 +63,14 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | SYS | `sys_common_code` | 공통코드 — 설비 · 불량유형 · 수금수단 |
 | SYS | `sys_access_log` | 접근 로그 — 로그인 · 조회 · SSO · 오류 |
 | SYS | `sys_change_log` | 데이터 변경 로그 — `audit.log_change` |
-| SYS | `sys_number_rule` | 채번 형식 7행(D-509) |
+| SYS | `sys_number_rule` | 채번 형식 6행(D-509) |
 | SYS | `sys_number_seq` | 채번 카운터 |
-| SYS | `sys_ai_call_log` | AI 호출 로그 |
 
-뷰 9 (테이블 수에 세지 않는다 · 읽기 전용 · 열은 §5 렌더본):
+뷰 1 (테이블 수에 세지 않는다 · 읽기 전용 · 열은 §5 렌더본):
 
 | 영역 | 뷰 | 목적 |
 |---|---|---|
 | WO | `v_work_order_status` | WO-040 공정상태 — 지시별 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합 · 상태 |
-| RPT | `v_dq_orders` | 데이터 질의 허용 뷰 — 수주(=생산의뢰) |
-| RPT | `v_dq_work_orders` | 데이터 질의 허용 뷰 — 생산지시 |
-| RPT | `v_dq_stock` | 데이터 질의 허용 뷰 — 재고 |
-| RPT | `v_dq_shipments` | 데이터 질의 허용 뷰 — 출하 |
-| RPT | `v_dq_quality` | 데이터 질의 허용 뷰 — 품질 판정 |
-| RPT | `v_dq_production_daily` | 데이터 질의 허용 뷰 — 생산일보 |
-| RPT | `v_dq_collections` | 데이터 질의 허용 뷰 — 수금 (영업부 · 회계부 · 전산 관리자 · 경영진만 · D-513) |
-| RPT | `v_dq_receivables` | 데이터 질의 허용 뷰 — 미수 (영업부 · 회계부 · 전산 관리자 · 경영진만 · D-513) |
 
 ## 2. 쓰기 경계 (G-05 의 기대값)
 
@@ -89,13 +79,13 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 1. **화면은 자기 대메뉴 영역의 테이블에만 쓴다.** 쓰는 테이블은 `function-list.md` 의 「쓰는 테이블」 열이 원본이다(§2.3 렌더본).
 2. 그 밖에 쓰는 것은 §2.2 의 예외 표에 있는 것뿐이다 — `make check-schema` 가 기능마다 대조한다.
 3. 모든 쓰기 뒤의 `sys_change_log`(`audit.log_change`)는 공통 규칙이라 「쓰는 테이블」에 적지 않는다.
-4. **TRK · LOT · PRP · RPT 대시보드는 어떤 업무 테이블에도 쓰지 않는다.** 데이터 질의(F-RPT-132)는 `data_query_log` · `sys_ai_call_log` 만. 추적 · 집계 결과를 캐시 테이블에 쌓지 않는다.
+4. **TRK · LOT · PRP · RPT 대시보드는 어떤 업무 테이블에도 쓰지 않는다.** (데이터 질의는 D-529 로 없앴다.) 추적 · 집계 결과를 캐시 테이블에 쌓지 않는다.
 5. 수금 데이터는 업로드 회차 교체로만 바뀐다(MES 는 수금을 고치지 않는다). `stock_adjust` · `shipment_adjust` 는 불변(트리거가 UPDATE · DELETE 를 막는다).
 
 ### 2.2 예외 (영역 밖에 쓰는 것 — 이 표가 전부다)
 
 스펙 §4.3 의 예외 3(QC 판정 → `lot_stock.status` · 출하 지시 → `lot_stock.allocated_qty` · 쓰기 트랜잭션 → `notification`)과,
-`function-list.md` 가 이미 그렇게 적어 둔 나머지(입고 · 불출 · 출하 확정의 재고 반영, SSO · AI 로그)를 함께 적는다.
+`function-list.md` 가 이미 그렇게 적어 둔 나머지(입고 · 불출 · 출하 확정의 재고 반영, SSO 로그)를 함께 적는다.
 
 | 기능 | 테이블 | 쓰는 것 | 근거 |
 |---|---|---|---|
@@ -109,8 +99,7 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | F-MAT-021 F-MAT-022 | `lot_stock` `stock_move` | 불출 수량만큼 `qty` 를 줄이고 `stock_move` 한 행(불출 · 불출 취소) | function-list F-MAT-021 |
 | F-INV-021 | `product_lot` `material_lot` | 분할 LOT 의 새 LOT 행 — `parent_lot_id` = 원 LOT · 번호 원 번호 + `-01` 순번 | D-509 · function-list F-INV-021 |
 | F-DOC-011 | `sys_access_log` | SSO 진입 로그(구분 SSO) | D-514 · G-18 |
-| F-RPT-132 | `sys_ai_call_log` | AI 호출 로그 | D-513 |
-| 모든 채번 (의뢰 · 지시 · 원자재 입고 LOT · 제품 LOT · 출하 · ERP 회차 · 데이터 질의 로그 — `numbering.KINDS` 7) | `sys_number_seq` | `numbering.next` 한 곳 — 종류 · 범위별 카운터 행 upsert. 라우터는 번호를 조립하지 않는다. 분할 LOT 번호(원 번호 + `-NN`)와 불출은 채번이 아니다(F-INV-021 행 · D-509) | CLAUDE.md 한 곳 규칙 · D-509 · QA2 G-05 (DEF-QA2-003) |
+| 모든 채번 (의뢰 · 지시 · 원자재 입고 LOT · 제품 LOT · 출하 · ERP 회차 — `numbering.KINDS` 6) | `sys_number_seq` | `numbering.next` 한 곳 — 종류 · 범위별 카운터 행 upsert. 라우터는 번호를 조립하지 않는다. 분할 LOT 번호(원 번호 + `-NN`)와 불출은 채번이 아니다(F-INV-021 행 · D-509) | CLAUDE.md 한 곳 규칙 · D-509 · QA2 G-05 (DEF-QA2-003) |
 | 로그인 · 로그아웃 (`auth`) | `sys_user` | fail_count · last_login_at · revoked_sessions 만 — 비밀번호 · 부서 · 상태는 SYS-010 (F-SYS-011~013) 만 쓴다 | G-20 세션 상태 · QA2 G-05 |
 
 ### 2.3 화면 → 쓰는 테이블 (렌더본 — `function-list.md` 에서 찍는다)
@@ -145,7 +134,6 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | SHP-020 | 출하 확정 | SHP | F-SHP-021 F-SHP-023 | `shipment_order` `lot_stock` `stock_move` `notification` `shipment_adjust` |
 | COL-010 | ERP 수금현황 업로드 | COL | F-COL-011 | `erp_upload_batch` `erp_upload_row` `erp_column_map` `notification` |
 | COL-030 | 거래처 코드 매핑 | COL | F-COL-031 F-COL-032 F-COL-033 | `erp_customer_map` `erp_upload_row` |
-| RPT-130 | 데이터 질의 | RPT | F-RPT-132 | `data_query_log` `sys_ai_call_log` |
 | DOC-010 | 문서관리 바로가기 | DOC | F-DOC-011 | `sso_token` `sys_access_log` |
 | DOC-020 | 문서관리 계정 매핑 | DOC | F-DOC-021 F-DOC-022 F-DOC-023 | `doc_account_map` |
 | SYS-010 | 사용자 관리 | SYS | F-SYS-011 F-SYS-012 F-SYS-013 | `sys_user` |
@@ -755,23 +743,7 @@ production_request ──< work_order  ◄──────┘
 | updated_at | timestamp with time zone | Y | 수정 일시 |
 | updated_by | text | Y | 수정자 login_id |
 
-#### RPT 대시보드 — 테이블 1
-
-### `data_query_log` — RPT · 데이터 질의 로그 — 거부를 포함한 모든 질의 한 행 (D-513)
-
-| 컬럼 | 타입 | NULL | 설명 |
-|---|---|---|---|
-| id | bigint | N | 내부 키 |
-| query_no | text | N | 로그 번호 numbering.next("DQ") (형식 D-509) |
-| user_id | bigint | Y | 질의한 사용자 |
-| role_code | text | Y | 그때의 부서 (부서별 뷰 제한의 근거) |
-| question | text | N | 질문 원문 |
-| sql_text | text | Y | 생성된 SQL (AI 실패면 없다) |
-| ok | boolean | N | 실행했는가 (검증 거부·실패는 false) |
-| row_count | integer | Y | 돌려준 행 수 |
-| error | text | Y | 거부·실패 사유 |
-| ms | integer | Y | 걸린 시간(밀리초) |
-| created_at | timestamp with time zone | N | 질의 일시 |
+#### RPT 대시보드 — 테이블 0
 
 #### DOC 문서관리 — 테이블 2
 
@@ -829,7 +801,7 @@ production_request ──< work_order  ◄──────┘
 | updated_at | timestamp with time zone | Y | 수정 일시 |
 | updated_by | text | Y | 수정자 login_id |
 
-#### SYS 시스템 — 테이블 9
+#### SYS 시스템 — 테이블 8
 
 ### `sys_role` — SYS · 역할(부서) — 정본 8부서. 역할을 늘리려면 행을 넣는다
 
@@ -923,11 +895,11 @@ production_request ──< work_order  ◄──────┘
 | detail | text | Y | 내용 |
 | client_ip | text | Y | 접속 IP |
 
-### `sys_number_rule` — SYS · 채번 형식 — 번호 종류별 한 행 (REQ · WO · MLOT · PLOT · SHP · ERP · DQ). 형식은 코드가 아니라 이 행이다 (D-509)
+### `sys_number_rule` — SYS · 채번 형식 — 번호 종류별 한 행 (REQ · WO · MLOT · PLOT · SHP · ERP). 형식은 코드가 아니라 이 행이다 (D-509)
 
 | 컬럼 | 타입 | NULL | 설명 |
 |---|---|---|---|
-| seq_kind | text | N | 번호 종류: REQ | WO | MLOT | PLOT | SHP | ERP | DQ |
+| seq_kind | text | N | 번호 종류: REQ | WO | MLOT | PLOT | SHP | ERP |
 | prefix | text | N | 접두 글자 (예시 — D-509) |
 | date_format | text | N | 날짜 부분 형식 (to_char 형식 · 빈 글자면 날짜 없음) |
 | seq_digits | integer | N | 일련번호 자릿수 |
@@ -942,19 +914,6 @@ production_request ──< work_order  ◄──────┘
 | seq_kind | text | N | 번호 종류 |
 | seq_scope | text | N | 범위 (날짜 부분 값 · 날짜가 바뀌면 1부터) |
 | last_value | bigint | N | 마지막으로 내준 일련번호 |
-
-### `sys_ai_call_log` — SYS · AI 호출 로그 — 모든 AI 호출 한 행 (데이터 질의의 SQL 생성 등 · D-513)
-
-| 컬럼 | 타입 | NULL | 설명 |
-|---|---|---|---|
-| id | bigint | N | 내부 키 |
-| kind | text | N | 호출 용도 (데이터 질의 등) |
-| model | text | Y | 모델 이름 |
-| ok | boolean | N | 성공 여부 |
-| ms | integer | Y | 걸린 시간(밀리초) |
-| error | text | Y | 실패 사유 (키 없음 포함 — 키 값은 적지 않는다) |
-| user_id | bigint | Y | 부른 사용자 |
-| created_at | timestamp with time zone | N | 호출 일시 |
 <!-- END:generated tables -->
 
 ## 5. 뷰 (렌더본 — 읽기 전용 · 저장하지 않고 계산한다)
@@ -963,20 +922,11 @@ production_request ──< work_order  ◄──────┘
 | 뷰 | 컬럼 | 설명 |
 |---|---|---|
 | `v_work_order_status` | `work_order_id` `work_order_no` `request_id` `request_no` `item_id` `order_qty` `daily_good_qty` `receipt_qty` `shipped_qty` `status` | 지시별 공정 상태 (WO-040) — 지시 수량 · 일보 완료 합 · 제품 입고 합 · 출하 합(확정 출하 · shipment_adjust 반품·정정은 빼지 않는다 — D-515) · 상태 |
-| `v_dq_orders` | `request_no` `request_date` `customer_code` `customer_name` `item_code` `item_name` `qty` `due_date` `status` | 데이터 질의 — 수주(=생산의뢰) |
-| `v_dq_work_orders` | `work_order_no` `request_no` `item_code` `item_name` `equipment_code` `planned_on` `order_qty` `daily_good_qty` `receipt_qty` `shipped_qty` `status` | 데이터 질의 — 생산지시와 진행 수량 |
-| `v_dq_stock` | `lot_kind` `lot_no` `item_code` `item_name` `warehouse_code` `location_code` `qty` `allocated_qty` `available_qty` `status` | 데이터 질의 — LOT × 위치 재고 (가용 = 현재고 − 할당) |
-| `v_dq_shipments` | `shipment_no` `request_no` `customer_code` `customer_name` `due_date` `status` `confirmed_at` `lot_no` `item_code` `item_name` `qty` | 데이터 질의 — 출하 지시 행 (LOT · 수량 · 납기 · 확정) |
-| `v_dq_quality` | `inspection_kind` `lot_no` `item_code` `item_name` `seq` `result` `inspected_at` `is_latest` | 데이터 질의 — 입고검사 · 제품검사 판정 (is_latest = 그 LOT 의 현재 판정) |
-| `v_dq_production_daily` | `work_date` `work_order_no` `item_code` `item_name` `equipment_code` `produced_qty` `good_qty` `loss_qty` `run_minutes` `stop_minutes` | 데이터 질의 — 생산일보 (지시 × 일자 × 설비) |
-| `v_dq_collections` | `batch_no` `period_from` `period_to` `erp_customer_code` `customer_code` `customer_name` `txn_date` `sales_amount` `collected_amount` `balance_amount` `method` `bill_due_date` | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 사용 중 매핑만 · 기간이 겹치면 올라온 그대로 센다 D-516 · 영업부·회계부·관리자·경영진만 — D-513) |
-| `v_dq_receivables` | `erp_customer_code` `customer_code` `customer_name` `sales_amount` `collected_amount` `receivable_amount` `last_txn_date` `as_of` | 데이터 질의 — 거래처별 미수 (매출 합 − 수금 합 · 기준일 = 반영 회차의 마지막 기간 끝) |
 <!-- END:generated views -->
 
 - 수량 합은 취소 표시(`canceled_at`)된 입고 행을 빼고, 출하 수량은 `확정` 출하만 센다.
-- `v_dq_collections` · `v_dq_receivables` 는 `erp_upload_batch.status = '반영'` 회차의 `error` 없는 행만 읽는다. `parsed` 의 키는
+- 수금 집계(`stats` · `dashboard`)는 `erp_upload_batch.status = '반영'` 회차의 `error` 없는 행만 읽는다. `erp_upload_row.parsed` 의 키는
   `customer_code` · `txn_date` · `sales_amount` · `collected_amount` · `balance_amount` · `method` · `bill_due_date` 이다 — `erp_column_map.field` 와 같은 낱말이고 열 구성은 미확정(D-516).
-- 데이터 질의(RPT-130)는 `v_dq_*` 8 만 읽는다. 뷰에는 계정 · 비밀번호 · 토큰 컬럼이 없다. 수금 두 뷰의 부서 제한은 `dataquery` 의 허용 목록에 둔다(D-513).
 
 ## 6. 상태값 (한글 그대로 `check`)
 

@@ -211,11 +211,11 @@ def main() -> int:
     db_views = {r["viewname"] for r in conn.q("select viewname from pg_views where schemaname = 'public'")}
     matviews = conn.q1("select count(*) as n from pg_matviews where schemaname = 'public'")["n"]
     vbad = diff(c_views, sql_views, "§1 뷰 표", "schema.sql ") + diff(c_views, db_views, "§1 뷰 표", "DB ")
-    dq = sorted(v for v in c_views if v.startswith("v_dq_"))
     cache = sorted(t for t in live if re.search(r"trace|cache|closure|ancest|descend|summary|_agg|^stat", t))
-    add("뷰 = 계약 §1 (v_work_order_status + v_dq_* 8) · 구체화 뷰 0 · 추적·집계 캐시 테이블 0",
-        not vbad and len(dq) == 8 and "v_work_order_status" in c_views and matviews == 0 and not cache,
-        f"뷰 {len(db_views)} · v_dq_* {len(dq)} · 구체화 뷰 {matviews} · 캐시 테이블 {cache or 0}"
+    # 데이터 질의 허용 뷰(질의용 v_dq 8)는 D-529 로 없앴다 — 뷰는 v_work_order_status 하나뿐이어야 한다
+    add("뷰 = 계약 §1 (v_work_order_status 하나 · D-529) · 구체화 뷰 0 · 추적·집계 캐시 테이블 0",
+        not vbad and set(c_views) == {"v_work_order_status"} == db_views and matviews == 0 and not cache,
+        f"뷰 {len(db_views)} {sorted(db_views)} · 구체화 뷰 {matviews} · 캐시 테이블 {cache or 0}"
         + (f" — {' · '.join(vbad)}" if vbad else ""))
 
     # ── 6. 추적 척추 ──

@@ -1,7 +1,7 @@
 """FastAPI 앱 — 세션 · 오류 핸들러 · 라우터 include · 공통 화면(/login · /logout · /error · /ia) · /health.
 
 **개발자는 이 파일을 만지지 않는다.** 라우터는 모듈명으로 자동 include 한다 — `routers/<모듈>.py` 의 `router`.
-라우터가 아직 GET 을 등록하지 않은 화면(nav.SCREENS 67) 경로는 `_placeholder.html` 로 **HTTP 200** + "미구현 — 담당 개발N" +
+라우터가 아직 GET 을 등록하지 않은 화면(nav.SCREENS 66) 경로는 `_placeholder.html` 로 **HTTP 200** + "미구현 — 담당 개발N" +
 계약 문장을 낸다. 화면이 없다는 사실을 숨기지 않는다. 라우터가 그 경로를 등록하면 placeholder 는 저절로 빠진다.
 """
 
@@ -30,7 +30,7 @@ log = logging.getLogger("lcomfine")
 
 
 def _placeholder_routes(registered: set[tuple[str, str]]) -> APIRouter:
-    """`nav.SCREENS` 67 중 라우터가 GET 을 등록하지 않은 화면마다 `GET <path>` 를 `_placeholder.html` 로 붙인다.
+    """`nav.SCREENS` 66 중 라우터가 GET 을 등록하지 않은 화면마다 `GET <path>` 를 `_placeholder.html` 로 붙인다.
 
     RBAC 는 그대로 탄다(`rbac.require_screen`) — 미로그인 401(브라우저 GET 은 /login 303) · 칸 없는 부서 403.
     화면에는 담당과 그 화면의 기능 줄(`contracts.functions_of`)이 나온다. 개발자가 그 경로의 GET 을 등록하면 빠진다.

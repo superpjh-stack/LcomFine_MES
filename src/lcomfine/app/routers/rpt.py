@@ -1,29 +1,26 @@
 """RPT 대시보드(D-505) — RPT-010 수주 · RPT-020 생산 · RPT-030 품질 · RPT-040 재고·창고 · RPT-050 출하 · RPT-060 수금 · RPT-070 주문 흐름 ·
-RPT-080 경영 요약 · RPT-130 데이터 질의 (개발3 · W3).
+RPT-080 경영 요약 (개발3 · W3). 데이터 질의는 D-529 로 없앴다.
 
-기능 10 (contracts/function-list.md):
+기능 8 (contracts/function-list.md):
   F-RPT-011 GET /rpt/orders        수주 리포트     F-RPT-051 GET /rpt/shipment     출하 리포트
   F-RPT-021 GET /rpt/production    생산 리포트     F-RPT-061 GET /rpt/collection   수금 리포트 (최근 업로드 기준일 명시)
   F-RPT-031 GET /rpt/quality       품질 리포트     F-RPT-071 GET /rpt/order-flow   주문 흐름 리포트 (병목 미확정 D-520)
   F-RPT-041 GET /rpt/inventory     재고·창고 리포트 F-RPT-081 GET /rpt/summary      경영 요약 (일일 · 주간 · 월간 탭 · 해설 없음)
-  F-RPT-131 GET /rpt/query         데이터 질의 조회 (질문 입력 · 최근 질의)
-  F-RPT-132 POST /rpt/query        질의 실행 (R 이상 · 권한 예외 · D-513) — 쓰는 테이블 data_query_log · sys_ai_call_log 만
 
 대시보드 8 은 화면을 열 때 `dashboard` 가 집계한다(캐시 없음 · D-512) — 라우터는 조회 조건만 검사한다. 차트는 인라인 SVG + 같은 숫자의 표.
 조회 조건 형식이 틀리면 화면을 422 로 다시 그린다(입력칸 유지). 어떤 업무 테이블에도 쓰지 않는다(G-05).
-데이터 질의: AI 는 `ai` 뿐 · 검증 · 실행 · 로그는 `dataquery` 뿐. 키가 없거나 호출이 실패하면 그 문장을 화면에 그대로 보인다(G-17 · 조용한 실패 금지).
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
-from .. import dashboard, dataquery, nav, rbac, templating
-from ..util import audit, http
+from .. import dashboard, nav, rbac, templating
+from ..util import http
 
 router = APIRouter()
 
@@ -182,52 +179,3 @@ def summary(request: Request, tab: str | None = None, asof: str | None = None, c
     ctx["data"] = dashboard.summary((f, t), cid)
     return _render(request, "rpt/summary.html", ctx, "RPT-080")
 
-
-# ── RPT-130 데이터 질의 ─────────────────────────────────────────────────────────
-
-def _query_ctx(user: rbac.User, question: str = "") -> dict:
-    return {"form": {"question": question}, "result": None, "notice": None, "recent": dataquery.recent(user),
-            "views": dataquery.allowed_views(user.role_code), "max_rows": dataquery.MAX_ROWS,
-            "all_views": list(dataquery.VIEWS), "collection_roles": dataquery.COLLECTION_ROLES}
-
-
-@router.get(nav.path_of("RPT-130"), response_class=HTMLResponse)
-def query(request: Request, user: rbac.User = rbac.require_screen("RPT-130")) -> HTMLResponse:
-    """F-RPT-131 데이터 질의 조회 — 질문 입력 · 이 부서가 질의할 수 있는 뷰 · 최근 질의(SQL · 결과 건수 · 거부 사유)."""
-    return _render(request, "rpt/query.html", _query_ctx(user), "RPT-130")
-
-
-@router.post(nav.path_of("RPT-130"))
-def run_query(request: Request, question: str | None = Form(None), user: rbac.User = rbac.require_fn("F-RPT-132")):
-    """F-RPT-132 질의 실행 — 질문 → SQL(`ai`) → 검증(D-513 · D-806) → 읽기 전용 실행 → `data_query_log`(거부 포함).
-
-    거부 · AI 키 없음 · 호출 실패 · 실행 실패는 로그를 남긴 뒤 **422** 로 이유를 보인다(G-16 · G-17). 성공은 `http.saved` + `audit.log_change`;
-    브라우저는 결과 표를 같은 화면에 바로 그린다(결과 행은 저장하지 않아 303 뒤에 다시 보일 수 없다 — D-806).
-    """
-    text = (question or "")
-    if "\x00" in text:
-        raise _bad("질문", "글자에 NUL(0x00)을 넣을 수 없습니다")
-    text = text.strip()
-    if not text:
-        raise _bad("질문", "필수 항목입니다", "질문을 입력해 주세요")
-    if len(text) > dataquery.QUESTION_MAX_CHARS:
-        raise _bad("질문", f"{len(text)}자 — {dataquery.QUESTION_MAX_CHARS}자까지", f"질문: {dataquery.QUESTION_MAX_CHARS}자까지 입력할 수 있습니다")
-    with conn.tx() as cur:
-        result = dataquery.ask(cur, user, text)
-    if not result["ok"]:
-        fields = [{"name": "질의 번호", "reason": result["query_no"]}]
-        if result["sql"]:
-            fields.append({"name": "SQL", "reason": result["sql"][:500]})
-        raise http.validation_error(result["error"], fields=fields)
-    msg = f"질의 {result['query_no']} — {result['row_count']}행" + (f" (상한 {dataquery.MAX_ROWS}행에서 잘림)" if result["truncated"] else "")
-    audit.log_change(request, user, "F-RPT-132", f"data_query_log:{result['query_no']}", f"데이터 질의 실행 · {result['row_count']}행")
-    if http.wants_html(request):
-        ctx = _query_ctx(user, text)
-        ctx["result"] = result
-        ctx["saved"] = msg
-        return templating.render(request, "rpt/query.html", ctx, screen_id="RPT-130")
-    return http.saved(request, msg, back=nav.path_of("RPT-130"),
-                      data={"query_no": result["query_no"], "sql": result["sql"], "columns": result["columns"],
-                            "rows": [{k: (v.isoformat() if hasattr(v, "isoformat") else (str(v) if v is not None and not isinstance(v, (int, float, bool, str)) else v))
-                                      for k, v in r.items()} for r in result["rows"]],
-                            "row_count": result["row_count"], "truncated": result["truncated"], "ms": result["ms"]})

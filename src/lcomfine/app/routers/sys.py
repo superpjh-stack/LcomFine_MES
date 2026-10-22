@@ -3,7 +3,7 @@
 - 사용자의 부서·상태는 요청마다 DB 에서 읽는다(rbac.current_user) — 상태를 바꾸면 다음 요청부터 401(트리거가 세션 판을 올린다),
   부서를 바꾸면 다음 요청부터 그 부서의 권한. 퇴사자는 지우지 않고 중지(비활성)로 둔다.
 - 권한 칸은 DB 데이터(`sys_permission`)다. 저장하면 `rbac.invalidate()`. 시드를 다시 돌리면 `contracts/permission-matrix.md` 로 되돌아간다.
-- 로그 화면은 `sys_access_log` · `sys_change_log` · `erp_upload_batch` · `sys_ai_call_log` · `data_query_log` 를 읽기만 한다(쓰기 0).
+- 로그 화면은 `sys_access_log` · `sys_change_log` · `erp_upload_batch` 를 읽기만 한다(쓰기 0).
 """
 
 from __future__ import annotations
@@ -298,7 +298,7 @@ def code_save(request: Request, id: str | None = Form(None), action: str | None 
 
 # ── SYS-040 로그 ────────────────────────────────────────────────────────
 #: 탭 = 정본 L3 「접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그」 를 표 단위로 펼친 것(D-609). 전부 읽기만 — 쓰기 0.
-LOG_TABS = ("access", "change", "erp", "ai", "dq", "sso")
+LOG_TABS = ("access", "change", "erp", "sso")   # AI 호출 · 데이터 질의 탭은 D-529 로 없앴다
 LOG_LIMIT = 500
 
 #: 탭마다 (원본 표, 보이는 컬럼 — db-schema.md 의 컬럼 이름 그대로). 템플릿이 표 밑에 적는다.
@@ -309,23 +309,19 @@ LOG_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
                                   "path", "client_ip")),
     "erp": ("erp_upload_batch", ("batch_no", "period_from", "period_to", "round_no", "status", "replaced_by", "source_file",
                                  "row_count", "error_count", "uploaded_at", "created_by")),
-    "ai": ("sys_ai_call_log", ("created_at", "kind", "model", "ok", "ms", "error", "user_id")),
-    "dq": ("data_query_log", ("created_at", "query_no", "question", "sql_text", "ok", "row_count", "error", "ms",
-                              "role_code", "user_id")),
     "sso": ("sys_access_log (log_type = 'SSO')", ("logged_at", "login_id", "role_code", "result", "path", "target",
                                                   "detail", "client_ip")),
 }
-DQ_RESULTS = ("허용", "거부")
 ACCESS_LOG_TYPES = ("로그인", "조회", "변경", "오류", "SSO")      # db-schema.md §6 `sys_access_log.log_type` 값 집합
 
 
 @router.get(nav.path_of("SYS-040"), response_class=HTMLResponse)
 def logs(request: Request, tab: str | None = None, login: str | None = None, log_type: str | None = None,
          date_from: str | None = None, date_to: str | None = None, user: rbac.User = rbac.require_screen("SYS-040")):
-    """F-SYS-041 — 접속 · 변경 감사 · ERP 업로드 회차 · AI 호출 · 데이터 질의 · SSO. 읽기만 한다(최근 500행).
+    """F-SYS-041 — 접속 · 변경 감사 · ERP 업로드 회차 · SSO. 읽기만 한다(최근 500행).
 
     기간(`date_from` · `date_to`) · 사용자(`login`) 는 모든 탭에 같은 방식. `log_type` 은 탭마다 구분 열 하나
-    (접속 구분 · 기능 ID · 회차 상태 · 호출 용도 · 허용/거부 · 성공/실패). 머리 수치는 **같은 필터**로 센다.
+    (접속 구분 · 기능 ID · 회차 상태 · 성공/실패). 머리 수치는 **같은 필터**로 센다.
     """
     t = choice(tab or "access", "탭", LOG_TABS)
     params = {"login": like(login), "from": day(date_from, "시작일", required=False),
@@ -369,32 +365,6 @@ def logs(request: Request, tab: str | None = None, login: str | None = None, log
                                      count(*) filter (where b.status = '교체') as replaced,
                                      coalesce(sum(b.row_count), 0) as rows_total, coalesce(sum(b.error_count), 0) as errors
                                 from erp_upload_batch b {where}""", params)
-    elif t == "ai":
-        where = """where (%(login)s::text is null or u.login_id ilike %(login)s)
-                     and (%(type)s::text is null or a.kind = %(type)s)
-                     and (%(from)s::date is null or a.created_at >= %(from)s)
-                     and (%(to)s::date is null or a.created_at < %(to)s::date + 1)"""
-        rows = conn.q(f"""select a.created_at as at, a.kind, a.model, case when a.ok then '성공' else '실패' end as ok,
-                                 a.ms, a.error, u.login_id
-                            from sys_ai_call_log a left join sys_user u on u.user_id = a.user_id
-                          {where} order by a.id desc limit %(limit)s""", params)
-        summary = conn.q1(f"""select count(*) as n, count(*) filter (where not a.ok) as failed, round(avg(a.ms)) as avg_ms
-                                from sys_ai_call_log a left join sys_user u on u.user_id = a.user_id {where}""", params)
-    elif t == "dq":
-        # 거부 포함 모든 질의(D-513) — ok = 실행했는가. 허용/거부로 거른다.
-        verdict = choice(log_type, "허용/거부", DQ_RESULTS, required=False)
-        params["type"] = None if verdict is None else (verdict == "허용")
-        where = """where (%(login)s::text is null or u.login_id ilike %(login)s)
-                     and (%(type)s::boolean is null or d.ok = %(type)s)
-                     and (%(from)s::date is null or d.created_at >= %(from)s)
-                     and (%(to)s::date is null or d.created_at < %(to)s::date + 1)"""
-        rows = conn.q(f"""select d.created_at as at, d.query_no, d.question, d.sql_text,
-                                 case when d.ok then '허용' else '거부' end as ok, d.row_count, d.error, d.ms, d.role_code,
-                                 u.login_id
-                            from data_query_log d left join sys_user u on u.user_id = d.user_id
-                          {where} order by d.id desc limit %(limit)s""", params)
-        summary = conn.q1(f"""select count(*) as n, count(*) filter (where not d.ok) as rejected, round(avg(d.ms)) as avg_ms
-                                from data_query_log d left join sys_user u on u.user_id = d.user_id {where}""", params)
     else:
         # SSO — F-DOC-011(W4) 이 구분 SSO 로 남기는 행(D-514). 아직 없으면 표가 「미수집」.
         params["type"] = choice(log_type, "결과", ("성공", "실패"), required=False)

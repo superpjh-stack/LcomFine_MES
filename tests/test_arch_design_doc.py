@@ -13,9 +13,9 @@ def test_roles_equal_guide_page_ia_data():
 def test_effective_applies_overrides():
     e = design_doc.effective()
     c = design_doc.counts(e)
-    assert (c["menus"], c["screens"], c["cells_w"], c["cells_r"]) == (17, 67, 64, 196)
+    assert (c["menus"], c["screens"], c["cells_w"], c["cells_r"]) == (17, 66, 64, 193)
     assert next(m for m in e["menus"] if m["code"] == "RPT")["name"] == "대시보드"
-    assert {s["id"] for m in e["menus"] for s in m["screens"]}.isdisjoint({"RPT-090", "RPT-100", "RPT-110", "RPT-120"})
+    assert {s["id"] for m in e["menus"] for s in m["screens"]}.isdisjoint({"RPT-090", "RPT-100", "RPT-110", "RPT-120", "RPT-130"})   # D-505 · D-529
 
 def test_ia_json_is_fresh():
     assert design_doc.write_json(check=True)  # contracts/ia.json == load()

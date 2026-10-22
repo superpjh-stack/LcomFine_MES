@@ -3,8 +3,8 @@
 
   1. 부서 8 시드 계정(`sl pr sh ds ac st ex admin` · 비밀번호 `LCOMFINE_SEED_PASSWORD`)이 전부 로그인된다
   2. 공통 — `/login`(미로그인) · `/error` · `/health` 200, 참고 `/ia`(로그인) 200
-  3. 화면 67 × 칸 있는 부서 → 200 (placeholder 포함)
-  4. 화면 67 × 칸 없는 부서 → 403 (기대값은 정본 추출 `design_doc.effective()` 의 화면별 roles — DB 권한 표가 아니다)
+  3. 화면 66 × 칸 있는 부서 → 200 (placeholder 포함)
+  4. 화면 66 × 칸 없는 부서 → 403 (기대값은 정본 추출 `design_doc.effective()` 의 화면별 roles — DB 권한 표가 아니다)
   5. 미로그인 화면 GET — 브라우저 303 → /login, 그 밖 401
   6. placeholder 0 — 수는 `/health` 의 `placeholders` 에서 읽고, 화면 표식(`class="tag"` + `미구현`)과 맞춰 본다
   7. 라우터 import 실패 0
@@ -99,7 +99,7 @@ def main() -> int:
     bad = [f"{k} → {v}" for k, v in common.items() if v != 200]
     add("공통 /login · /error · /health · 참고 /ia → 200", not bad, " · ".join(f"{k} {v}" for k, v in common.items()), bad)
 
-    # ── 3·4. 화면 67 × 부서 8 ──
+    # ── 3·4. 화면 66 × 부서 8 ──
     ok200, n200, ok403, n403 = 0, 0, 0, 0
     bad200, bad403 = [], []
     marked: set[str] = set()

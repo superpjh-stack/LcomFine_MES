@@ -177,7 +177,7 @@ def request_shipments(request_ids: list[int] | None = None) -> dict[int, dict]:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# W2 수금 — ERP 원천 (반영 회차 · error 없는 행 · 사용 중 매핑) — `v_dq_collections` 와 같은 모양 + customer_id
+# W2 수금 — ERP 원천 (반영 회차 · error 없는 행 · 사용 중 매핑) + customer_id
 # ══════════════════════════════════════════════════════════════════════════
 
 #: COL-050 · COL-060 · TRK-030 의 매출 · 잔액이 기대는 열 — 매핑되지 않으면 `미확정 (D-516)`
@@ -243,7 +243,7 @@ def collections(date_from: date, date_to: date, customer_id: int | None = None, 
 
 
 def receivables(asof: date, include_zero: bool = False) -> dict:
-    """COL-050 — 기준일까지(txn_date ≤ asof) 거래처별 매출 · 수금 · 미수 잔액(= Σ매출 − Σ수금 · `v_dq_receivables` 와 같은 정의).
+    """COL-050 — 기준일까지(txn_date ≤ asof) 거래처별 매출 · 수금 · 미수 잔액(= Σ매출 − Σ수금).
 
     매출액 열이 매핑되지 않았으면 미수 잔액을 낼 수 없다 → `undecided = "D-516"` 이고 rows 의 sales_amount · receivable_amount 는 None
     (수금 합은 그대로 보인다). 잔액 열(ERP 잔액)은 매핑되었을 때만 기준일 이전 마지막 행의 값을 `erp_balance` 로 보인다(가설 D-803).

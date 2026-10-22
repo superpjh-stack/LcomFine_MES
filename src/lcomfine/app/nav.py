@@ -1,4 +1,4 @@
-"""메뉴 단일 소스 — 묶음 8 · 대메뉴 17 · 화면 67 + 공통 2 (로그인 · 오류).
+"""메뉴 단일 소스 — 묶음 8 · 대메뉴 17 · 화면 66 + 공통 2 (로그인 · 오류).
 
 정본은 `docs/엘컴화인_MES_기획서_2026-10-21.html` 이다. 이름과 순서는 정본 그대로이며,
 `tools/check_trace.py` 게이트가 `contracts/ia.json` + overrides (`tools/design_doc.effective()`) 와 글자 단위로 대조한다.
@@ -145,7 +145,6 @@ _SPEC: list[tuple[str, str, str, str, list[tuple[str, str, str, str]]]] = [
         ('RPT-060', '수금 리포트', '리포트', 'collection'),
         ('RPT-070', '주문 흐름 리포트', '리포트', 'order-flow'),
         ('RPT-080', '경영 요약', '리포트', 'summary'),
-        ('RPT-130', '데이터 질의', '조회', 'query'),
     ]),
     ('s7', 'DOC', '문서관리', '개발1', [
         ('DOC-010', '문서관리 바로가기', '외부 연계(SSO)', 'go'),

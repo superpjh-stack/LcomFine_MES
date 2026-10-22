@@ -152,16 +152,12 @@ def test_logs_three_tabs(p):
     assert r.status_code == 200 and f"sys_common_code:수금수단/{p}M" in r.text
     r = c.get("/sys/logs", params={"tab": "access", "login": "admin", "log_type": "조회"})
     assert r.status_code == 200 and "SYS-040" in r.text
-    r = c.get("/sys/logs", params={"tab": "ai"})
-    assert r.status_code == 200
-    if not conn.q1("select count(*) as n from sys_ai_call_log")["n"]:
-        assert "미수집" in r.text
     assert c.get("/sys/logs", params={"tab": "x"}).status_code == 422
     assert client("pr").get("/sys/logs").status_code == 403
 
 
-# ── SYS-040 로그 — W3 보강 (ERP 업로드 · AI 호출 · 데이터 질의 · SSO 탭 — 전부 읽기만) ──
-LOG_TABS_W3 = ("erp", "ai", "dq", "sso")
+# ── SYS-040 로그 — W3 보강 (ERP 업로드 · SSO 탭 — 전부 읽기만 · AI 호출 · 데이터 질의 탭은 D-529 로 없앴다) ──
+LOG_TABS_W3 = ("erp", "sso")
 
 
 def _admin_uid() -> int:
@@ -170,8 +166,6 @@ def _admin_uid() -> int:
 
 def _purge_logs(p: str) -> None:
     with conn.tx() as cur:
-        cur.execute("delete from sys_ai_call_log where kind like %s", (p + "%",))
-        cur.execute("delete from data_query_log where query_no like %s", (p + "%",))
         cur.execute("delete from erp_upload_batch where batch_no like %s", (p + "%",))
         cur.execute("delete from sys_access_log where log_type = 'SSO' and login_id like %s", (p + "%",))
 
@@ -182,23 +176,30 @@ def lp():
     prefix = uniq("log")
     yield prefix
     _purge_logs(prefix)
-    for t, col in (("sys_ai_call_log", "kind"), ("data_query_log", "query_no"), ("erp_upload_batch", "batch_no")):
+    for t, col in (("erp_upload_batch", "batch_no"),):
         assert conn.q1(f"select count(*) as n from {t} where {col} like %s", (prefix + "%",))["n"] == 0
 
 
 @pytest.mark.fn("F-SYS-041")
-def test_logs_six_tabs_200_and_empty_is_uncollected(lp):
-    """탭 6 전부 200 · 내 접두로 거르면 행 0 → 「미수집」 · 원본 표 이름이 화면에 적힌다 · 틀린 구분값 422."""
+def test_logs_four_tabs_200_and_empty_is_uncollected(lp):
+    """탭 4 전부 200 · 내 접두로 거르면 행 0 → 「미수집」 · 원본 표 이름이 화면에 적힌다 · 틀린 구분값 422 · 없앤 탭(ai · dq — D-529) 422."""
+    from lcomfine.app.routers import sys as sysr
+
+    assert sysr.LOG_TABS == ("access", "change", "erp", "sso")
     c = client("admin")
     for tab, table in (("access", "sys_access_log"), ("change", "sys_change_log"), ("erp", "erp_upload_batch"),
-                       ("ai", "sys_ai_call_log"), ("dq", "data_query_log"), ("sso", "sys_access_log")):
+                       ("sso", "sys_access_log")):
         r = c.get("/sys/logs", params={"tab": tab, "login": lp})
         assert r.status_code == 200, (tab, r.text[:300])
         assert "미수집" in r.text and f"<code>{table}" in r.text
     assert c.get("/sys/logs", params={"tab": "erp", "log_type": "삭제"}).status_code == 422
-    assert c.get("/sys/logs", params={"tab": "dq", "log_type": "보류"}).status_code == 422
     assert c.get("/sys/logs", params={"tab": "sso", "log_type": "모름"}).status_code == 422
-    assert c.get("/sys/logs", params={"tab": "ai", "date_from": "2026-13-45"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "erp", "date_from": "2026-13-45"}).status_code == 422
+    # 없앤 탭 — AI 호출 · 데이터 질의 (D-529): 선택지 밖이라 422 · 화면 탭 목록에도 없다
+    assert c.get("/sys/logs", params={"tab": "ai"}).status_code == 422
+    assert c.get("/sys/logs", params={"tab": "dq"}).status_code == 422
+    page = c.get("/sys/logs", headers={"accept": "text/html"}).text
+    assert "?tab=ai" not in page and "?tab=dq" not in page and "AI 호출" not in page and "데이터 질의" not in page
 
 
 @pytest.mark.fn("F-SYS-041")
@@ -230,54 +231,6 @@ def test_logs_erp_tab_shows_batches_and_replacement(lp):
     # 화면은 쓰지 않는다 — 회차 상태 그대로
     assert conn.q("select status from erp_upload_batch where batch_no like %s order by round_no", (lp + "%",)) == \
         [{"status": "교체"}, {"status": "반영"}]
-
-
-@pytest.mark.fn("F-SYS-041")
-def test_logs_ai_tab_counts_failures_and_avg_ms(lp):
-    """AI 호출 탭 — 머리에 건수 · 실패 수 · 평균 응답(ms). 실패 행의 사유가 보인다(키 값은 적지 않는다)."""
-    uid = _admin_uid()
-    with conn.tx() as cur:
-        cur.execute("insert into sys_ai_call_log (kind, model, ok, ms, user_id) values (%s, 'gpt-4.1 (예시)', true, 100, %s)",
-                    (lp + "K", uid))
-        cur.execute("insert into sys_ai_call_log (kind, model, ok, ms, error, user_id) values (%s, 'gpt-4.1 (예시)', false, 300, %s, %s)",
-                    (lp + "K", "LCOMFINE_OPENAI_API_KEY 없음 (예시)", uid))
-    c = client("admin")
-    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K"})
-    assert r.status_code == 200
-    assert 'data-log-tab="ai" data-n="2" data-failed="1" data-avg-ms="200"' in r.text
-    assert "LCOMFINE_OPENAI_API_KEY 없음 (예시)" in r.text and ">실패<" in r.text and ">성공<" in r.text
-    assert r.text.count("gpt-4.1 (예시)") == 2
-    # 사용자 필터 — 부른 사용자 = admin
-    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K", "login": "admin"})
-    assert 'data-n="2"' in r.text
-    r = c.get("/sys/logs", params={"tab": "ai", "log_type": lp + "K", "login": lp + "nobody"})
-    assert "미수집" in r.text and 'data-n="0"' in r.text
-
-
-@pytest.mark.fn("F-SYS-041")
-def test_logs_dq_tab_includes_rejected_queries(lp):
-    """데이터 질의 탭 — 질문 · 생성 SQL · 허용/거부 · 이유 · 행 수 · 사용자. 거부(ok=false) 행도 보이고 거부 수를 센다(D-513)."""
-    uid = _admin_uid()
-    with conn.tx() as cur:
-        cur.execute("""insert into data_query_log (query_no, user_id, role_code, question, sql_text, ok, row_count, ms)
-                       values (%s, %s, 'ADM', %s, 'select request_no from v_dq_orders limit 5', true, 5, 40)""",
-                    (lp + "Q1", uid, f"{lp} 이번 달 수주 (예시)"))
-        cur.execute("""insert into data_query_log (query_no, user_id, role_code, question, sql_text, ok, error, ms)
-                       values (%s, %s, 'ADM', %s, 'delete from item', false, %s, 3)""",
-                    (lp + "Q2", uid, f"{lp} 품목을 지워 (예시)", "SELECT 한 문장만 허용 (예시)"))
-    c = client("admin")
-    r = c.get("/sys/logs", params={"tab": "dq", "login": "admin", "date_from": "1970-01-01"})
-    assert r.status_code == 200
-    assert f"{lp}Q1" in r.text and f"{lp}Q2" in r.text and "SELECT 한 문장만 허용 (예시)" in r.text
-    assert ">허용<" in r.text and ">거부<" in r.text and "select request_no from v_dq_orders limit 5" in r.text
-    r = c.get("/sys/logs", params={"tab": "dq", "log_type": "거부", "login": "admin"})
-    assert f"{lp}Q2" in r.text and f"{lp}Q1" not in r.text
-    r = c.get("/sys/logs", params={"tab": "dq", "log_type": "허용", "login": "admin"})
-    assert f"{lp}Q1" in r.text and f"{lp}Q2" not in r.text
-    n = conn.q1("select count(*) as n, count(*) filter (where not ok) as rejected from data_query_log d "
-                "join sys_user u on u.user_id = d.user_id where u.login_id = 'admin'")
-    assert f'data-log-tab="dq" data-n="{n["n"]}" data-rejected="{n["rejected"]}"' in \
-        c.get("/sys/logs", params={"tab": "dq", "login": "admin"}).text
 
 
 @pytest.mark.fn("F-SYS-041")

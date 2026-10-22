@@ -3,7 +3,7 @@
 # - tools/check_data.py 의 흐름 중 기준정보(BAS) → E2E(의뢰 → 출하 확정) → 수금(ERP 업로드) → 대시보드(dashboards) 만 한 번 돌리고 그 실측 위에서 판정한다.
 #   대시보드 단계는 화면 8 마다 `dashboard.<fn>(period, customer_id)` 반환 · **check_data 의 독립 SQL** · 화면 HTML(`data-kpi` 글자 · `data-series` SVG <title>
 #   「라벨: 값」 · 표 둘째 열 · `data-table` 행) 셋을 대조한다. 세계 = 이 흐름의 달(S1 확정 월) · 거래처 C1(흐름) · C2(ERP 만 · 의뢰 · 출하 없음).
-# - 이 파일은 그 위에 **두 번째 독립 SQL**(허용 뷰 `v_dq_*` · 다른 꼴의 문장)로 핵심 KPI 를 한 번 더 센다. 020 · 030 · 040 은 전 DB 집계라(다른 QA 가 같은 DB 에
+# - 이 파일은 그 위에 **두 번째 독립 SQL**(업무 표 직접 · 다른 꼴의 문장 — 옛 허용 뷰는 D-529 로 없앴다)로 핵심 KPI 를 한 번 더 센다. 020 · 030 · 040 은 전 DB 집계라(다른 QA 가 같은 DB 에
 #   쓴다) 이 파일의 두 번째 SQL 은 「이 흐름의 행이 든 값」(지시 · 일보 · 입고 LOT)만 본다.
 # - 앱 코드는 고치지 않는다. 만든 행은 접두 `QA2-` 로 구분하고 모듈이 끝나면 지운다.
 from datetime import date, timedelta
@@ -53,15 +53,15 @@ def _eq(a, b) -> bool:
 # ── RPT-010 수주 ─────────────────────────────────────────────────────────────
 @pytest.mark.fn("F-RPT-011")
 def test_g15_rpt010_orders_equals_independent_sql_and_screen(flow):
-    """dashboard.orders(이 달, C1) = check_data 독립 SQL = 화면 KPI · SVG title · 표. 두 번째 독립 SQL: 허용 뷰 v_dq_orders 로 건수 · 수량 · 미착수."""
+    """dashboard.orders(이 달, C1) = check_data 독립 SQL = 화면 KPI · SVG title · 표. 두 번째 독립 SQL: 업무 표(production_request · customer) 직접으로 건수 · 수량 · 미착수."""
     _all_pass(_rows(flow, "G-15", "RPT-010"))
     g = flow.v["g15"]["orders"]
     f, t = _period(flow)
     row = flow.q1("""select count(*) as n, sum(o.qty) as q,
                             count(*) filter (where not exists (select 1 from work_order w join production_request r on r.id = w.request_id
                                                                  where r.request_no = o.request_no and w.status <> '취소')) as ns
-                       from v_dq_orders o
-                      where o.customer_code = %s and o.request_date between %s and %s and o.status <> '취소'""", (f"{flow.tag}-C", f, t))
+                       from production_request o join customer c on c.id = o.customer_id
+                      where c.customer_code = %s and o.request_date between %s and %s and o.status <> '취소'""", (f"{flow.tag}-C", f, t))
     assert g["kpis"] == g["indep"], (g["kpis"], g["indep"])
     assert (g["kpis"]["requests"], g["kpis"]["not_started"]) == (row["n"], row["ns"]) and _eq(g["kpis"]["qty"], row["q"]), (g, dict(row))
     assert row["n"] >= 2 and row["ns"] >= 1          # 이 흐름의 R1(지시 있음) · R2(미착수) 가 들어 있다
@@ -116,13 +116,15 @@ def test_g15_rpt040_inventory_equals_independent_sql_and_screen(flow):
 # ── RPT-050 출하 ─────────────────────────────────────────────────────────────
 @pytest.mark.fn("F-RPT-051")
 def test_g15_rpt050_shipment_equals_independent_sql_and_screen(flow):
-    """dashboard.shipment(이 달, C1) = 독립 SQL = 화면 · 납기 준수율 D-804. 두 번째 독립 SQL: 허용 뷰 v_dq_shipments(확정 · 확정일 · 거래처 코드)."""
+    """dashboard.shipment(이 달, C1) = 독립 SQL = 화면 · 납기 준수율 D-804. 두 번째 독립 SQL: 업무 표(shipment_order · shipment_line · customer) 직접(확정 · 확정일 · 거래처 코드)."""
     _all_pass(_rows(flow, "G-15", "RPT-050"))
     g = flow.v["g15"]["shipment"]
     f, t = _period(flow)
     assert g["kpis"] == g["indep"], (g["kpis"], g["indep"])
-    row = flow.q1("""select count(distinct shipment_no) as n, sum(qty) as q from v_dq_shipments
-                      where customer_code = %s and status = '확정' and confirmed_at::date between %s and %s""", (f"{flow.tag}-C", f, t))
+    row = flow.q1("""select count(distinct so.shipment_no) as n, sum(sl.qty) as q
+                       from shipment_order so join customer c on c.id = so.customer_id
+                       join shipment_line sl on sl.shipment_order_id = so.id
+                      where c.customer_code = %s and so.status = '확정' and so.confirmed_at::date between %s and %s""", (f"{flow.tag}-C", f, t))
     assert g["kpis"]["shipments"] == row["n"] and _eq(g["kpis"]["qty"], row["q"]), (g, dict(row))
     assert row["n"] >= 1 and row["q"] >= 60                         # S1 60 이 든다
     # 납기 준수율 모집단(D-804) — 이 거래처 · 납기가 이 달인 취소 아닌 의뢰 수 = 네 묶음의 합(진행 포함)
@@ -137,13 +139,13 @@ def test_g15_rpt050_shipment_equals_independent_sql_and_screen(flow):
 @pytest.mark.fn("F-RPT-061")
 def test_g15_rpt060_collection_equals_independent_sql_asof_shown(flow):
     """dashboard.collection(이 달, C1) = 독립 SQL(ERP 반영 회차 테이블 직접) = 화면 · 「ERP 업로드 기준일」 머리 · KPI 명시.
-    두 번째 독립 SQL: 허용 뷰 v_dq_collections(월) 와 erp_upload_batch 의 반영 회차 period_to 최댓값."""
+    두 번째 독립 SQL: 반영 행(check_data.COLL_SQL — 업무 표 직접 · 월) 와 erp_upload_batch 의 반영 회차 period_to 최댓값."""
     _all_pass(_rows(flow, "G-15", "RPT-060"))
     _all_pass(_rows(flow, "G-15", "ERP 업로드 기준일"))
     g = flow.v["g15"]["collection"]
     f, t = _period(flow)
     assert g["kpis"] == g["indep"] and g["asof"] == g["indep_asof"], g
-    row = flow.q1("select sum(collected_amount) as c, sum(sales_amount) as s from v_dq_collections where customer_code = %s and txn_date between %s and %s",
+    row = flow.q1("select sum(collected_amount) as c, sum(sales_amount) as s from " + cd.COLL_SQL + " where customer_code = %s and txn_date between %s and %s",
                   (f"{flow.tag}-C", f, t))
     assert _eq(g["kpis"]["collected"], row["c"]) and _eq(g["kpis"]["sales"], row["s"]), (g, dict(row))
     assert (row["c"], row["s"]) == (Decimal(300), Decimal(1000))          # E 행 2 (매출 1,000 · 수금 300)

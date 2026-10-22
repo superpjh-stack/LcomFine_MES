@@ -1,4 +1,4 @@
-# tests/test_arch_rbac.py — 화면 단위 권한 · 시드 (D-511 · D-513 · D-514) — 실제 DB `lcomfine_db` · 시드 뒤
+# tests/test_arch_rbac.py — 화면 단위 권한 · 시드 (D-511 · D-514 · 데이터 질의 제거 D-529) — 실제 DB `lcomfine_db` · 시드 뒤
 # 로그인은 `auth.authenticate` 를 거치지 않는다(접근 로그를 남기지 않으려고). 세션은 `auth.login_session` 이 연다.
 import secrets
 from collections import Counter
@@ -41,9 +41,6 @@ def _app() -> FastAPI:
     def _handle(user=rbac.require_fn("F-HOME-022")):   # 권한 예외 — 화면 R 이상이면 통과
         return {"login_id": user.login_id}
 
-    @app.post("/rpt-query")
-    def _query(user=rbac.require_fn("F-RPT-132")):     # 권한 예외지만 RPT-130 칸이 없는 부서는 403
-        return {"login_id": user.login_id}
 
     return app
 
@@ -59,21 +56,22 @@ def _cell(screen_id: str, role_code: str) -> str | None:
     return dict(((s, r), lv) for s, r, lv in contracts.permission_cells()).get((screen_id, role_code))
 
 
-def test_permission_cells_seeded_260():
+def test_permission_cells_seeded_257():
     rows = conn.q("select role_code, screen_id, level from sys_permission")
-    assert len(rows) == 260
-    assert Counter(r["level"] for r in rows) == {"W": 64, "R": 196}
+    assert len(rows) == 257
+    assert Counter(r["level"] for r in rows) == {"W": 64, "R": 193}
+    assert not [r for r in rows if r["screen_id"] == "RPT-130"]   # D-529
     assert {(r["screen_id"], r["role_code"], r["level"]) for r in rows} == set(contracts.permission_cells())
     assert [r["role_code"] for r in conn.q("select role_code from sys_role order by sort_no")] == list(contracts.ROLE_CODES.values())
     assert {r["role_name"] for r in conn.q("select role_name from sys_role")} == set(contracts.ROLE_CODES)
     assert conn.q1("select count(*) as n from sys_user where created_by = 'seed'")["n"] == 8
     rbac.invalidate()
-    assert rbac.counts() == {"W": 64, "R": 196, "전체": 260}
+    assert rbac.counts() == {"W": 64, "R": 193, "전체": 257}
 
 
 def test_seed_number_rules_and_codes():
     rules = {r["seq_kind"]: r for r in conn.q("select * from sys_number_rule")}
-    assert set(rules) == {"REQ", "WO", "MLOT", "PLOT", "SHP", "ERP", "DQ"}
+    assert set(rules) == {"REQ", "WO", "MLOT", "PLOT", "SHP", "ERP"}   # 질의 로그 DQ 는 D-529 로 없앴다
     for kind, r in rules.items():   # D-509 — `KIND-YYMM-nnnn`
         assert (r["prefix"], r["date_format"], r["seq_digits"]) == (f"{kind}-", "YYMM-", 4)
         assert "(예시)" in r["note"] and "D-509" in r["note"]
@@ -110,10 +108,16 @@ def test_require_fn_w_only():
 def test_require_fn_permission_exception_reads_r():
     assert contracts.function("F-HOME-022").read_ok and _cell("HOME-020", "SL") == "R"
     assert _client("sl").post("/home-handle").status_code == 200
-    assert contracts.function("F-RPT-132").read_ok and _cell("RPT-130", "SL") is None
-    assert _client("sl").post("/rpt-query").status_code == 403
-    assert _cell("RPT-130", "ST") == "R"
-    assert _client("st").post("/rpt-query").status_code == 200
+    # 권한 예외라도 그 화면 칸이 없으면 403 (api-contract §4) — SL 의 HOME-020 칸을 잠깐 지우고 되돌린다
+    try:
+        conn.x("delete from sys_permission where role_code = 'SL' and screen_id = 'HOME-020'")
+        rbac.invalidate()
+        assert _client("sl").post("/home-handle").status_code == 403
+    finally:
+        conn.x("""insert into sys_permission (role_code, screen_id, level, updated_at, updated_by) values ('SL', 'HOME-020', 'R', now(), 'seed')
+                  on conflict (role_code, screen_id) do nothing""")
+        rbac.invalidate()
+    assert _client("sl").post("/home-handle").status_code == 200
 
 
 def test_can_and_visible_menu():
@@ -137,19 +141,19 @@ def test_seed_idempotent():
     seed.main(["--common-only"])
     after = seed.table_counts()
     assert before == after
-    assert after["sys_permission"] == 260 and after["sys_role"] == 8 and after["sys_number_rule"] == 7
+    assert after["sys_permission"] == 257 and after["sys_role"] == 8 and after["sys_number_rule"] == 6
 
 
 class _Rollback(Exception):
     pass
 
 
-def test_numbering_seven_kinds():
+def test_numbering_six_kinds():
     import re
 
     from lcomfine.app import numbering
 
-    assert numbering.KINDS == ("REQ", "WO", "MLOT", "PLOT", "SHP", "ERP", "DQ")
+    assert numbering.KINDS == ("REQ", "WO", "MLOT", "PLOT", "SHP", "ERP")
     with pytest.raises(ValueError):
         numbering.next("JOB")
     with pytest.raises(_Rollback):

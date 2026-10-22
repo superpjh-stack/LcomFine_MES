@@ -2,7 +2,7 @@
 """권한 매트릭스 렌더 — `contracts/permission-matrix.md` 를 정본에서 매번 다시 찍는다 (D-508 · goal.md §6).
 
 원본 = `contracts/ia.json` + `contracts/ia-overrides.json` (`tools/design_doc.effective()` 의 화면별 roles).
-이 파일이 찍은 표를 `lcomfine.app.contracts.permission_cells()` 가 읽고, 시드가 `sys_permission` 260행으로 넣는다.
+이 파일이 찍은 표를 `lcomfine.app.contracts.permission_cells()` 가 읽고, 시드가 `sys_permission` 257행으로 넣는다.
 
     uv run python tools/gen_permissions.py           # 다시 찍기
     uv run python tools/gen_permissions.py --check   # 찍은 결과가 파일과 다르면 종료 코드 1
@@ -28,7 +28,7 @@ def render() -> str:
     n_w = sum(1 for s in screens for v in s["roles"].values() if v == "W")
     n_r = sum(1 for s in screens for v in s["roles"].values() if v == "R")
     lines = [
-        "# 권한 매트릭스 — 화면 67 × 부서 8",
+        f"# 권한 매트릭스 — 화면 {len(screens)} × 부서 {len(roles)}",
         "",
         "> **생성 파일 · 손으로 고치지 않는다 · 원본 = ia.json + ia-overrides.json** (`uv run python tools/gen_permissions.py`).",
         "> 칸 값: `W` 처리(쓰기 기능 실행) · `R` 조회(화면 열기) · `·` 권한 없음(메뉴 숨김 · 403).",

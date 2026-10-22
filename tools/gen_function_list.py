@@ -36,8 +36,7 @@ EXPANSION: dict[str, list[tuple[str, str]]] = {
     "설정": [("저장", "POST {p}"), ("조회", "GET {p}")],
     "외부 연계(SSO)": [("진입", "POST {p}"), ("조회", "GET {p}")],
 }
-EXTRA = {                                              # 유형 예외 (D-508 · D-511 · D-513 · D-515)
-    "RPT-130": [("처리", "POST {p}")],                 # 질의 실행
+EXTRA = {                                              # 유형 예외 (D-508 · D-511 · D-515)
     "SHP-020": [("처리", "POST {p}/{{id}}/adjust")],   # 반품·정정 등록
     "HOME-020": [("처리", "POST {p}/{{id}}/handle")],  # 알림 처리
 }
@@ -62,7 +61,6 @@ TABLES: dict[str, list[str]] = {
     "SHP-020": ["shipment_order", "lot_stock", "stock_move", "notification"],
     "COL-010": ["erp_upload_batch", "erp_upload_row", "erp_column_map", "notification"],
     "COL-030": ["erp_customer_map", "erp_upload_row"],
-    "RPT-130": ["data_query_log", "sys_ai_call_log"],
     "DOC-010": ["sso_token", "sys_access_log"], "DOC-020": ["doc_account_map"],
     "SYS-010": ["sys_user"], "SYS-020": ["sys_role", "sys_permission"], "SYS-030": ["sys_common_code"],
 }
@@ -81,7 +79,7 @@ def draft_rows() -> list[str]:
         for s in m["screens"]:
             p = nav.path_of(s["id"])
             plan = [k for k in EXPANSION[s["type"]] if not (s["id"] in NO_EDIT and k[0] == "수정")]
-            plan = plan + EXTRA.get(s["id"], [])          # 유형 예외 3 — 화면 끝에 더한다
+            plan = plan + EXTRA.get(s["id"], [])          # 유형 예외 2 — 화면 끝에 더한다
             head, num = s["id"].split("-")
             w = [names[r] for r in sorted((r for r, v in s["roles"].items() if v == "W"), key=order.index)]
             draft = " · ".join(s["logic"])

@@ -19,7 +19,10 @@ def test_stock_available_is_qty_minus_allocated_and_chips(world, pr, sl):
     row = row[:row.index("</tr>")]
     assert "data-available>30<" in row and "할당" in row and "가용" in row
     assert m in html and "검사대기" in html
-    db = conn.q1("""select sum(qty - allocated_qty) as a from v_dq_stock where lot_no = %s""", (out["lot_no"],))
+    db = conn.q1("""select sum(s.qty - s.allocated_qty) as a from lot_stock s
+                      left join material_lot m on s.lot_kind = '원자재' and m.id = s.lot_id
+                      left join product_lot p on s.lot_kind = '제품' and p.id = s.lot_id
+                     where coalesce(m.lot_no, p.lot_no) = %s""", (out["lot_no"],))
     assert int(db["a"]) == 30                                       # 화면 값 = 독립 재계산 (G-10)
     r = sl.get("/inv/stock", params={"warehouse": world.p + "WH", "status": "할당"}, headers={"accept": "text/html"})
     assert out["lot_no"] in r.text and m not in r.text

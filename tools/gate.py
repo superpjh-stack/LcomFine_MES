@@ -12,11 +12,16 @@
   · G-23 백업 · 복구는 `--run-seeds`(`make gate-full`)에서만 돈다(덤프 파일 · 임시 DB 를 만든다 — 운영 DB 는 그대로).
   · G-24 는 `docker compose config` 가 성립하는지와 환경변수 전달까지만 잰다 — 실제 기동 · `/health` 는 아직 재지 않았으므로 `미검증`.
   · `decisions.md` 에 `상태: 차단` 으로 올라온 D-번호가 본문에서 언급한 게이트는, 판정이 미검증 · WARN 일 때 `BLOCKED` 로 나온다.
+  · `EXCLUDED` 의 게이트(사람이 범위에서 뺀 기능의 게이트 — G-16 · G-17 = D-529)는 `제외` 로 나온다. 조건 둘:
+    ① `decisions.md` 에 그 D-번호가 `상태: 확정` 으로 있다 — 없거나 확정이 아니면 FAIL.
+    ② 검사기가 그 게이트에 찍은 행(제외 근거 — 경로 404 · 메뉴에 없음 · 표 · 뷰가 DB 에 없음 등)에 PASS 아닌 것이 없다 —
+       FAIL 이 있으면 그대로 FAIL(빠졌다는 기능이 남아 있다). 근거 행이 하나도 없으면 미검증.
+    `제외` 는 통과로 세지 않고 실패로도 세지 않는다(종료코드에 넣지 않는다). 요약 줄에 「제외 n」 으로 따로 보인다.
 
     uv run python tools/gate.py               # 읽기 전용 판정표 (시드 · 스키마를 돌리지 않는다)   `make gate`
     uv run python tools/gate.py --run-seeds   # + 시드 1회 더(멱등 diff) · 백업/복구 검증            `make gate-full` — 종료 판정은 이것으로
 
-종료코드 = PASS 도 BLOCKED 도 아닌 게이트 수(FAIL · 미작성 · 미검증 · WARN) + 빌드 전제(pytest · /health) 실패 1.
+종료코드 = PASS 도 BLOCKED 도 제외도 아닌 게이트 수(FAIL · 미작성 · 미검증 · WARN) + 빌드 전제(pytest · /health) 실패 1.
 `--strict` 는 예전 호환용이다(지금은 늘 엄격하다).
 """
 
@@ -38,7 +43,7 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
-PASS, FAIL, WARN, BLOCKED, UNVERIFIED, MISSING = "PASS", "FAIL", "WARN", "BLOCKED", "미검증", "미작성"
+PASS, FAIL, WARN, BLOCKED, UNVERIFIED, MISSING, EXCLUDED = "PASS", "FAIL", "WARN", "BLOCKED", "미검증", "미작성", "제외"
 #: 나쁜 순서 — 한 게이트에 판정이 여럿이면 앞의 것이 이긴다
 SEVERITY = (FAIL, MISSING, BLOCKED, WARN, UNVERIFIED, PASS)
 RUN_SEEDS = "--run-seeds" in sys.argv
@@ -47,7 +52,7 @@ RUN_SEEDS = "--run-seeds" in sys.argv
 GATES: list[tuple[str, str]] = [
     ("G-01", "정본(ia.json + overrides) ↔ nav.py"),
     ("G-02", "기능 목록 ↔ 라우트 ↔ 테스트 표식 · 고아 0"),
-    ("G-03", "화면 응답 — 67 + 공통 200 · placeholder 0 · 403"),
+    ("G-03", "화면 응답 — 66(D-529) + 공통 200 · placeholder 0 · 403"),
     ("G-04", "스키마 계약 ↔ 실제 DB"),
     ("G-05", "쓰기 경계"),
     ("G-06", "E2E 흐름 1건"),
@@ -78,14 +83,15 @@ OWNER: dict[str, str] = {
     **{f"G-{i:02d}": "check_security" for i in range(16, 23)},
     "G-23": "backup", "G-24": "docker",
 }
+#: 사람이 범위에서 뺀 게이트 → 그 결정 (decisions.md 에 `상태: 확정` 이어야 `제외` 로 인정 — 아니면 FAIL)
+EXCLUDED_GATES: dict[str, str] = {"G-16": "D-529", "G-17": "D-529"}
 QA_TOOL = {"check_data": "QA2", "check_security": "QA3", "check_screens": "QA1"}
 #: 세 번째 QA 검사기 — 있으면 그 출력의 행이 어느 게이트든 판정에 합쳐진다(낮추기만 한다 — 다른 도구의 FAIL 을 PASS 로 덮지 못한다)
 EXTRA_TOOLS = ("check_screens",)
 #: 비밀 — `.env` 에만 있어야 하는 값
-SECRET_KEYS = ("LCOMFINE_SESSION_SECRET", "LCOMFINE_SEED_PASSWORD", "LCOMFINE_DB_PASSWORD", "LCOMFINE_SSO_SECRET",
-               "LCOMFINE_OPENAI_API_KEY")
-COMPOSE_KEYS = ("LCOMFINE_OPENAI_API_KEY", "LCOMFINE_OPENAI_MODEL", "LCOMFINE_DOC_SSO_URL", "LCOMFINE_SSO_SECRET")
-#: 키 패턴 — OpenAI 형 키 · 비밀 키에 값이 붙은 줄 (`.env.example` 은 빈 값이라 빼고 본다)
+SECRET_KEYS = ("LCOMFINE_SESSION_SECRET", "LCOMFINE_SEED_PASSWORD", "LCOMFINE_DB_PASSWORD", "LCOMFINE_SSO_SECRET")
+COMPOSE_KEYS = ("LCOMFINE_DOC_SSO_URL", "LCOMFINE_SSO_SECRET")
+#: 키 패턴 — `sk-` 형 API 키 · 비밀 키에 값이 붙은 줄 (`.env.example` 은 빈 값이라 빼고 본다)
 KEY_RE = re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{16,}")
 ASSIGN_RE = re.compile(r"\b(" + "|".join(SECRET_KEYS) + r")=(?![\s$<`'\"]|$)\S+")
 
@@ -179,6 +185,31 @@ def blocked_gates() -> dict[str, str]:
         body.append(ln)
     flush()
     return out
+
+
+def decision_status(dno: str) -> str | None:
+    """decisions.md 의 `## D-nnn … 상태: X` 머리줄에서 X (첫 낱말). 항목이 없으면 None."""
+    path = ROOT / "decisions.md"
+    if not path.exists():
+        return None
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^## (D-\d+)\b.*?상태:\s*(\S+)", ln)
+        if m and m.group(1) == dno:
+            return m.group(2)
+    return None
+
+
+def apply_exclusion(gid: str, st: str, measured: str) -> tuple[str, str]:
+    """EXCLUDED_GATES 의 게이트 판정 — 결정이 `확정` 이고 제외 근거 행에 PASS 아닌 것이 없으면 `제외`."""
+    dno = EXCLUDED_GATES[gid]
+    status = decision_status(dno)
+    if status != "확정":
+        return FAIL, f"제외 요청 {dno} 이 decisions.md 에 `상태: 확정` 으로 없다 (상태 {status or '없음'}) — {measured}"
+    if st == PASS:
+        return EXCLUDED, f"제외 ({dno} 확정 — 사람이 범위에서 뺐다) · 제외 근거 {measured}"
+    if st == UNVERIFIED:
+        return UNVERIFIED, f"제외 ({dno}) 근거 행 없음 — {measured}"
+    return st, f"제외 ({dno}) 근거가 어긋난다 — {measured}"
 
 
 # ── G-21 비밀 스캔 ──
@@ -349,6 +380,8 @@ def main() -> int:
         notes = [f"{src}: {m}" for src, st, m in found[gid] if not st]
         if not items:
             result[gid] = (UNVERIFIED, " · ".join(notes) or "판정 없음")
+            if gid in EXCLUDED_GATES:
+                result[gid] = apply_exclusion(gid, UNVERIFIED, result[gid][1])
             continue
         st = worst([s for _, s, _ in items])
         if len(items) == 1:
@@ -357,7 +390,9 @@ def main() -> int:
             measured = " / ".join(f"[{src} {s}] {m}" for src, s, m in items)
         if notes:
             measured += " · " + " · ".join(notes)
-        if st in (UNVERIFIED, WARN) and gid in blocked:
+        if gid in EXCLUDED_GATES:
+            st, measured = apply_exclusion(gid, st, measured)
+        elif st in (UNVERIFIED, WARN) and gid in blocked:
             st, measured = BLOCKED, f"{measured} — 차단 {blocked[gid]}"
         result[gid] = (st, measured)
 
@@ -370,12 +405,13 @@ def main() -> int:
         st, measured = result[gid]
         print(f"{gid}  {item:<{w}}  {st}  {measured}")
     print()
-    n = {s: sum(1 for g, _ in GATES if result[g][0] == s) for s in SEVERITY}
-    not_ok = sum(1 for g, _ in GATES if result[g][0] not in (PASS, BLOCKED))
+    n = {s: sum(1 for g, _ in GATES if result[g][0] == s) for s in (*SEVERITY, EXCLUDED)}
+    not_ok = sum(1 for g, _ in GATES if result[g][0] not in (PASS, BLOCKED, EXCLUDED))
     rc = not_ok + (0 if build_ok else 1)
-    print(f"PASS {n[PASS]} · FAIL {n[FAIL]} · 미작성 {n[MISSING]} · 미검증 {n[UNVERIFIED]} · WARN {n[WARN]} · BLOCKED {n[BLOCKED]}"
+    print(f"PASS {n[PASS]} · FAIL {n[FAIL]} · 미작성 {n[MISSING]} · 미검증 {n[UNVERIFIED]} · WARN {n[WARN]} · BLOCKED {n[BLOCKED]} · 제외 {n[EXCLUDED]}"
           f" / 전체 {len(GATES)} · 통과 못한 게이트 {not_ok} · 빌드 전제 {'PASS' if build_ok else 'FAIL'} → 종료코드 {rc}")
     print("※ 미작성 · 미검증 · WARN 은 통과가 아니다(FAIL 로 센다). BLOCKED 는 decisions.md 에 D-번호와 사유가 있어야 종료 조건(goal.md §4.4)을 만족한다.")
+    print("※ 제외 는 통과가 아니다 — 사람이 범위에서 뺀 기능의 게이트(decisions.md `상태: 확정` D-번호 · 근거 행 PASS)라 종료코드에 세지 않는다.")
     return min(rc, 125)
 
 

@@ -85,10 +85,10 @@ def test_g13_error_rows_kept_with_reason_and_excluded_from_live_views(flow):
     _all_pass(_rows(flow, "G-13", "오류 행 보존"))
     _all_pass(_rows(flow, "G-13", "오류 행 · 미매핑 행은 반영에서 제외"))
     _all_pass(_rows(flow, "G-13", "COL-020 회차별 오류 행 보기"))
-    # 독립 SQL — 이 흐름의 회차마다: 뷰 행 = (반영이면) error 없는 행 수, (교체면) 0
+    # 독립 SQL — 이 흐름의 회차마다: 반영 행(cd.COLL_SQL) = (반영이면) error 없는 행 수, (교체면) 0
     for b in flow.q("select id, batch_no, status, error_count, row_count from erp_upload_batch where id = any(%s)", (flow.erp_batches,)):
         clean = flow.q1("select count(*) as n from erp_upload_row where batch_id = %s and error is null", (b["id"],))["n"]
-        in_view = flow.q1("select count(*) as n from v_dq_collections where batch_no = %s", (b["batch_no"],))["n"]
+        in_view = flow.q1("select count(*) as n from " + cd.COLL_SQL + " where batch_no = %s", (b["batch_no"],))["n"]
         assert in_view == (clean if b["status"] == "반영" else 0), (b, clean, in_view)
         assert b["error_count"] == b["row_count"] - clean, b
 
@@ -133,7 +133,7 @@ def test_g14_col070_equals_independent_recalculation(flow):
         assert info["screen"][cid] == mine == info["indep"][cid], (cid, info["screen"][cid], mine, info["indep"][cid])
     assert info["screen"][info["C1"]][:2] == (1, Decimal("60.000")) and info["screen"][info["C2"]][:2] == (None, None)
     assert info["screen"][info["C1"]][2:] == (Decimal(1000), Decimal(300)) and info["screen"][info["C2"]][2:] == (Decimal(500), Decimal(200))
-    assert flow.q1("select count(*) as n from v_dq_collections where erp_customer_code = %s", (info["U"],))["n"] == 0
+    assert flow.q1("select count(*) as n from " + cd.COLL_SQL + " where erp_customer_code = %s", (info["U"],))["n"] == 0
 
 
 # ── 정리 확인 — 이 모듈이 만든 ERP 행이 남지 않는다 ───────────────────────────

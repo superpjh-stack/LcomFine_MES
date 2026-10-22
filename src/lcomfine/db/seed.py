@@ -1,11 +1,12 @@
-"""공통 시드 — 부서 8 · 권한 260칸 · 부서별 계정 8 · 채번 7 · 공통코드 3그룹. **두 번 돌려도 행 수가 같다**(G-21).
+"""공통 시드 — 부서 8 · 권한 257칸 · 부서별 계정 8 · 채번 6 · 공통코드 3그룹. **두 번 돌려도 행 수가 같다**(G-21).
 
     uv run python -m lcomfine.db.seed                      # 공통 → 개발1 → 개발2 → 개발3 시드(파일이 있는 것만)
     uv run python -m lcomfine.db.seed --common-only        # 공통만
 
 - 권한 칸은 `contracts.permission_cells()`(= `contracts/permission-matrix.md`, 정본 그대로)가 원본이다.
   시드는 그 표로 맞추고 **표에 없는 행은 지운다** — 칸을 바꾸려면 매트릭스를 고친다.
-- 채번 형식 7행은 D-509 표 그대로(`(예시)` 가설). 이미 있는 행은 건드리지 않는다 — 시스템 관리 화면에서 바꾼 값을 되돌리지 않는다.
+- 채번 형식 6행은 D-509 표 그대로(`(예시)` 가설). 이미 있는 행은 건드리지 않는다 — 시스템 관리 화면에서 바꾼 값을 되돌리지 않는다.
+  `numbering.KINDS` 밖의 종류 행(D-529 로 없앤 DQ 등)은 지운다.
 - 계정 비밀번호는 `LCOMFINE_SEED_PASSWORD` 로만 받는다. 없으면 **실패한다** — 기본 비밀번호를 지어내지 않는다(G-19).
 - 회사 실데이터는 없다. 표시명에는 `(예시)` 를 붙인다. `notification_setting` 은 시드하지 않는다(행이 없으면 켜짐).
 """
@@ -29,7 +30,7 @@ ROLES: list[tuple[str, str, int]] = [(code, name, i) for i, (name, code) in enum
 #: 부서별 계정 — 로그인 ID 는 부서 코드 소문자(전산 관리자만 `admin`). 표시명은 `<부서 이름> (예시)`
 USERS: list[tuple[str, str, str]] = [("admin" if code == "ADM" else code.lower(), name, code) for code, name, _ in ROLES]
 
-#: 채번 7 — D-509 표 `KIND-YYMM-nnnn` (예시). (종류, 접두, 날짜 형식, 자릿수)
+#: 채번 6 — D-509 표 `KIND-YYMM-nnnn` (예시). (종류, 접두, 날짜 형식, 자릿수)
 NUMBER_RULES: list[tuple[str, str, str, int]] = [(kind, f"{kind}-", "YYMM-", 4) for kind in numbering.KINDS]
 NUMBER_RULE_NOTE = "(예시) D-509 가설"
 
@@ -51,7 +52,7 @@ def seed_roles() -> None:
 
 
 def seed_permissions() -> None:
-    """260칸을 매트릭스대로 맞추고, 표에 없는 (부서, 화면) 행은 지운다 — 한 트랜잭션."""
+    """257칸을 매트릭스대로 맞추고, 표에 없는 (부서, 화면) 행은 지운다 — 한 트랜잭션."""
     cells = contracts.permission_cells()
     with conn.tx() as cur:
         for screen_id, role_code, level in cells:
@@ -69,6 +70,10 @@ def seed_permissions() -> None:
 
 
 def seed_number_rules() -> None:
+    kinds = list(numbering.KINDS)
+    with conn.tx() as cur:   # KINDS 밖의 종류(D-529 의 DQ 등)는 카운터 · 형식 행을 함께 지운다
+        cur.execute("delete from sys_number_seq where seq_kind <> all(%s::text[])", (kinds,))
+        cur.execute("delete from sys_number_rule where seq_kind <> all(%s::text[])", (kinds,))
     for kind, prefix, date_format, digits in NUMBER_RULES:
         conn.x("""insert into sys_number_rule (seq_kind, prefix, date_format, seq_digits, note, updated_at, updated_by)
                   values (%s, %s, %s, %s, %s, now(), %s)

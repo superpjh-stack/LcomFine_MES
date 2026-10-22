@@ -1,6 +1,6 @@
-# tests/test_dev3_rpt.py — RPT 대시보드 8 + 데이터 질의 (개발3 · W3) + dashboard · ai · dataquery.
+# tests/test_dev3_rpt.py — RPT 대시보드 8 (개발3 · W3) + dashboard. 데이터 질의(화면 · ai · dataquery)는 D-529 로 없앴다 — 없어졌는지만 본다.
 # 기준 데이터는 2002년 5월(다른 테스트와 겹치지 않는 달) 에 test_dev3_world.World 위에 더 만든다(일보 · 검사 · 자재 · 조정 · 확정 출하 · ERP 회차).
-# AI 는 실제로 부르지 않는다 — `ai.set_client(fake)` 주입. 화면 값 = 이 테스트가 손으로 센 값 (QA2 G-15 독립 재계산의 모양).
+# 화면 값 = 이 테스트가 손으로 센 값 (QA2 G-15 독립 재계산의 모양).
 from __future__ import annotations
 
 import re
@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import pytest
 
-from lcomfine.app import ai, dashboard, dataquery, erp_upload
+from lcomfine.app import dashboard, erp_upload
 from lcomfine.db import conn
 from test_dev3_world import World, login
 
@@ -417,253 +417,24 @@ def test_summary_tabs(c, w):
     assert _counts() == before
 
 
-# ── dataquery.validate_sql — 거부 사례 (G-16) ─────────────────────────────────────
+# ── 데이터 질의 제거 (D-529) — 화면 · 기능 · 모듈 · 로그 표가 없다 ─────────────────────────
 
-ALL = list(dataquery.VIEWS)
-PR_VIEWS = dataquery.allowed_views("PR")
+def test_data_query_removed(c):
+    """옛 RPT-130 데이터 질의: 경로 GET · POST 404(옛 칸 부서 ex · st · admin 포함) · 대시보드 메뉴에 없음 · ai · dataquery 모듈 없음 · 로그 표 없음."""
+    import importlib.util
 
+    from lcomfine.app import contracts, nav
 
-@pytest.mark.fn("F-RPT-132")
-@pytest.mark.parametrize("sql, why", [
-    ("delete from v_dq_orders", "delete"),
-    ("update v_dq_orders set qty = 0", "update"),
-    ("insert into v_dq_orders select 1", "insert"),
-    ("drop view v_dq_orders", "drop"),
-    ("select * from v_dq_orders; select * from v_dq_stock", "세미콜론"),
-    ("select * from v_dq_orders -- x", "주석"),
-    ("select /* x */ * from v_dq_orders", "주석"),
-    ("with x as (select 1) select * from x", "with"),
-    ("select * from customer", "허용 뷰가 아니다"),
-    ("select * from v_dq_orders, sys_user", "허용 뷰가 아니다"),
-    ("select * from v_dq_orders o join sys_user u on true", "허용 뷰가 아니다"),
-    ("select * from (select * from sys_user) x", "허용 뷰가 아니다"),
-    ("select * from public.v_dq_orders", "스키마"),
-    ("select * from pg_catalog.pg_tables", "카탈로그"),
-    ("select * from information_schema.tables", "카탈로그"),
-    ("select pg_sleep(10) from v_dq_orders", "카탈로그"),
-    ("select current_setting('x') from v_dq_orders", "카탈로그"),
-    ("select version()", "카탈로그"),
-    ("select lo_import('/etc/passwd') from v_dq_orders", "카탈로그"),
-    ("select md5(request_no) from v_dq_orders", "함수"),
-    ("select query_no from v_dq_orders for update", "for"),
-    ("select * into t from v_dq_orders", "into"),
-    ("select 1", "허용 뷰를 하나도"),
-    ("", "비어"),
-    ('select "qty" from v_dq_orders', "큰따옴표"),
-    ("select 'a from v_dq_orders", "문자열"),
-    ("set role postgres", "SELECT"),
-    ("select $$x$$ from v_dq_orders", "달러"),
-    ("select * from v_dq_orders\x00", "NUL"),
-])
-def test_validate_sql_rejects(sql, why):
-    with pytest.raises(dataquery.QueryRejected) as exc:
-        dataquery.validate_sql(sql, ALL)
-    assert why.lower() in str(exc.value).lower(), str(exc.value)
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_validate_sql_accepts_and_role_restriction():
-    ok = "SELECT customer_name, sum(qty) AS q FROM v_dq_orders o LEFT JOIN v_dq_shipments s ON s.request_no = o.request_no " \
-         "WHERE o.due_date >= date '2026-01-01' AND o.status <> '취소' GROUP BY 1 ORDER BY q DESC LIMIT 10;"
-    assert dataquery.validate_sql(ok, ALL).endswith("LIMIT 10")
-    assert dataquery.validate_sql("select count(*) from v_dq_orders, v_dq_stock", ALL)
-    assert dataquery.validate_sql("select to_char(txn_date, 'YYYY-MM') ym, sum(collected_amount) from v_dq_collections group by 1", ALL)
-    assert dataquery.validate_sql("select * from v_dq_orders where customer_name like '%;--%'", ALL)   # 문자열 속 글자는 문장이 아니다
-    with pytest.raises(dataquery.QueryRejected) as exc:                                               # 수금 뷰 — 생산부는 못 본다 (D-513)
-        dataquery.validate_sql("select * from v_dq_collections", PR_VIEWS)
-    assert "부서" in str(exc.value)
-    with pytest.raises(dataquery.QueryRejected):
-        dataquery.validate_sql("select * from v_dq_receivables", dataquery.allowed_views("ST"))
-    assert "v_dq_collections" not in PR_VIEWS and "v_dq_collections" in dataquery.allowed_views("SL")
-    assert set(dataquery.allowed_views("ADM")) == set(ALL) and set(dataquery.allowed_views("EX")) == set(ALL)
-    assert len(dataquery.allowed_views("ST")) == 6
-
-
-# ── ai · dataquery.ask · RPT-130 화면 (G-16 · G-17) ───────────────────────────────
-
-class LogWatch:
-    """테스트 중 생긴 sys_ai_call_log · data_query_log 행만 보고, 끝에 지운다."""
-
-    def __init__(self) -> None:
-        self.ai0 = conn.q1("select coalesce(max(id), 0) as m from sys_ai_call_log")["m"]
-        self.dq0 = conn.q1("select coalesce(max(id), 0) as m from data_query_log")["m"]
-
-    def ai(self) -> list[dict]:
-        return conn.q("select * from sys_ai_call_log where id > %s order by id", (self.ai0,))
-
-    def dq(self) -> list[dict]:
-        return conn.q("select * from data_query_log where id > %s order by id", (self.dq0,))
-
-    def close(self) -> None:
-        with conn.tx() as cur:
-            cur.execute("delete from sys_change_log where function_id = 'F-RPT-132' and target = any(%s)",
-                        ([f"data_query_log:{r['query_no']}" for r in self.dq()],))
-            cur.execute("delete from data_query_log where id > %s", (self.dq0,))
-            cur.execute("delete from sys_ai_call_log where id > %s", (self.ai0,))
-
-
-@pytest.fixture
-def logs():
-    lw = LogWatch()
-    yield lw
-    lw.close()
-    ai.set_client(None)
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_ai_not_configured_is_explicit(c, logs, monkeypatch):
-    monkeypatch.setattr(ai, "_config", lambda: ("", "gpt-4.1"))
-    ai.set_client(None)
-    with pytest.raises(ai.NotConfigured) as exc:
-        ai.complete("s", "u", kind="데이터 질의")
-    assert "LCOMFINE_OPENAI_API_KEY" in str(exc.value)
-    rows = logs.ai()
-    assert len(rows) == 1 and rows[0]["ok"] is False and "LCOMFINE_OPENAI_API_KEY" in rows[0]["error"] and rows[0]["kind"] == "데이터 질의"
-    before = _counts()
-    r = c["ex"].post("/rpt/query", data={"question": "출하 수량"})
-    assert r.status_code == 422, r.text
-    body = r.json()
-    assert body["message"] == "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY"
-    dq = logs.dq()
-    assert len(dq) == 1 and dq[0]["ok"] is False and dq[0]["sql_text"] is None and "LCOMFINE_OPENAI_API_KEY" in dq[0]["error"]
-    assert dq[0]["query_no"].startswith("DQ-") and body["fields"][0]["reason"] == dq[0]["query_no"]
-    assert len(logs.ai()) == 2 and logs.ai()[1]["ok"] is False
-    page = c["ex"].get("/rpt/query")
-    assert page.status_code == 200 and "LCOMFINE_OPENAI_API_KEY" in page.text and dq[0]["query_no"] in page.text    # 최근 질의에 사유 그대로
-    assert _counts() == before                                                                                      # 업무 테이블 diff 0
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_ai_call_failure_is_logged_and_shown(c, logs):
-    def boom(model, system, user):
-        raise RuntimeError("연결 거부 (예시)")
-    ai.set_client(boom)
-    with pytest.raises(ai.CallFailed):
-        ai.complete("s", "u", kind="데이터 질의")
-    assert logs.ai()[-1]["ok"] is False and "연결 거부" in logs.ai()[-1]["error"] and logs.ai()[-1]["ms"] is not None
-    r = c["ex"].post("/rpt/query", data={"question": "출하 수량"})
-    assert r.status_code == 422 and r.json()["message"].startswith("AI 호출 실패 — ")
-    assert logs.dq()[-1]["ok"] is False and "AI 호출 실패" in logs.dq()[-1]["error"]
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_query_executes_with_fake_client_and_logs(c, w, logs):
-    seen: dict = {}
-
-    def fake(model, system, user):
-        seen.update(model=model, system=system, user=user)
-        return f"```sql\nSELECT request_no, customer_name, qty FROM v_dq_orders WHERE customer_code = '{w.tag}-C' ORDER BY request_no;\n```"
-    ai.set_client(fake)
-    before = _counts()
-    r = c["ex"].post("/rpt/query", data={"question": "이 거래처의 의뢰 목록"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["ok"] and body["row_count"] == 2 and body["columns"] == ["request_no", "customer_name", "qty"]
-    assert body["rows"][0]["request_no"] == w.request_no and body["sql"].startswith("SELECT request_no")
-    assert "v_dq_orders(" in seen["system"] and "v_dq_collections(" in seen["system"] and seen["user"] == "이 거래처의 의뢰 목록"
-    dq = logs.dq()[-1]
-    assert dq["ok"] is True and dq["row_count"] == 2 and dq["role_code"] == "EX" and dq["sql_text"] == body["sql"] and dq["error"] is None
-    assert logs.ai()[-1]["ok"] is True and logs.ai()[-1]["user_id"] == dq["user_id"]
-    ch = conn.q1("select count(*) as n from sys_change_log where function_id = 'F-RPT-132' and target = %s", (f"data_query_log:{dq['query_no']}",))
-    assert ch["n"] == 1
-    assert _counts() == before                                               # data_query_log · sys_ai_call_log 말고는 쓰지 않는다
-    # 브라우저 — 같은 화면에 SQL 과 결과 표
-    html = c["st"].post("/rpt/query", data={"question": "이 거래처의 의뢰 목록"}, headers={"accept": "text/html"})
-    assert html.status_code == 200 and "SELECT request_no" in html.text and w.request_no in html.text and "2행" in html.text
-    # 누락 · NUL
-    assert c["ex"].post("/rpt/query", data={"question": ""}).status_code == 422
-    assert c["ex"].post("/rpt/query", data={"question": "a\x00b"}).status_code == 422
-    assert c["ex"].post("/rpt/query", data={"question": "x" * 1001}).status_code == 422
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_query_rejects_bad_sql_and_role_view(c, logs):
-    ai.set_client(lambda m, s, u: "delete from v_dq_orders")
-    r = c["ex"].post("/rpt/query", data={"question": "지워"})
-    assert r.status_code == 422 and r.json()["message"].startswith("허용되지 않는 질의 — ") and "delete" in r.json()["message"]
-    assert any(f["name"] == "SQL" for f in r.json()["fields"])
-    dq = logs.dq()[-1]
-    assert dq["ok"] is False and dq["sql_text"] == "delete from v_dq_orders" and dq["error"].startswith("허용되지 않는 질의")
-    ai.set_client(lambda m, s, u: "select * from v_dq_collections limit 5")
-    r = c["st"].post("/rpt/query", data={"question": "수금"})                   # 전략부 — 수금 뷰 금지 (D-513)
-    assert r.status_code == 422 and "부서" in r.json()["message"]
-    r = c["ex"].post("/rpt/query", data={"question": "수금"})                   # 경영진 — 허용
-    assert r.status_code == 200
-    ai.set_client(lambda m, s, u: "select * from v_dq_orders; select 1")
-    assert c["ex"].post("/rpt/query", data={"question": "둘"}).status_code == 422
-    ai.set_client(lambda m, s, u: "select pg_sleep(1) from v_dq_orders")
-    assert c["ex"].post("/rpt/query", data={"question": "자"}).status_code == 422
-    ai.set_client(lambda m, s, u: "select nope from v_dq_orders")              # 검증은 통과 · 실행에서 DB 오류 → 422 「실행 실패」
-    r = c["ex"].post("/rpt/query", data={"question": "없는 열"})
-    assert r.status_code == 422 and r.json()["message"].startswith("실행 실패 — ")
-    assert logs.dq()[-1]["ok"] is False and logs.dq()[-1]["error"].startswith("실행 실패")
-    assert all(not x["ok"] for x in logs.dq() if x["role_code"] == "ST")
-    assert len(logs.dq()) == 6 and len(logs.ai()) == 6                        # 질의마다 로그 1행 · 호출마다 로그 1행 (거부 포함)
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_query_row_limit_and_readonly(c, logs):
-    ai.set_client(lambda m, s, u: "select o.request_no from v_dq_orders o, v_dq_orders b, v_dq_orders d limit 5000")
-    r = c["admin"].post("/rpt/query", data={"question": "많이"})
-    if r.status_code == 200:
-        assert r.json()["row_count"] <= dataquery.MAX_ROWS
-    else:
-        assert r.status_code == 422                                           # 행이 적어 비어도 거부가 아니라 실행 결과다
-    assert c["pr"].get("/rpt/query").status_code == 403                       # 생산부 — 화면 칸 없음
-    assert c["pr"].post("/rpt/query", data={"question": "x"}).status_code == 403
-    assert c["sl"].post("/rpt/query", data={"question": "x"}).status_code == 403
-
-
-@pytest.mark.fn("F-RPT-131")
-def test_query_screen(c, logs):
-    r = c["ex"].get("/rpt/query")
-    assert r.status_code == 200 and "미구현" not in r.text
-    assert 'name="question"' in r.text and "v_dq_collections" in r.text and "최근 질의" in r.text
-    st = c["st"].get("/rpt/query")
-    assert st.status_code == 200 and 'class="dim" title="이 부서는 질의할 수 없다">v_dq_collections' in st.text
-    assert c["pr"].get("/rpt/query").status_code == 403 and c["ac"].get("/rpt/query").status_code == 403
-    assert "<script" not in r.text.split("</head>")[1]                        # 템플릿에 스크립트 없음(app.js 만 head)
-
-
-# ── QA3 W3 결함 재현 (DEF-QA3-005 · 006) ──────────────────────────────────────────
-
-@pytest.mark.fn("F-RPT-132")
-def test_ai_sql_with_nul_is_rejected_and_logged(c, logs):
-    """DEF-QA3-005 — AI 가 NUL 든 SQL 을 돌려줘도 「허용되지 않는 질의 — …NUL…」 로 거부 + 질의 로그 1행 + 호출 로그 1행(트랜잭션이 풀리지 않는다)."""
-    ai.set_client(lambda m, s, u: "select * from v_dq_orders\x00 where 1=1")
-    r = c["ex"].post("/rpt/query", data={"question": "NUL 우회"})
-    assert r.status_code == 422, r.text
-    body = r.json()
-    assert body["message"].startswith("허용되지 않는 질의 — ") and "NUL" in body["message"] and "원문" in body["message"]
-    assert "\x00" not in r.text and any(f["name"] == "SQL" and "\\x00" in f["reason"] for f in body["fields"])
-    dq = logs.dq()
-    assert len(dq) == 1 and dq[0]["ok"] is False and dq[0]["error"].startswith("허용되지 않는 질의") and "NUL" in dq[0]["error"]
-    assert dq[0]["sql_text"] == "select * from v_dq_orders\\x00 where 1=1"
-    assert len(logs.ai()) == 1 and logs.ai()[0]["ok"] is True
-
-
-@pytest.mark.fn("F-RPT-132")
-def test_call_failed_message_never_carries_key(c, logs, monkeypatch):
-    """DEF-QA3-006 — 실제 호출 경로의 CallFailed 문장(HTTP 오류 본문이 키를 되비춤)도 ai 로그 · dq 로그 · 422 본문 · 화면 어디에도 키가 없다."""
-    import secrets
-    sentinel = "q3sentinel" + secrets.token_hex(8)                    # 가짜 키 — 실제 키 아님 · 네트워크 없음
-    monkeypatch.setattr(ai, "_config", lambda: (sentinel, "gpt-4.1"))
-
-    def fail_openai(model, system, user, *, key):
-        fake_sk = "sk-" + "abcdefghijklmnop1234"   # 실행 때만 합친다 — 비밀 스캔(G-21 KEY_RE)에 글자 그대로 걸리지 않게 (DEF-QA3-007)
-        raise ai.CallFailed(f"HTTP 401 Unauthorized Incorrect API key provided: {key} (Authorization: Bearer {key}) {fake_sk}")
-    monkeypatch.setattr(ai, "_openai", fail_openai)
-    ai.set_client(None)
-    with pytest.raises(ai.CallFailed) as exc:
-        ai.complete("s", "u", kind="데이터 질의")
-    assert sentinel not in str(exc.value) and "sk-abcdef" not in str(exc.value) and "***" in str(exc.value) and "HTTP 401" in str(exc.value)
-    r = c["ex"].post("/rpt/query", data={"question": "키 되비춤"})
-    assert r.status_code == 422 and r.json()["message"].startswith("AI 호출 실패 — HTTP 401")
-    assert sentinel not in r.text and "sk-abcdef" not in r.text
-    assert all(sentinel not in (row["error"] or "") for row in logs.ai()) and all(sentinel not in (row["error"] or "") for row in logs.dq())
-    assert len(logs.ai()) == 2 and len(logs.dq()) == 1
-    page = c["ex"].get("/rpt/query")
-    assert page.status_code == 200 and sentinel not in page.text and "HTTP 401" in page.text
+    for lid in ("ex", "st", "admin", "sl"):
+        assert c[lid].get("/rpt/query").status_code == 404, lid
+        assert c[lid].post("/rpt/query", data={"question": "x"}).status_code == 404, lid
+    assert [s_.screen_id for s_ in nav.SCREENS if s_.menu_code == "RPT"] == [f"RPT-0{i}0" for i in range(1, 9)]
+    assert not [f for f in contracts.functions() if f.screen_id == "RPT-130"]
+    page = c["ex"].get("/rpt/summary", headers={"accept": "text/html"})
+    assert page.status_code == 200 and "/rpt/query" not in page.text and "데이터 질의" not in page.text
+    assert importlib.util.find_spec("lcomfine.app.ai") is None and importlib.util.find_spec("lcomfine.app.dataquery") is None
+    for t in ("data_query_log", "sys_ai_call_log", "v_dq_orders", "v_dq_collections"):
+        assert conn.q1("select to_regclass(%s) is null as gone", (t,))["gone"], t
 
 
 @pytest.mark.fn("F-RPT-011")

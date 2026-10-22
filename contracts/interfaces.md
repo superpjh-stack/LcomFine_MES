@@ -7,12 +7,12 @@
 | 모듈 | 소유자 | 상태 | 쓰는 사람 |
 |---|---|---|---|
 | `db.conn` · `app.nav` · `app.contracts` · `app.rbac` · `app.auth` · `app.templating` · `app.util.*` | 아키텍트 | 구현됨 | 전원 |
-| `app.numbering` (채번 7) | 아키텍트 | 구현됨 | 개발1·2·3 |
+| `app.numbering` (채번 6) | 아키텍트 | 구현됨 | 개발1·2·3 |
 | `app.notify` (알림 9) | 아키텍트 | 구현됨 | 개발1·2·3 |
 | `app.trace` | 개발2 | W1 에서 만든다 | 개발1(TRK) · 개발2(LOT) |
 | `app.stats` | 개발3 | W1 에서 만든다 | 개발1(TRK) · 개발3(PRP) |
 | `app.erp_upload` | 개발3 | W2 에서 만든다 | 개발3(COL) |
-| `app.dashboard` · `app.ai` · `app.dataquery` | 개발3 | W3 에서 만든다 | 개발3(RPT) · 개발1(SYS-040) |
+| `app.dashboard` | 개발3 | W3 에서 만든다 | 개발3(RPT) |
 | `app.sso` | 개발1 | W4 에서 만든다 | 개발1(DOC) |
 
 ## 1. DB — `lcomfine.db.conn`
@@ -30,8 +30,8 @@ tx()                                # with conn.tx() as cur: … 여러 문장�
 ## 2. 메뉴 · 계약 — `app.nav` · `app.contracts`
 
 ```python
-# app.nav — 메뉴·경로의 원본 (묶음 8 · 대메뉴 17 · 화면 67 · 공통 2)
-nav.BUNDLES · nav.MENUS · nav.SCREENS(67) · nav.COMMON(login · error) · nav.ALL · nav.FLOW(흐름 띠 7 화면 ID)
+# app.nav — 메뉴·경로의 원본 (묶음 8 · 대메뉴 17 · 화면 66 · 공통 2)
+nav.BUNDLES · nav.MENUS · nav.SCREENS(66) · nav.COMMON(login · error) · nav.ALL · nav.FLOW(흐름 띠 7 화면 ID)
 nav.by_id("BAS-010") -> Screen(screen_id, name, menu_code, menu, bundle, module, slug, path, owner, kind, common)
 nav.path_of("BAS-010") -> "/bas/items"           # 경로를 문자열로 다시 적지 않는다
 nav.by_path(path) -> Screen | None · nav.menu("BAS") -> Menu(code, name, bundle, module, owner, screens)
@@ -44,7 +44,7 @@ Function(id, menu_code, screen_id, name, kind, tables, roles_w, api, owner, cont
 contracts.functions_of(screen_id) · functions_of_menu(menu_code) · write_functions()
 contracts.WRITE_KINDS = {등록 수정 삭제 처리 저장 진입} · READ_KINDS = {조회 출력}
 contracts.ROLE_CODES = {부서 이름: 코드} (정본 순서 SL PR SH DS AC ST EX ADM)
-contracts.permission_cells() -> [(screen_id, role_code, "W"|"R")]   # 260칸 (W 64 · R 196) — 칸 없는 조합은 빠진다
+contracts.permission_cells() -> [(screen_id, role_code, "W"|"R")]   # 257칸 (W 64 · R 193) — 칸 없는 조합은 빠진다
 contracts.db_tables() -> {이름: Table}
 ```
 
@@ -57,7 +57,7 @@ rbac.User(id, login_id, name, role_code, role_name, status)   # 요청마다 DB 
 rbac.current_user(request) -> User | None    # 세션 없음 · 중지·잠금 · 로그아웃한 세션 · 상태/비밀번호가 바뀌기 전 세션 → None
 rbac.require_login(request) -> User          # Depends 용. 미로그인 401
 rbac.require_screen("BAS-010") -> Depends    # 화면 R 이상. 없으면 403 「이 화면을 볼 권한이 없습니다」. 공통 화면은 로그인만
-rbac.require_fn("F-BAS-011") -> Depends      # 쓰기 유형 → W 칸 · 조회 유형 · 권한 예외(read_ok: F-DOC-011 F-RPT-132 F-HOME-022) → R 칸
+rbac.require_fn("F-BAS-011") -> Depends      # 쓰기 유형 → W 칸 · 조회 유형 · 권한 예외(read_ok: F-DOC-011 F-HOME-022) → R 칸
                                              #   없으면 403 「이 기능을 실행할 권한이 없습니다」
 rbac.can(user, screen_id, level="R") -> bool # R = 칸 W 또는 R · W = 칸 W (템플릿의 버튼 활성/비활성)
 rbac.can_do(user, function_id) -> bool       # require_fn 과 같은 판정
@@ -130,14 +130,14 @@ screen.txt(v) · screen.num(v, digits) · screen.dt(v)                 # 템플�
 ## 7. 채번 — `app.numbering` (D-509)
 
 ```python
-numbering.KINDS = ("REQ", "WO", "MLOT", "PLOT", "SHP", "ERP", "DQ")   # 상수 numbering.REQ … numbering.DQ
+numbering.KINDS = ("REQ", "WO", "MLOT", "PLOT", "SHP", "ERP")   # 상수 numbering.REQ … numbering.ERP (질의 로그 DQ 는 D-529 로 없앴다)
 numbering.next(kind, cur=None, *, at=None) -> str   # 발번(카운터 +1). cur 를 주면 그 트랜잭션 안에서 — 업무 행과 함께 롤백
 numbering.peek(kind, *, at=None) -> str             # 발번하지 않는 미리보기
 numbering.rule(kind) -> dict | None                 # sys_number_rule 행 (없으면 화면은 `미확정 (D-509)`)
 ```
 - 형식은 데이터다: `sys_number_rule(seq_kind, prefix, date_format, seq_digits, note)` · 카운터 `sys_number_seq(seq_kind, seq_scope, last_value)`.
   번호 = prefix + to_char(시각, date_format) + 일련번호(seq_digits 자리). 날짜 부분이 바뀌면 1 부터.
-- 시드 7행은 `KIND-YYMM-nnnn` `(예시)` — 가설(D-509). KINDS 밖은 `ValueError`, 형식 행이 없으면 `RuntimeError`.
+- 시드 6행은 `KIND-YYMM-nnnn` `(예시)` — 가설(D-509). KINDS 밖은 `ValueError`, 형식 행이 없으면 `RuntimeError`.
 - 분할 LOT 는 채번하지 않고 원 LOT 번호에 `-01` 순번을 붙인다(D-509 · INV-020).
 
 ## 8. 알림 — `app.notify` (D-511 · D-522 · D-523)
@@ -198,18 +198,6 @@ dashboard.<이름>(period, customer_id=None) -> {"kpis": [{key, label, value | N
 dashboard.period_bounds(period) · dashboard.summary_kind(f, t) · dashboard.TOP_N · dashboard.FLOW_STAGES · dashboard.UNDECIDED_LOSS · dashboard.UNDECIDED_BOTTLENECK
 stats.period_bounds(period)                                     # "YYYY-MM" | (시작일, 종료일) → (f, t)
 
-# app.ai (개발3 · W3)
-ai.complete(system, user, *, kind, cur=None, user_id=None) -> str   # 키 없으면 ai.NotConfigured · 실패 ai.CallFailed(사유) — 둘 다 sys_ai_call_log 1행 뒤 올린다 · 호출마다 1행(ms · error)
-ai.NotConfigured · ai.CallFailed · ai.NOT_CONFIGURED_MESSAGE      # "AI 키가 설정되지 않았습니다 — LCOMFINE_OPENAI_API_KEY" (화면에 그대로 · G-17)
-ai.set_client(fake)                              # 테스트 주입 — fake(model, system, user) -> str · None 이면 실제 호출(표준 urllib · D-504)
-
-# app.dataquery (개발3 · W3)
-dataquery.ask(cur, user, question) -> dict         # 질문 → ai.complete → validate_sql → 별도 연결 read only · statement_timeout · MAX_ROWS → data_query_log 1행(거부 · 키 없음 · 실패 포함 · numbering "DQ")
-                                                    #   반환 {query_no, ok, sql, columns, rows, row_count, truncated, error, ms …} — 모양은 progress-dev3 §1.5 · D-806
-dataquery.validate_sql(sql, allowed_views) -> str   # SELECT 한 문장 · 허용 뷰 v_dq_* 만 · 카탈로그 · 쓰기 · 다중 문장 · 주석 · CTE · 함수(허용 목록 밖) 거부 → dataquery.QueryRejected(이유) → 라우터 422 「허용되지 않는 질의 — 이유」
-dataquery.VIEWS · dataquery.allowed_views(role_code) -> set[str]   # 수금 뷰 2 는 SL · AC · ADM · EX 만(D-513)
-dataquery.recent(user) -> list[dict] · dataquery.MAX_ROWS · dataquery.QueryRejected
-
 # app.sso (개발1 · W4)
 sso.issue(cur, user, *, now=None) -> tuple[str, str]   # (token, jti) · 상태 · 매핑을 DB 에서 다시 읽는다 · 비활성 · 미매핑 · 사용 중지 매핑이면 sso.NotMapped(사유) · 토큰 글자는 저장하지 않는다
 sso.consume(cur, token, *, now=None) -> dict           # 형식 · 서명(상수 시간) · 만료 · 1회 사용(update … where used_at is null returning) · 사용 뒤 상태 · 매핑 재확인 — 어긋나면 sso.Invalid(사유)
@@ -219,7 +207,7 @@ sso.refusal(cur, user_id) -> (사유 | None, 매핑 | None) · sso.TTL_SECONDS =
 
 ## 10. 시드 · 테스트
 
-- 공통 시드 `lcomfine.db.seed`(`make db-seed`): 부서 8(`sys_role`) · 계정 8(`sl pr sh ds ac st ex admin`, 이름 `<부서> (예시)`) · 권한 260칸(`contracts.permission_cells()` 그대로, 표에 없는 행은 지운다) · 채번 7(`(예시)` D-509) · 공통코드 3그룹(설비 2 · 불량유형 3 · 수금수단 3, 전부 `(예시)`). `notification_setting` 은 시드하지 않는다.
+- 공통 시드 `lcomfine.db.seed`(`make db-seed`): 부서 8(`sys_role`) · 계정 8(`sl pr sh ds ac st ex admin`, 이름 `<부서> (예시)`) · 권한 257칸(`contracts.permission_cells()` 그대로, 표에 없는 행은 지운다) · 채번 6(`(예시)` D-509 · KINDS 밖 행은 지운다) · 공통코드 3그룹(설비 2 · 불량유형 3 · 수금수단 3, 전부 `(예시)`). `notification_setting` 은 시드하지 않는다.
 - 계정 비밀번호는 `get_settings().seed_password`(= `.env` 의 `LCOMFINE_SEED_PASSWORD`)뿐 — 없으면 시드가 실패한다. 코드·문서·테스트에 값을 적지 않는다. 이미 그 값이면 해시를 다시 쓰지 않는다(D-26).
 - 개발자 시드는 `src/lcomfine/db/seed_dev{1,2,3}.py` 에 `main() -> int`(0 = 성공) — 공통 → 개발1 → 개발2 → 개발3 순. 없는 파일은 한 줄 남기고 건너뛴다.
 - **시드는 멱등** — 두 번 돌려도 행 수가 같다(G-21). 값에는 `(예시)` 를 붙인다(`screen.example`). 회사 실데이터를 지어내지 않는다.

@@ -11,7 +11,7 @@ from lcomfine.db import conn
 
 SCHEMA_SQL = Path(__file__).resolve().parents[1] / "src" / "lcomfine" / "db" / "schema.sql"
 
-# 스펙 §4.1 · task-6 addendum §A — 이름 집합이 기대값이다 (D-521). 수(48)로 판정하지 않는다.
+# 스펙 §4.1 · task-6 addendum §A — 이름 집합이 기대값이다 (D-521). 수(46)로 판정하지 않는다. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
 EXPECTED_TABLES = {
     "BAS": "item customer warehouse location",
     "STD": "spec_sheet standard plate plate_usage artwork sample_sheet exception_item",
@@ -23,14 +23,12 @@ EXPECTED_TABLES = {
     "INV": "lot_stock stock_move stock_adjust",
     "SHP": "shipment_order shipment_line shipment_adjust",
     "COL": "erp_upload_batch erp_upload_row erp_customer_map erp_column_map",
-    "RPT": "data_query_log",
     "DOC": "doc_account_map sso_token",
     "HOME": "notification notification_setting",
     "SYS": "sys_role sys_user sys_permission sys_common_code sys_access_log sys_change_log sys_number_rule "
-           "sys_number_seq sys_ai_call_log",
+           "sys_number_seq",
 }
-EXPECTED_VIEWS = {"v_work_order_status", "v_dq_orders", "v_dq_work_orders", "v_dq_stock", "v_dq_shipments",
-                  "v_dq_quality", "v_dq_production_daily", "v_dq_collections", "v_dq_receivables"}
+EXPECTED_VIEWS = {"v_work_order_status"}
 
 
 def _names(kind: str) -> set[str]:
@@ -40,12 +38,12 @@ def _names(kind: str) -> set[str]:
 
 def test_schema_has_expected_tables():
     want = {t for ts in EXPECTED_TABLES.values() for t in ts.split()}
-    assert len(want) == 48
+    assert len(want) == 46
     tables = _names("BASE TABLE")
     assert want <= tables, f"DB 에 없는 테이블 {sorted(want - tables)}"
     assert tables == want, f"계약 밖 테이블 {sorted(tables - want)}"
     views = _names("VIEW")
-    assert EXPECTED_VIEWS <= views, f"DB 에 없는 뷰 {sorted(EXPECTED_VIEWS - views)}"
+    assert views == EXPECTED_VIEWS, f"뷰 {sorted(views)} (v_work_order_status 하나 기대 — D-529)"
     # schema.sql 의 @table 태그도 같은 이름 · 같은 영역
     tags = dict(re.findall(r"^-- @table (\w+) \| (\w+) \|", SCHEMA_SQL.read_text(encoding="utf-8"), re.M))
     assert tags == {t: area for area, ts in EXPECTED_TABLES.items() for t in ts.split()}

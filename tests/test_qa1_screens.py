@@ -31,9 +31,9 @@ def _assert_rows(rep: cs.Report, gate: str | None = None) -> None:
                 "F-QC-013", "F-QC-023", "F-QC-031", "F-INV-011", "F-INV-023", "F-INV-032", "F-SHP-013", "F-SHP-022", "F-SHP-031",
                 "F-TRK-011", "F-TRK-021", "F-TRK-031", "F-LOT-011", "F-LOT-021", "F-PRP-011", "F-PRP-021", "F-PRP-031",
                 "F-SYS-014", "F-SYS-022", "F-SYS-032", "F-SYS-041")
-def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
-    """화면 67 × 부서 8: 칸 W/R → 200 · 칸 없음 → 403(브라우저 · JSON) + 문장 「이 화면을 볼 권한이 없습니다」(api-contract §1)
-    · 범위(W1~W4) 화면 67 placeholder 0 (W4 DOC 2 포함) · 메뉴 = 권한 칸 · DB sys_permission = 계약 260 칸."""
+def test_g03_g19_screens_66_x_8_200_403_and_sentence(world):
+    """화면 66 × 부서 8: 칸 W/R → 200 · 칸 없음 → 403(브라우저 · JSON) + 문장 「이 화면을 볼 권한이 없습니다」(api-contract §1)
+    · 범위(W1~W4) 화면 66 placeholder 0 (W4 DOC 2 포함) · 메뉴 = 권한 칸 · DB sys_permission = 계약 257 칸."""
     app, clients = world
     rep = cs.Report()
     cs.check_screens(app, clients, rep)
@@ -42,7 +42,7 @@ def test_g03_g19_screens_67_x_8_200_403_and_sentence(world):
 
 
 def test_g02_w1_functions_route_and_marks(world):
-    """범위 기능 136(W1 109 + W2 COL 11 + W3 RPT 10 + W4 DOC 6) — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
+    """범위 기능 134(W1 109 + W2 COL 11 + W3 RPT 8 + W4 DOC 6) — API 열의 메서드 · 경로가 라우트에 글자 그대로 · @pytest.mark.fn 표식 1건 이상 (G-02)."""
     app, _ = world
     rep = cs.Report()
     cs.check_functions(app, rep)
@@ -57,7 +57,7 @@ def test_g02_w1_functions_route_and_marks(world):
                 "F-QC-021", "F-QC-022", "F-INV-021", "F-INV-022", "F-INV-031", "F-SHP-011", "F-SHP-012", "F-SHP-021", "F-SHP-023",
                 "F-SYS-011", "F-SYS-012", "F-SYS-013", "F-SYS-021", "F-SYS-031")
 def test_g19_write_routes_require_fn_static(world):
-    """쓰기 라우트 63(W1 58 + COL 4 + RPT 1) 의 의존성이 require_fn(<그 기능 ID>) 하나다 · 조회 라우트 67 은 require_screen(화면) 또는 require_fn(기능) (정적 · G-19)."""
+    """쓰기 라우트(W1 58 + COL 4 + DOC 4) 의 의존성이 require_fn(<그 기능 ID>) 하나다 · 조회 라우트 66 은 require_screen(화면) 또는 require_fn(기능) (정적 · G-19)."""
     app, _ = world
     rep = cs.Report()
     cs.check_functions(app, rep)
@@ -66,8 +66,8 @@ def test_g19_write_routes_require_fn_static(world):
 
 @pytest.mark.fn("F-HOME-022")
 def test_g19_write_58_x_8_403_sweep(world):
-    """쓰기 63 × 계정 8 POST(빈 본문 · 없는 경로 키): 칸 R · 없음 → 403 「이 기능을 실행할 권한이 없습니다」 · W 부서는 401/403/5xx 아님 (COL 4 = 회계부 · 전산 관리자 W)
-    · 권한 예외 F-HOME-022 · F-RPT-132 는 칸 R 부서가 통과 · F-RPT-132 는 칸 없는 5 부서 403 (api-contract §4)."""
+    """쓰기 × 계정 8 POST(빈 본문 · 없는 경로 키): 칸 R · 없음 → 403 「이 기능을 실행할 권한이 없습니다」 · W 부서는 401/403/5xx 아님 (COL 4 = 회계부 · 전산 관리자 W)
+    · 권한 예외 F-HOME-022 · F-DOC-011 은 칸 R 부서가 통과 (api-contract §4)."""
     _, clients = world
     rep = cs.Report()
     cs.check_writes(clients, rep)

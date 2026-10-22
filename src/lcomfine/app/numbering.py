@@ -1,4 +1,4 @@
-"""채번 — 의뢰 · 지시 · 입고 LOT · 제품 LOT · 출하 · ERP 회차 · 질의 로그 번호를 내는 **한 곳** (decisions.md D-509).
+"""채번 — 의뢰 · 지시 · 입고 LOT · 제품 LOT · 출하 · ERP 회차 번호를 내는 **한 곳** (decisions.md D-509).
 
 형식은 코드에 박지 않는다. `sys_number_rule`(접두 · 날짜 형식 · 자릿수) 행이 형식이고
 `sys_number_seq` 가 카운터다. 채번 규칙이 확정되면(D-509) 행만 바꾼다. 다른 모듈은 번호를 직접 조립하지 않는다.
@@ -8,7 +8,7 @@
 - 구분 기호(`-`)는 따로 두지 않는다. 필요하면 `prefix` 나 `date_format` 안에 글자로 넣는다(예: `YYMMDD-`).
 - 카운터 범위(`seq_scope`)는 **날짜 부분의 값**이다 — 날짜 부분이 바뀌면 1 부터 다시 센다. 날짜 형식이 비어 있으면 범위는 빈 글자(통산).
 - 일련번호가 자릿수를 넘으면 자르지 않고 자릿수를 늘린다(같은 번호가 두 번 나오지 않는 것이 먼저다).
-- 가설 형식 `KIND-YYMM-nnnn` `(예시)` 7행은 공통 시드 `db/seed.py` 가 넣는다 (D-509).
+- 가설 형식 `KIND-YYMM-nnnn` `(예시)` 6행은 공통 시드 `db/seed.py` 가 넣는다 (D-509).
 """
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ from datetime import datetime
 from ..db import conn
 
 #: 번호 종류 — sys_number_rule.seq_kind
-REQ, WO, MLOT, PLOT, SHP, ERP, DQ = "REQ", "WO", "MLOT", "PLOT", "SHP", "ERP", "DQ"
-KINDS: tuple[str, ...] = (REQ, WO, MLOT, PLOT, SHP, ERP, DQ)
+REQ, WO, MLOT, PLOT, SHP, ERP = "REQ", "WO", "MLOT", "PLOT", "SHP", "ERP"
+KINDS: tuple[str, ...] = (REQ, WO, MLOT, PLOT, SHP, ERP)   # 질의 로그 DQ 는 D-529 로 없앴다
 #: 번호 종류 → 대상 (D-509 표)
 KIND_NAMES: dict[str, str] = {REQ: "생산의뢰 번호", WO: "생산지시 번호", MLOT: "원자재 입고 LOT", PLOT: "제품 LOT",
-                              SHP: "출하 번호", ERP: "ERP 업로드 회차", DQ: "데이터 질의 로그"}
+                              SHP: "출하 번호", ERP: "ERP 업로드 회차"}
 
 # 형식 행과 그 시각의 날짜 부분을 한 번에 읽는다. 날짜 부분은 DB 의 to_char 가 만든다(형식 열이 to_char 형식이다).
 _RULE_SQL = """

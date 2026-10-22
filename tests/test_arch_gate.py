@@ -26,3 +26,17 @@ def test_traceback_downgrades_pass_even_with_fail_row():
 
 def test_g12_wording_matches_goal():
     assert dict(gate.GATES)["G-12"] == "회차 교체" and len(gate.GATES) == 24
+
+
+# ── 「제외」 (D-529) — 결정이 `확정` 이고 근거 행이 PASS 일 때만 제외 · 아니면 FAIL/미검증 ──
+def test_exclusion_needs_confirmed_decision_and_passing_evidence(monkeypatch):
+    assert gate.EXCLUDED_GATES == {"G-16": "D-529", "G-17": "D-529"}
+    assert gate.decision_status("D-529") == "확정"
+    assert gate.apply_exclusion("G-16", gate.PASS, "근거")[0] == gate.EXCLUDED
+    assert gate.apply_exclusion("G-16", gate.FAIL, "옛 경로 200")[0] == gate.FAIL        # 빠졌다는 기능이 남아 있다
+    assert gate.apply_exclusion("G-17", gate.UNVERIFIED, "행 없음")[0] == gate.UNVERIFIED
+    monkeypatch.setattr(gate, "decision_status", lambda d: "가설")
+    st, measured = gate.apply_exclusion("G-16", gate.PASS, "근거")
+    assert st == gate.FAIL and "확정" in measured
+    monkeypatch.setattr(gate, "decision_status", lambda d: None)
+    assert gate.apply_exclusion("G-17", gate.PASS, "근거")[0] == gate.FAIL

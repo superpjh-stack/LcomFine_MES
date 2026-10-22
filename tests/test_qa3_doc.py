@@ -124,8 +124,8 @@ def test_g19_g20_g22_doc_access_sessions_change_log(lab):
 
 
 def test_x11_d524_app_role_least_privilege(db_role):
-    """DEF-QA3-003 재검증 — 한 트랜잭션 안에서 roles.apply → set local role: 불변 6 표 UPDATE/DELETE/TRUNCATE 거부 · replica 거부 · DDL 거부 ·
-    업무 쓰기 · 시퀀스 · v_dq_* · 읽기 전용 질의는 돈다 → 되돌림 → 역할 0."""
+    """DEF-QA3-003 재검증 — 한 트랜잭션 안에서 roles.apply → set local role: 불변 4 표 UPDATE/DELETE/TRUNCATE 거부 · replica 거부 · DDL 거부 ·
+    업무 쓰기 · 시퀀스 · 뷰 읽기 · 읽기 전용 트랜잭션은 돈다 → 되돌림 → 역할 0."""
     _assert(db_role)
 
 

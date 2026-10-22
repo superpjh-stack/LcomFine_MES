@@ -107,11 +107,11 @@ def test_ia_page_counts_from_contracts(app):
     r = _client(app, "admin").get("/ia", headers=HTML)
     assert r.status_code == 200
     stats = dict(re.findall(r'data-count="(\w+)">(\d+)<', r.text))
-    assert stats["menus"] == "17" and stats["screens"] == "67" and stats["cells"] == "260"
+    assert stats["menus"] == "17" and stats["screens"] == "66" and stats["cells"] == "257"
     c = rbac.counts()
     assert stats["w"] == str(c["W"]) and stats["r"] == str(c["R"])
     assert stats["functions"] == str(len(contracts.functions()))
-    assert len(re.findall(r'<tr data-perm="[A-Z]+-\d+"', r.text)) == 67
+    assert len(re.findall(r'<tr data-perm="[A-Z]+-\d+"', r.text)) == 66
 
 
 def test_theme_tokens_present():
@@ -176,7 +176,7 @@ def test_health_shape(app):
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True and body["db"] == "ok"
-    assert body["menus"] == 17 and body["screens"] == 67
+    assert body["menus"] == 17 and body["screens"] == 66
     assert isinstance(body["placeholders"], int)
 
 

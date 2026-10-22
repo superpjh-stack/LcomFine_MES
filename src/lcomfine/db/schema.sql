@@ -26,11 +26,11 @@
 --   INV  재고        lot_stock · stock_move · stock_adjust
 --   SHP  출하        shipment_order · shipment_line · shipment_adjust
 --   COL  수금리포트  erp_upload_batch · erp_upload_row · erp_customer_map · erp_column_map
---   RPT  대시보드    data_query_log
+--   RPT  대시보드    (테이블 없음 — 화면을 열 때 집계 · D-505 · 데이터 질의는 D-529 로 없앴다)
 --   DOC  문서관리    doc_account_map · sso_token
 --   HOME 내 업무     notification · notification_setting
 --   SYS  시스템      sys_role · sys_user · sys_permission · sys_common_code · sys_access_log · sys_change_log
---                    sys_number_rule · sys_number_seq · sys_ai_call_log
+--                    sys_number_rule · sys_number_seq
 --
 -- 추적 척추 (완료 기준 — 스펙 §4.2):
 --   material_lot ─(material_issue_line.material_lot_id · work_order_id)→ work_order
@@ -798,9 +798,9 @@ create table sys_change_log (
 );
 create index sys_change_log_at_idx on sys_change_log (changed_at desc);
 
--- @table sys_number_rule | SYS | 채번 형식 — 번호 종류별 한 행 (REQ · WO · MLOT · PLOT · SHP · ERP · DQ). 형식은 코드가 아니라 이 행이다 (D-509)
+-- @table sys_number_rule | SYS | 채번 형식 — 번호 종류별 한 행 (REQ · WO · MLOT · PLOT · SHP · ERP). 형식은 코드가 아니라 이 행이다 (D-509)
 create table sys_number_rule (
-    seq_kind     text primary key,                                   -- 번호 종류: REQ | WO | MLOT | PLOT | SHP | ERP | DQ
+    seq_kind     text primary key,                                   -- 번호 종류: REQ | WO | MLOT | PLOT | SHP | ERP
     prefix       text not null default '',                           -- 접두 글자 (예시 — D-509)
     date_format  text not null default '',                           -- 날짜 부분 형식 (to_char 형식 · 빈 글자면 날짜 없음)
     seq_digits   integer not null,                                   -- 일련번호 자릿수
@@ -816,39 +816,6 @@ create table sys_number_seq (
     seq_scope   text not null default '',                            -- 범위 (날짜 부분 값 · 날짜가 바뀌면 1부터)
     last_value  bigint not null,                                     -- 마지막으로 내준 일련번호
     constraint sys_number_seq_pk primary key (seq_kind, seq_scope)
-);
-
--- @table sys_ai_call_log | SYS | AI 호출 로그 — 모든 AI 호출 한 행 (데이터 질의의 SQL 생성 등 · D-513)
-create table sys_ai_call_log (
-    id          bigserial primary key,                               -- 내부 키
-    kind        text not null,                                       -- 호출 용도 (데이터 질의 등)
-    model       text,                                                -- 모델 이름
-    ok          boolean not null,                                    -- 성공 여부
-    ms          integer,                                             -- 걸린 시간(밀리초)
-    error       text,                                                -- 실패 사유 (키 없음 포함 — 키 값은 적지 않는다)
-    user_id     bigint references sys_user (user_id),                -- 부른 사용자
-    created_at  timestamptz not null default now()                   -- 호출 일시
-);
-create index sys_ai_call_log_at_idx on sys_ai_call_log (created_at desc);
-
--- ════════════════════════════════════════════════════════════════════
--- RPT 대시보드 — 데이터 질의 로그 (대시보드 자체는 테이블이 없다 · D-505)
--- ════════════════════════════════════════════════════════════════════
-
--- @table data_query_log | RPT | 데이터 질의 로그 — 거부를 포함한 모든 질의 한 행 (D-513)
-create table data_query_log (
-    id          bigserial primary key,                               -- 내부 키
-    query_no    text not null,                                       -- 로그 번호 numbering.next("DQ") (형식 D-509)
-    user_id     bigint references sys_user (user_id),                -- 질의한 사용자
-    role_code   text,                                                -- 그때의 부서 (부서별 뷰 제한의 근거)
-    question    text not null,                                       -- 질문 원문
-    sql_text    text,                                                -- 생성된 SQL (AI 실패면 없다)
-    ok          boolean not null,                                    -- 실행했는가 (검증 거부·실패는 false)
-    row_count   integer,                                             -- 돌려준 행 수
-    error       text,                                                -- 거부·실패 사유
-    ms          integer,                                             -- 걸린 시간(밀리초)
-    created_at  timestamptz not null default now(),                  -- 질의 일시
-    constraint data_query_log_no_uq unique (query_no)
 );
 
 -- ════════════════════════════════════════════════════════════════════
@@ -958,7 +925,7 @@ create trigger shipment_adjust_no_truncate_trg
     for each statement execute function append_only_guard();
 
 -- ════════════════════════════════════════════════════════════════════
--- 뷰 — 저장하지 않고 계산한다 (읽기 전용). v_dq_* 는 데이터 질의(RPT-130)의 허용 뷰 8 (D-513)
+-- 뷰 — 저장하지 않고 계산한다 (읽기 전용).
 -- 수량 합은 취소 표시된 입고 행을 빼고, 출하는 확정된 출하만 센다.
 -- ════════════════════════════════════════════════════════════════════
 
@@ -985,150 +952,3 @@ select w.id as work_order_id,
                join shipment_order so on so.id = sl.shipment_order_id and so.status = '확정'
                join product_lot pl on pl.id = sl.product_lot_id
               group by pl.work_order_id) s on s.work_order_id = w.id;
-
--- @view v_dq_orders | 데이터 질의 — 수주(=생산의뢰)
-create view v_dq_orders as
-select r.request_no,
-       r.request_date,
-       c.customer_code,
-       c.customer_name,
-       i.item_code,
-       i.item_name,
-       r.qty,
-       r.due_date,
-       r.status
-  from production_request r
-  join customer c on c.id = r.customer_id
-  join item i on i.id = r.item_id;
-
--- @view v_dq_work_orders | 데이터 질의 — 생산지시와 진행 수량
-create view v_dq_work_orders as
-select v.work_order_no,
-       v.request_no,
-       i.item_code,
-       i.item_name,
-       w.equipment_code,
-       w.planned_on,
-       v.order_qty,
-       v.daily_good_qty,
-       v.receipt_qty,
-       v.shipped_qty,
-       v.status
-  from v_work_order_status v
-  join work_order w on w.id = v.work_order_id
-  join item i on i.id = v.item_id;
-
--- @view v_dq_stock | 데이터 질의 — LOT × 위치 재고 (가용 = 현재고 − 할당)
-create view v_dq_stock as
-select s.lot_kind,
-       coalesce(m.lot_no, p.lot_no) as lot_no,
-       i.item_code,
-       i.item_name,
-       wh.warehouse_code,
-       l.location_code,
-       s.qty,
-       s.allocated_qty,
-       s.qty - s.allocated_qty as available_qty,
-       s.status
-  from lot_stock s
-  left join material_lot m on s.lot_kind = '원자재' and m.id = s.lot_id
-  left join product_lot p on s.lot_kind = '제품' and p.id = s.lot_id
-  join item i on i.id = coalesce(m.item_id, p.item_id)
-  join location l on l.id = s.location_id
-  join warehouse wh on wh.id = l.warehouse_id;
-
--- @view v_dq_shipments | 데이터 질의 — 출하 지시 행 (LOT · 수량 · 납기 · 확정)
-create view v_dq_shipments as
-select so.shipment_no,
-       r.request_no,
-       c.customer_code,
-       c.customer_name,
-       so.due_date,
-       so.status,
-       so.confirmed_at,
-       p.lot_no,
-       i.item_code,
-       i.item_name,
-       sl.qty
-  from shipment_order so
-  join customer c on c.id = so.customer_id
-  left join production_request r on r.id = so.request_id
-  join shipment_line sl on sl.shipment_order_id = so.id
-  join product_lot p on p.id = sl.product_lot_id
-  join item i on i.id = p.item_id;
-
--- @view v_dq_quality | 데이터 질의 — 입고검사 · 제품검사 판정 (is_latest = 그 LOT 의 현재 판정)
-create view v_dq_quality as
-select '입고검사'::text as inspection_kind,
-       m.lot_no,
-       i.item_code,
-       i.item_name,
-       q.seq,
-       q.result,
-       q.inspected_at,
-       q.seq = max(q.seq) over (partition by q.material_lot_id) as is_latest
-  from incoming_inspection q
-  join material_lot m on m.id = q.material_lot_id
-  join item i on i.id = m.item_id
-union all
-select '제품검사'::text,
-       p.lot_no,
-       i.item_code,
-       i.item_name,
-       q.seq,
-       q.result,
-       q.inspected_at,
-       q.seq = max(q.seq) over (partition by q.product_lot_id)
-  from product_inspection q
-  join product_lot p on p.id = q.product_lot_id
-  join item i on i.id = p.item_id;
-
--- @view v_dq_production_daily | 데이터 질의 — 생산일보 (지시 × 일자 × 설비)
-create view v_dq_production_daily as
-select d.work_date,
-       w.work_order_no,
-       i.item_code,
-       i.item_name,
-       d.equipment_code,
-       d.produced_qty,
-       d.good_qty,
-       d.loss_qty,
-       d.run_minutes,
-       d.stop_minutes
-  from production_daily d
-  join work_order w on w.id = d.work_order_id
-  join item i on i.id = w.item_id;
-
--- 알려진 한계: 기준 기간이 겹치는 회차들은 올라온 그대로 모두 센다(겹침을 풀지 않는다 — 열 구성 · 기간 규칙 D-516).
--- @view v_dq_collections | 데이터 질의 — 수금 (반영 회차의 오류 없는 행만 · 사용 중 매핑만 · 기간이 겹치면 올라온 그대로 센다 D-516 · 영업부·회계부·관리자·경영진만 — D-513)
-create view v_dq_collections as
-select b.batch_no,
-       b.period_from,
-       b.period_to,
-       u.parsed ->> 'customer_code' as erp_customer_code,
-       c.customer_code,
-       c.customer_name,
-       nullif(u.parsed ->> 'txn_date', '')::date as txn_date,
-       nullif(u.parsed ->> 'sales_amount', '')::numeric(16,2) as sales_amount,
-       nullif(u.parsed ->> 'collected_amount', '')::numeric(16,2) as collected_amount,
-       nullif(u.parsed ->> 'balance_amount', '')::numeric(16,2) as balance_amount,
-       nullif(u.parsed ->> 'method', '') as method,
-       nullif(u.parsed ->> 'bill_due_date', '')::date as bill_due_date
-  from erp_upload_row u
-  join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
-  left join erp_customer_map cm on cm.erp_code = u.parsed ->> 'customer_code' and cm.use_yn = 'Y'
-  left join customer c on c.id = cm.customer_id
- where u.error is null and u.parsed is not null;
-
--- @view v_dq_receivables | 데이터 질의 — 거래처별 미수 (매출 합 − 수금 합 · 기준일 = 반영 회차의 마지막 기간 끝)
-create view v_dq_receivables as
-select erp_customer_code,
-       customer_code,
-       customer_name,
-       sum(coalesce(sales_amount, 0)) as sales_amount,
-       sum(coalesce(collected_amount, 0)) as collected_amount,
-       sum(coalesce(sales_amount, 0)) - sum(coalesce(collected_amount, 0)) as receivable_amount,
-       max(txn_date) as last_txn_date,
-       max(period_to) as as_of
-  from v_dq_collections
- group by erp_customer_code, customer_code, customer_name;

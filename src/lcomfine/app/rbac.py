@@ -1,4 +1,4 @@
-"""권한 — 부서 8 × 화면 67 의 권한 칸(`W` · `R` · 없음)을 **DB 데이터**로 읽는다 (D-511 · D-513 · D-514).
+"""권한 — 부서 8 × 화면 66 의 권한 칸(`W` · `R` · 없음)을 **DB 데이터**로 읽는다 (D-511 · D-514).
 
 부서 목록(`sys_role`)도 권한 칸(`sys_permission(role_code, screen_id, level)`)도 이 파일에 박혀 있지 않다.
 칸을 바꾸면 `invalidate()` 를 부른다 — 다음 요청부터 반영된다. 행이 없는 칸은 권한 없음이다(권한을 지어내지 않는다).
@@ -7,7 +7,7 @@
 판정
   R  화면 칸이 `W` 또는 `R`
   W  화면 칸이 `W`
-  기능  쓰기 유형(`contracts.WRITE_KINDS`)이면 W, 조회 유형 · 권한 예외(`Function.read_ok` — F-DOC-011 · F-RPT-132 · F-HOME-022)는 R
+  기능  쓰기 유형(`contracts.WRITE_KINDS`)이면 W, 조회 유형 · 권한 예외(`Function.read_ok` — F-DOC-011 · F-HOME-022)는 R
   공통 화면(login · error)은 권한 표 밖 — 로그인만 하면 연다
 
     require_login(request) -> User            미로그인 → 401
@@ -88,7 +88,7 @@ def counts() -> dict[str, int]:
 
 
 def matrix() -> list[dict]:
-    """화면 표시용 — 화면 67행 × 부서 열. 값은 DB 그대로(`W` · `R` · None)."""
+    """화면 표시용 — 화면 66행 × 부서 열. 값은 DB 그대로(`W` · `R` · None)."""
     rs = roles()
     return [{"screen": sc, "cells": [level(r.code, sc.screen_id) for r in rs]} for sc in nav.SCREENS]
 

@@ -29,7 +29,7 @@ def test_app_role_is_least_privilege():
     with pytest.raises(_Rollback):
         with conn.tx() as cur:
             out = roles.apply(cur, ROLE, secrets.token_urlsafe(16))
-            assert out["created"] and out["tables"] >= 48
+            assert out["created"] and out["tables"] >= 46
             cur.execute("select rolsuper, rolcreatedb, rolcreaterole, rolbypassrls from pg_roles where rolname = %s", (ROLE,))
             assert cur.fetchone() == {"rolsuper": False, "rolcreatedb": False, "rolcreaterole": False, "rolbypassrls": False}
             # 다시 불러도 같다(멱등)
@@ -39,7 +39,7 @@ def test_app_role_is_least_privilege():
             # 읽기 · 업무 쓰기는 된다
             cur.execute("select count(*) as n from sys_role")
             assert cur.fetchone()["n"] >= 8
-            cur.execute("select count(*) as n from v_dq_orders")
+            cur.execute("select count(*) as n from v_work_order_status")
             cur.execute("insert into sys_access_log (log_type, login_id, result) values ('조회', 'roles-test', '성공') returning log_id")
             log_id = cur.fetchone()["log_id"]
             # 불변 이력 · 감사 로그는 고치거나 지울 수 없다

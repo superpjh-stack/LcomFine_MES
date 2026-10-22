@@ -112,7 +112,7 @@ def quick_login_enabled() -> bool:
 def quick_login_accounts() -> list[dict]:
     """로그인 화면의 퀵 로그인 패널 — 부서(표시 순서)별로 계정을 묶는다. 값은 전부 DB 그대로(계정·부서·상태·권한 칸).
 
-    부서마다: `role` · `summary`(화면 67 중 W · R 칸 수) · `menus`(볼 수 있는 화면이 있는 대메뉴 이름) ·
+    부서마다: `role` · `summary`(화면 66 중 W · R 칸 수) · `menus`(볼 수 있는 화면이 있는 대메뉴 이름) ·
     `primary`(시드 계정 — `created_by = 'seed'`, 없으면 가장 먼저 만든 정상 계정) · `others`(나머지 — 잠금·중지도 상태와 함께 보인다, 단추는 막힌다)."""
     rows = conn.q(
         """select u.login_id, u.user_name, u.role_code, u.status, u.created_by, u.last_login_at

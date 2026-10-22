@@ -7,7 +7,7 @@
     functions_of("WO-010")      그 화면의 기능들 (placeholder 화면 · 우측 계약 패널이 쓴다)
     functions_of_menu("WO")     그 대메뉴의 기능들
     write_functions()           쓰기 기능만
-    permission_cells()          contracts/permission-matrix.md → (화면 ID, 부서 코드, W|R) 260
+    permission_cells()          contracts/permission-matrix.md → (화면 ID, 부서 코드, W|R) 257
     db_tables()                 contracts/db-schema.md 의 테이블 · 컬럼 (tools/check_schema.py 가 실제 DB 와 대조)
 
 표가 깨졌거나 규칙이 안 맞으면 **처음 부를 때 실패한다** — 조용히 넘어가지 않는다.
@@ -55,7 +55,7 @@ EXPANSION: dict[str, tuple[str, ...]] = {
     "외부 연계(SSO)": ("진입", "조회"),
 }
 NO_EDIT_MARK = "수정 없음"          # 정본 logic 이 수정을 막는 등록 화면 — 수정 기능을 전개하지 않는다
-KIND_EXCEPTION_MARK = "유형 예외"   # 정본 type 밖 쓰기 기능 하나를 뒤에 더한다 (RPT-130 질의 실행)
+KIND_EXCEPTION_MARK = "유형 예외"   # 정본 type 밖 쓰기 기능 하나를 뒤에 더한다 (SHP-020 반품·정정 · HOME-020 알림 처리)
 ROLE_EXCEPTION_MARK = "권한 예외"   # 정본 칸에 W 가 없는 화면의 쓰기 기능 — 권한 칸 EXCEPTION_ROLE_LABEL · 화면 R 이상이 실행
 
 ID_RE = re.compile(r"F-([A-Z]+)-(\d{2})(\d)")

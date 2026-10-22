@@ -6,7 +6,7 @@
 - 업무 테이블: SELECT · INSERT · UPDATE · DELETE. 시퀀스: USAGE · SELECT. 뷰: SELECT.
 - **불변 이력 · 감사 로그는 SELECT · INSERT 만** — `APPEND_ONLY` (UPDATE · DELETE · TRUNCATE 권한 없음).
   `stock_adjust` · `shipment_adjust` 는 트리거도 막지만, superuser 가 아니면 `session_replication_role` 로 트리거를 끌 수 없다.
-  `sys_change_log` · `sys_access_log` · `sys_ai_call_log` · `data_query_log` 는 트리거가 없어 이 권한이 유일한 방어선이다.
+  `sys_change_log` · `sys_access_log` 는 트리거가 없어 이 권한이 유일한 방어선이다.
 - 역할 속성: NOSUPERUSER · NOCREATEDB · NOCREATEROLE · NOBYPASSRLS · NOREPLICATION. 스키마 public 에 CREATE 없음(DDL 불가).
 - 다시 불러도 같다(멱등) — 역할이 있으면 비밀번호와 속성만 다시 맞추고 권한을 다시 준다.
 - 스키마 적용 · 시드 · 백업 복구 검사는 소유자 역할로 돈다(docker-compose 의 `seed` 서비스). 로컬 개발 · 테스트 정리도 소유자 역할이다.
@@ -21,7 +21,7 @@ from psycopg import sql
 #: UPDATE · DELETE 를 주지 않는 표 — 이력은 새 행으로만 쌓인다 (db-schema §2 규칙 5 · G-22)
 APPEND_ONLY: tuple[str, ...] = (
     "stock_adjust", "shipment_adjust",
-    "sys_change_log", "sys_access_log", "sys_ai_call_log", "data_query_log",
+    "sys_change_log", "sys_access_log",
 )
 
 _ROLE_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")

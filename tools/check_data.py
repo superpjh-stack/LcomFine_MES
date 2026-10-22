@@ -17,7 +17,7 @@ W4 = G-05 DOC(doc.py · sso.py 기능 단위 정적 · DOC GET 2 diff 0) + G-07 
   G-11  알림 — W1 7종 + due_d3_unshipped(배치) + erp_upload_error(W2 · AC 1행 · dedupe · 교체 · 재해석으로 닫힘) 수신 부서마다 1행
         · dedupe · 처리 화면에서 닫힘 · HOME-020 처리 · 남의 부서 404
   G-12  회차 교체 — 같은 기준 기간 재업로드(HTTP · openpyxl 로 만든 (예시) xlsx) → 새 회차 `반영` · 이전 회차 `교체` + replaced_by · 행 보존 ·
-        기간마다 `반영` 하나 · `v_dq_collections` 는 반영 회차만 · COL-020 구분 · col.py 의 POST 는 업로드 · 매핑뿐(정적)
+        기간마다 `반영` 하나 · 반영 행(QA2 독립 SQL `COLL_SQL`)은 반영 회차만 · COL-020 구분 · col.py 의 POST 는 업로드 · 매핑뿐(정적)
   G-13  오류 행 · 미매핑 — 날짜 · 금액 · 필수 · 미매핑 행이 error 와 함께 보존 · 반영(뷰 · COL-040 · COL-050)에서 제외 · COL-030 미매핑 목록 ·
         매핑 뒤 반영 회차만 재해석(error is null) · 교체 회차 그대로 · COL-020 회차별 오류 행 · erp_upload_row 쓰기 = parsed · error 만(정적)
   G-14  출하 대비 수금 — E2E 의 확정 출하 + 같은 월 · 거래처의 ERP 매출 · 수금 → COL-070 화면 값 = QA2 독립 SQL(shipment_order 확정 confirmed_at 월
@@ -274,25 +274,15 @@ def static_scan(report: Report) -> None:
             ro_hits.append(f"{fname}:{_sql_writes(t)}")
     report.add("G-05", "TRK · LOT · PRP · trace · stats 쓰기 0 (정적) + dashboard.py", not ro_hits,
                f"쓰기 문 {len(ro_hits)} {ro_hits or ''} — trk.py · lot.py · prp.py · trace.py · stats.py · dashboard.py")
-    # RPT — rpt.py 는 직접 쓰기 0 · 쓰는 것은 dataquery(data_query_log) · ai(sys_ai_call_log) · numbering 만 (F-RPT-132 「쓰는 테이블」 · D-513)
+    # RPT — 대시보드는 어떤 표에도 쓰지 않는다(데이터 질의와 그 로그 표는 D-529 로 없앴다) — rpt.py 쓰기 문 · conn.x/tx · numbering · notify 0 · 계약의 RPT 「쓰는 테이블」 0
     rpt_text = (ROUTERS / "rpt.py").read_text(encoding="utf-8") if (ROUTERS / "rpt.py").exists() else ""
     rpt_own = set(_sql_writes(rpt_text))
-    dq_w = set(_sql_writes((APP / "dataquery.py").read_text(encoding="utf-8"))) if (APP / "dataquery.py").exists() else set()
-    ai_w = set(_sql_writes((APP / "ai.py").read_text(encoding="utf-8"))) if (APP / "ai.py").exists() else set()
+    rpt_calls = sorted(set(re.findall(r"\b(conn\.x|conn\.tx|numbering\.next|notify\.emit|audit\.log_change)\(", rpt_text)))
     rpt_contract = contract.get("RPT", set())
-    rpt_bad = sorted((rpt_own | dq_w | ai_w) - rpt_contract - ALWAYS)
-    # 질의(쓰기)를 부르는 곳 — dataquery.ask · ai.complete · conn.tx 가 POST 핸들러(run_query) 안에만 있어야 GET 8 이 로그를 쓰지 않는다
-    writers = []
-    for m in re.finditer(r"\b(dataquery\.ask|ai\.complete|conn\.tx)\(", rpt_text):
-        func = re.findall(r"^def (\w+)\(", rpt_text[: m.start()], re.M)
-        writers.append((m.group(1), func[-1] if func else "?"))
-    get_handlers = re.findall(r"@router\.get\([^)]*\)[^\n]*\ndef (\w+)\(", rpt_text)
-    post_handlers = re.findall(r"@router\.post\([^)]*\)[^\n]*\ndef (\w+)\(", rpt_text)
-    writers_ok = bool(writers) and all(fn in post_handlers for _, fn in writers)
-    report.add("G-05", "RPT 라우터 · dashboard.py 직접 쓰기 0 · 질의 로그는 dataquery · ai 뿐 · dataquery.ask 는 POST run_query 안에서만 (정적)",
-               bool(rpt_text) and not rpt_own and not rpt_bad and dq_w <= {"data_query_log"} and ai_w <= {"sys_ai_call_log"} and writers_ok,
-               f"rpt.py 직접 쓰기 {sorted(rpt_own) or 0} · dataquery.py 쓰기 {sorted(dq_w)} · ai.py 쓰기 {sorted(ai_w)} ⊆ F-RPT 「쓰는 테이블」 {sorted(rpt_contract)} · "
-               f"계약 밖 {rpt_bad or 0} · 쓰기 호출 {sorted(set(writers))} 전부 POST 핸들러 {post_handlers} 안 {writers_ok} · GET 핸들러 {len(get_handlers)} 에는 없음 · "
+    post_handlers = re.findall(r"@router\.post\(", rpt_text)
+    report.add("G-05", "RPT 라우터 · dashboard.py 쓰기 0 · conn.x/tx · numbering · notify 0 · RPT 「쓰는 테이블」 0 · POST 0 (정적 · D-529)",
+               bool(rpt_text) and not rpt_own and not rpt_calls and not rpt_contract and not post_handlers,
+               f"rpt.py 쓰기 문 {sorted(rpt_own) or 0} · 쓰기 호출 {rpt_calls or 0} · 계약 RPT 「쓰는 테이블」 {sorted(rpt_contract) or 0} · POST 핸들러 {len(post_handlers)} · "
                f"대시보드 집계 캐시 테이블 없음(dashboard.py 쓰기 0 — 위 행)")
     static_doc(report)
 
@@ -524,9 +514,18 @@ READ_SCREENS = ["/trk/orders", "/trk/due", "/trk/customers", "/lot/forward", "/l
                 "/prp/machines", "/prp/completion", "/wo/status", "/inv/stock", "/qc/history", "/shp/history", "/",
                 "/col/uploads", "/col/upload-history", "/col/customer-map", "/col/collections", "/col/receivables",
                 "/col/aging", "/col/shipment-vs-collection"]
-#: 행 수 diff 에서 빼는 로그 테이블 — 조회 로그(모든 GET 이 쓴다) · 변경 로그 · 질의 · AI 로그는 **다른 세션의 쓰기**(동시에 도는 QA 의 POST · 질의)로
-#: 늘어난다. 대시보드 GET 이 질의 로그를 쓰지 않는 것은 정적 행(「RPT 라우터 … dataquery.ask 는 POST run_query 안에서만」)이 보증한다
-LOG_TABLES = {"sys_access_log", "sys_change_log", "data_query_log", "sys_ai_call_log"}
+#: 행 수 diff 에서 빼는 로그 테이블 — 조회 로그(모든 GET 이 쓴다) · 변경 로그는 **다른 세션의 쓰기**(동시에 도는 QA 의 POST)로 늘어난다
+LOG_TABLES = {"sys_access_log", "sys_change_log"}
+#: 반영된 수금 행 — QA2 독립 SQL(업무 표 직접 · 앱 코드와 다른 두 번째 계산). 반영 회차의 error 없는 해석 행 · 사용 중 매핑만
+COLL_SQL = """(select b.batch_no, u.parsed ->> 'customer_code' as erp_customer_code, c.customer_code,
+                      nullif(u.parsed ->> 'txn_date', '')::date as txn_date,
+                      nullif(u.parsed ->> 'sales_amount', '')::numeric(16,2) as sales_amount,
+                      nullif(u.parsed ->> 'collected_amount', '')::numeric(16,2) as collected_amount
+                 from erp_upload_row u
+                 join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
+                 left join erp_customer_map cm on cm.erp_code = u.parsed ->> 'customer_code' and cm.use_yn = 'Y'
+                 left join customer c on c.id = cm.customer_id
+                where u.error is null and u.parsed is not null) coll"""
 
 
 def num(text: str) -> Decimal:
@@ -1566,7 +1565,7 @@ class Flow:
         bA2 = self.q1("select * from erp_upload_batch where id = %s", (A2["id"],))
         rowsA = self.q("select row_no, error from erp_upload_row where batch_id = %s order by row_no", (A["id"],))
         live_n = self.q1("select count(*) as n from erp_upload_batch where period_from = %s and period_to = %s and status = '반영'", P)["n"]
-        viewA = self.q1("select count(*) as n from v_dq_collections where batch_no = %s", (bA["batch_no"],))["n"]
+        viewA = self.q1("select count(*) as n from " + COLL_SQL + " where batch_no = %s", (bA["batch_no"],))["n"]
         nA_after = notes_for(A["id"])
         nA2 = notes_for(A2["id"])
         self.db(f"{bA['batch_no']} {bA_after['status']} replaced_by {bA_after['replaced_by']} · 행 {len(rowsA)} · {bA2['batch_no']} {bA2['status']} {bA2['round_no']}회차")
@@ -1576,9 +1575,9 @@ class Flow:
                    and len(rowsA) == 4 and bA_after["row_count"] == 4 and all(r["error"] for r in rowsA),
                    f"기간 {P[0]}~{P[1]}: {bA['batch_no']} 1회차 → {bA2['batch_no']} 2회차(응답 replaced {A2['replaced']}) · 이전 status {bA_after['status']} "
                    f"replaced_by {bA_after['replaced_by']} (= 새 회차 id {A2['id']}) · 이전 회차 행 4→{len(rowsA)} 그대로 · 새 회차 {bA2['status']} · 행 {A2['rows']} 오류 {A2['errors']}")
-        self.r.add("G-12", "기간마다 반영 하나 · v_dq_collections 는 반영 회차만",
+        self.r.add("G-12", "기간마다 반영 하나 · 반영 행(독립 SQL)은 반영 회차만",
                    live_n == 1 and viewA == 0,
-                   f"기간 {P[0]}~{P[1]} 의 반영 회차 {live_n} · 교체 회차 {bA['batch_no']} 의 뷰 행 {viewA} (이전엔 오류 4 라 0 · 교체 뒤에도 0)")
+                   f"기간 {P[0]}~{P[1]} 의 반영 회차 {live_n} · 교체 회차 {bA['batch_no']} 의 반영 행 {viewA} (이전엔 오류 4 라 0 · 교체 뒤에도 0)")
         self.r.add("G-11", "erp_upload_error",
                    ok_note and again == 0 and n_after == 1 and nA_after and nA_after[0]["handled_at"] is not None
                    and [n["to_role"] for n in nA2] == ["AC"] and nA2[0]["handled_at"] is None,
@@ -1614,7 +1613,7 @@ class Flow:
         bB_after = self.q1("select * from erp_upload_batch where id = %s", (B["id"],))
         rowsB = self.q("select row_no, error, updated_at from erp_upload_row where batch_id = %s order by row_no", (B["id"],))
         nB_after = notes_for(B["id"])
-        viewB = self.q1("select count(*) as n from v_dq_collections where batch_no = %s and customer_code = %s", (bB["batch_no"], f"{t}-C2"))["n"]
+        viewB = self.q1("select count(*) as n from " + COLL_SQL + " where batch_no = %s and customer_code = %s", (bB["batch_no"], f"{t}-C2"))["n"]
         self.r.add("G-11", "erp_upload_error — 매핑 뒤 재해석으로 오류 0 이면 닫힘",
                    bB["error_count"] == 2 and [n["to_role"] for n in nB] == ["AC"] and nB[0]["handled_at"] is None
                    and (m2["reinterpreted"], m2["applied"], m2["still_error"], m2["remapped"]) == (2, 2, 0, 2)
@@ -1656,9 +1655,9 @@ class Flow:
                    f"(remapped = applied {m1_['remapped']} · 문장 「{m1_.get('message', '')[-48:]}」 — DEF-QA2-004 해소) · 교체 회차 {bA['batch_no']} 오류 4 그대로 · "
                    f"남은 오류 4 라 알림 열린 채 · 매핑 뒤 목록에서 E 사라짐 · U 남음")
         # 반영에서 빠진다 — 뷰 · COL-040 · COL-050 · COL-020 오류 행
-        viewA2 = self.q("select erp_customer_code, sales_amount, collected_amount from v_dq_collections where batch_no = %s order by txn_date",
+        viewA2 = self.q("select erp_customer_code, sales_amount, collected_amount from " + COLL_SQL + " where batch_no = %s order by txn_date",
                         (bA2["batch_no"],))
-        viewU = self.q1("select count(*) as n from v_dq_collections where erp_customer_code = %s", (U,))["n"]
+        viewU = self.q1("select count(*) as n from " + COLL_SQL + " where erp_customer_code = %s", (U,))["n"]
         c040 = self.get("COL-040 수금 현황(거래처 C1 · 이 달)", "ac",
                         f"/col/collections?date_from={m1.isoformat()}&date_to={m_last.isoformat()}&customer={C1}").text
         c040_rows = re.findall(r'<tr data-erp-code="([^"]+)"', c040)
@@ -1668,7 +1667,7 @@ class Flow:
         detail2 = self.get("COL-020 회차별 오류 행 (E 매핑 뒤)", "ac", f"/col/upload-history?batch={A2['id']}").text
         err_rows_after = sorted(int(x) for x in re.findall(r'<tr data-row="(\d+)"', detail2))
         self.db(f"뷰 {len(viewA2)}행 · U {viewU} · COL-040 행 {c040_rows} · COL-050 {c050_nums} · COL-020 오류 행 {err_rows_after}")
-        self.r.add("G-13", "오류 행 · 미매핑 행은 반영에서 제외 (v_dq_collections · COL-040 · COL-050) · COL-020 에는 보임",
+        self.r.add("G-13", "오류 행 · 미매핑 행은 반영에서 제외 (독립 SQL · COL-040 · COL-050) · COL-020 에는 보임",
                    len(viewA2) == 2 and {r["erp_customer_code"] for r in viewA2} == {E} and viewU == 0
                    and c040_rows == [E, E] and U not in c040 and c050_nums == (Decimal(1000), Decimal(300), Decimal(700)) and U not in c050
                    and err_rows_after == [4, 5, 6, 7],
@@ -1681,7 +1680,7 @@ class Flow:
         ind1, ind2 = self.indep_ship_vs_coll(ym, C1), self.indep_ship_vs_coll(ym, C2)
         mod = {r["customer_id"]: (r["shipments"], r["shipped_qty"], r["sales_amount"], r["collected_amount"])
                for r in stats.shipment_vs_collection(ym, ym)["rows"] if r["ym"] == ym}
-        view_c1 = self.q1("""select sum(sales_amount) as s, sum(collected_amount) as c from v_dq_collections
+        view_c1 = self.q1("select sum(sales_amount) as s, sum(collected_amount) as c from " + COLL_SQL + """
                               where customer_code = %s and to_char(txn_date, 'YYYY-MM') = %s""", (f"{t}-C", ym))
         v["col070"] = {"ym": ym, "C1": C1, "C2": C2, "screen": {C1: screen_all.get(C1), C2: screen_all.get(C2)}, "indep": {C1: ind1, C2: ind2},
                        "E": E, "U": U, "E2": E2}
@@ -1693,9 +1692,9 @@ class Flow:
                    screen_all.get(C2) == ind2 == (None, None, Decimal(500), Decimal(200)) and viewU == 0 and U not in self.c("ac").get(
                        f"/col/shipment-vs-collection?ym_from={ym}&ym_to={ym}").text,
                    f"{ym} {t}-C2: 화면 {screen_all.get(C2)} = 독립 SQL {ind2} (기대 (None, None, 500, 200)) · {U}(미매핑 77/77) 뷰 {viewU} · 화면에 없음")
-        self.r.add("G-14", "stats.shipment_vs_collection = 독립 SQL · 뷰(v_dq_collections) = 테이블 직접 집계",
+        self.r.add("G-14", "stats.shipment_vs_collection = 독립 SQL · 반영 행 합(독립 SQL) = 테이블 직접 집계",
                    mod.get(C1) == ind1 and mod.get(C2) == ind2 and (view_c1["s"], view_c1["c"]) == ind1[2:],
-                   f"모듈 C1 {mod.get(C1)} C2 {mod.get(C2)} · 뷰 C1 매출 · 수금 ({view_c1['s']}, {view_c1['c']}) = 테이블 직접 {ind1[2:]} · 건 단위 짝짓기 없음(월 · 거래처 합만)")
+                   f"모듈 C1 {mod.get(C1)} C2 {mod.get(C2)} · 반영 행 C1 매출 · 수금 ({view_c1['s']}, {view_c1['c']}) = 테이블 직접 {ind1[2:]} · 건 단위 짝짓기 없음(월 · 거래처 합만)")
 
     # ════════════════════════════════════════════════════════════════════════
     # W3 대시보드 — G-15 (dashboard 8 함수 = QA2 독립 SQL = 화면 KPI · 표 · SVG <title>) · G-05 RPT 8 화면 diff 0
@@ -2350,7 +2349,7 @@ class Flow:
         self.r.add("G-05", "RPT 대시보드 8 화면 GET 전후 업무 테이블 diff 0 (캐시 없음 · D-512)",
                    not diff and all(c == 200 for c in codes),
                    f"ex GET {len(paths)} (RPT-010~080 · 기본 기간 2 · 요약 탭 3) 응답 {sorted(set(codes))} · 업무 테이블 {len(before)} diff {diff or 0} "
-                   f"(로그 4 제외 — 다른 세션이 동시에 쓴다 · GET 이 질의 로그를 쓰지 않는 것은 정적 행 「dataquery.ask 는 POST run_query 안에서만」)")
+                   f"(로그 2 제외 — 다른 세션이 동시에 쓴다 · RPT 는 POST 가 없다 — 정적 행)")
 
     # ════════════════════════════════════════════════════════════════════════
     # 정리

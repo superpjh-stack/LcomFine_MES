@@ -15,6 +15,13 @@ from lcomfine.db import conn
 from test_dev3_world import World, login
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#: 반영된 수금 행 — 업무 표 직접(독립 SQL): 반영 회차 · error 없는 해석 행 · 사용 중 매핑 (옛 허용 뷰는 D-529 로 없앴다)
+COLL = """(select b.batch_no, u.parsed ->> 'customer_code' as erp_customer_code,
+                  nullif(u.parsed ->> 'txn_date', '')::date as txn_date,
+                  nullif(u.parsed ->> 'sales_amount', '')::numeric(16,2) as sales_amount,
+                  nullif(u.parsed ->> 'collected_amount', '')::numeric(16,2) as collected_amount
+             from erp_upload_row u join erp_upload_batch b on b.id = u.batch_id and b.status = '반영'
+            where u.error is null and u.parsed is not null) coll"""
 #: 테스트 매핑 — MES 항목 → 엑셀 열 이름 (전부 테스트 전용 이름)
 H = {"customer_code": "T3거래처코드", "txn_date": "T3일자", "sales_amount": "T3매출액", "collected_amount": "T3수금액",
      "balance_amount": "T3잔액", "method": "T3수단", "bill_due_date": "T3어음만기"}
@@ -147,7 +154,7 @@ def test_upload_applies_replaces_and_keeps_history(c, w):
     col = stats.collections(*P1, w.customer_id)
     assert col["total"] == {"rows": 2, "sales_amount": Decimal("1000.00"), "collected_amount": Decimal("600.00")}
     assert [x["bill_due"] for x in col["rows"]] == [None, "도래"]
-    assert conn.q1("select count(*) as n from v_dq_collections where batch_no = %s", (b1["batch_no"],))["n"] == 2
+    assert conn.q1("select count(*) as n from " + COLL + " where batch_no = %s", (b1["batch_no"],))["n"] == 2
     # 같은 기간 재업로드 = 새 회차 반영 · 이전 회차 교체 · 이전 행 보존 (G-12)
     r2 = w.upload(c["ac"], *P1, [row(w.code, "1990-01-05", "1000", "0"), row(w.code, "1990-01-20", "0", "700"),
                                   row(w.code, "1990-01-25", "0", "100")])
@@ -162,7 +169,7 @@ def test_upload_applies_replaces_and_keeps_history(c, w):
     assert w.notes(b2["id"]) == []                                          # 오류 0 → 알림 없음
     col2 = stats.collections(*P1, w.customer_id)
     assert col2["total"]["collected_amount"] == Decimal("800.00") and col2["total"]["rows"] == 3
-    assert conn.q1("select count(*) as n from v_dq_collections where batch_no = %s", (b1["batch_no"],))["n"] == 0
+    assert conn.q1("select count(*) as n from " + COLL + " where batch_no = %s", (b1["batch_no"],))["n"] == 0
     assert conn.q1("select count(*) as n from erp_upload_batch where period_from = %s and period_to = %s and status = '반영'",
                    P1)["n"] == 1
     assert conn.q1("select count(*) as n from sys_change_log where function_id = 'F-COL-011' and target = %s",
@@ -298,7 +305,7 @@ def test_customer_map_create_counts_only_rows_that_become_applied(c, w):
     assert all(erp_upload.UNMAPPED_PREFIX not in (x["error"] or "") for x in rows)      # 미매핑 글자는 전부 사라졌다
     assert "일자" in rows[2]["error"] and "매출액" in rows[3]["error"]
     assert w.batch(bid)["error_count"] == 2 and w.notes(bid)[0]["handled_at"] is None   # 오류가 남아 알림은 열린 채
-    assert conn.q1("select count(*) as n from v_dq_collections where erp_customer_code = %s", (w.code,))["n"] == 2
+    assert conn.q1("select count(*) as n from " + COLL + " where erp_customer_code = %s", (w.code,))["n"] == 2
     assert conn.q1("select detail from sys_change_log where function_id = 'F-COL-031' and target = %s order by id desc limit 1",
                    (f"erp_customer_map:{w.code}",))["detail"].endswith("다시 해석한 행 4 · 그중 반영 2 · 다른 오류로 여전히 제외 2")
 
@@ -484,7 +491,7 @@ def test_shipment_vs_collection_independent_aggregates(c, w):
     ship = conn.q1("""select count(distinct o.id) as n, sum(l.qty) as q from shipment_order o join shipment_line l on l.shipment_order_id = o.id
                        where o.customer_id = %s and o.status = '확정' and o.confirmed_at >= '1992-03-01' and o.confirmed_at < '1992-04-01'""",
                    (w.customer_id,))
-    erp = conn.q1("""select sum(sales_amount) as s, sum(collected_amount) as c from v_dq_collections
+    erp = conn.q1("select sum(sales_amount) as s, sum(collected_amount) as c from " + COLL + """
                       where erp_customer_code = %s and txn_date >= '1992-03-01' and txn_date < '1992-04-01'""", (w.code,))
     assert (ship["n"], ship["q"], erp["s"], erp["c"]) == (2, Decimal("15"), Decimal("1000.00"), Decimal("400.00"))
     page = c["sh"].get("/col/shipment-vs-collection", params={"ym_from": "1992-03", "ym_to": "1992-04", "customer": str(w.customer_id)})

@@ -57,8 +57,8 @@ def _rows(rep: cs.Report) -> None:
 
 @pytest.mark.fn(*DOC_ALL)
 def test_g02_doc_6_functions_route_marks_and_deps(lab):
-    """범위 기능 136(W1~W4 · LATER_MENUS 비움): API 가 라우트에 글자 그대로 · 표식 · 쓰기 67(DOC 4) 은 require_fn(<그 기능 ID>) 하나 ·
-    조회 69(DOC 2) 는 require_screen(화면). DOC 6 의 메서드 · 경로 · 권한 예외는 function-list 그대로."""
+    """범위 기능 134(W1~W4 · LATER_MENUS 비움): API 가 라우트에 글자 그대로 · 표식 · 쓰기 66(DOC 4) 은 require_fn(<그 기능 ID>) 하나 ·
+    조회 68(DOC 2) 는 require_screen(화면). DOC 6 의 메서드 · 경로 · 권한 예외는 function-list 그대로."""
     from lcomfine.app import contracts
 
     assert cs.LATER_MENUS == ()

@@ -7,7 +7,7 @@
 이미 `.env` 가 있으면 **있는 키는 한 글자도 바꾸지 않는다.** 하는 일은 둘뿐이다:
   · `.env` 에서 값이 비어 있는 비밀 줄(`KEY=`)을 난수로 채운다
   · `.env.example` 에 있는데 `.env` 에 줄째로 없는 키를 뒤에 덧붙인다 — 비밀이면 난수, 아니면 예시 줄 그대로
-    (`LCOMFINE_OPENAI_API_KEY=` 처럼 예시가 빈 값이면 빈 줄로 — 키 값은 사람이 넣는다)
+    (예시가 빈 값이면 빈 줄로 — 그 값은 사람이 넣는다)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV = ROOT / ".env"
 EXAMPLE = ROOT / ".env.example"
-#: 난수로 채우는 비밀. `LCOMFINE_OPENAI_API_KEY` 는 비밀이지만 난수로 만들 수 없으므로 여기 없다(빈 줄로 둔다)
+#: 난수로 채우는 비밀
 SECRETS = ("LCOMFINE_SESSION_SECRET", "LCOMFINE_SEED_PASSWORD", "LCOMFINE_DB_PASSWORD", "LCOMFINE_APP_DB_PASSWORD", "LCOMFINE_SSO_SECRET")
 
 

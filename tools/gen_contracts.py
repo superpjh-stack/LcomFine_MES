@@ -167,7 +167,7 @@ def render_writes() -> str:
 
 
 def render_screens() -> str:
-    """화면 67 → `ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당` (nav.py 순서 = 정본 순서)."""
+    """화면 66 → `ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당` (nav.py 순서 = 정본 순서)."""
     bundles = {k: name for k, name, _ in nav.BUNDLES}
     out = ["| ID | 화면 | 유형 | 경로 | 대메뉴 | 묶음 | 담당 |", "|---|---|---|---|---|---|---|"]
     for s in nav.SCREENS:
