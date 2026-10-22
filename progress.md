@@ -60,6 +60,16 @@ QA 리포트 3종에 **치명 결함 0** · 열린 결함 0 이다. 남은 것�
 4. 백업은 `docker compose run --rm seed /app/.venv/bin/python tools/backup.py backup` · 복구 검사는 같은 방식의 `restore-check`(createdb 는 소유자 역할에만 있다).
 5. 이미 데이터가 있는 DB 의 스키마 변경은 ALTER 이관으로 하고 `schema.sql` 과 맞춘다.
 
+## 2026-10-22 샘플 데이터 (`tools/sample_data.py`)
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 넣은 것 | 거래처 100 · 품목 100(원자재 50 · 제품 50) · 생산의뢰 100 → 지시 92 · 원자재 LOT 145 · 제품 LOT 101 · 출하 103(확정 79) · ERP 수금 행 100(6 회차 · 오류 3 · 미매핑 3) — 이름 전부 `(예시)` · 코드 `SMP-` | `psql` 행 수 · 실행 출력 |
+| 넣는 방법 | 앱 HTTP 로 부서 계정을 교대하며(1,524 요청 · 15초) — 채번 · 재고 · 알림 · 감사 로그가 계약대로 · 불변 이력 0 행 | `uv run python tools/sample_data.py` (`--count N` · `--clean`) |
+| 넣은 뒤 | 전 DB 출하 역추적 104 · 정방향 135 = 독립 SQL 불일치 0 · `make gate` PASS 22 · BLOCKED 1 · 미검증 1(G-23 은 gate-full) | `uv run python tools/check_data.py` (rc 0) · `make gate` |
+| 검사기 손질 | `check_data.py` 의 「SHP-010 LOT 목록에 없음」 두 검사가 페이지 전체에서 `value="id"` 를 찾아 거래처 선택지 숫자와 겹치면 거짓 판정 → LOT 선택 칸 안에서만 찾게(`stock_listed`) | `tests/test_qa2_*.py` 45 passed |
+| 로그인 | 로컬 개발용 — 시드 계정 8 의 비밀번호를 `.env` 의 `LCOMFINE_SEED_PASSWORD` 로 맞췄다(값은 `.env` 에만 · `admin` 으로 로그인) | `uv run python tools/reset_passwords.py` |
+
 ## 2026-10-22 W4 문서 SSO 실측 (개발1 · 아키텍트 → QA 3 → 결함 수정 → gate-full)
 
 | 항목 | 실측 | 검증 방법 |

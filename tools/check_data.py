@@ -150,6 +150,13 @@ def contract_writes() -> dict[str, set[str]]:
     return out
 
 
+
+def stock_listed(html: str, stock_id: str) -> bool:
+    """SHP-010 의 LOT 선택 칸(`<select name="stock_id">`) 안에만 그 재고 행이 있는가 — 페이지 전체에서 찾으면
+    거래처 · 품목 `<option value>` 의 숫자와 겹쳐 거짓으로 「목록에 있음」 이 된다(샘플 데이터로 드러남)."""
+    blocks = re.findall(r'<select name="stock_id">(.*?)</select>', html, flags=re.S)
+    return any(f'value="{stock_id}"' in b for b in blocks)
+
 def schema_exceptions() -> set[str]:
     """db-schema.md §2.2 예외 표에 나온 테이블 이름 전부."""
     text = (ROOT / "contracts/db-schema.md").read_text(encoding="utf-8")
@@ -1092,7 +1099,7 @@ class Flow:
         # 검사대기 제품 LOT 할당 → 422 (화면에는 가용 LOT 만 나온다 — 재고 행 id 를 직접 넣어 본다)
         p3sid = str(self.stock1("제품", v["P3"])["id"])
         html = self.c("sl").get("/shp/orders").text
-        listed = f'value="{p3sid}"' in html
+        listed = stock_listed(html, p3sid)
         code, _ = self.try_post("SHP-010 출하 지시(검사대기 LOT)", "sl", "/shp/orders",
                                 {"customer_id": str(self.customer_id), "due_date": self.today.isoformat(),
                                  "stock_id": [p3sid], "qty": ["1"]})
@@ -1197,7 +1204,7 @@ class Flow:
         self.post("BAS-010 제품 품목 사용 중지", "pr", f"/bas/items/{v['item_p']}",
                   {"item_name": f"{self.tag} 제품 (예시)", "item_type": "제품", "unit": "EA", "use_yn": "N"})
         html = self.c("sl").get("/shp/orders").text
-        listed = f'value="{sid}"' in html
+        listed = stock_listed(html, sid)
         code, _ = self.try_post("SHP-010 출하 지시(사용 중지 품목 LOT)", "sl", "/shp/orders",
                                 {"request_no": v["R1"], "stock_id": [sid], "qty": ["1"]})
         self.post("BAS-010 제품 품목 다시 사용", "pr", f"/bas/items/{v['item_p']}",
