@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "앞 단계 부서가 일을 끝내면 내 부서로 알림이 옵니다. 바로가기로 처리 화면을 열어 일을 마친 뒤 「처리」를 누릅니다.") }}
+{{ ui.help_rule("알림은 부서 단위로 옵니다. 한 사람이 처리하면 같은 부서의 다른 사람에게도 「처리됨」으로 바뀝니다.") }}
+{{ f.next("HOME-030", "내 부서가 받는 알림 종류 보기") }}
+{{ f.next("HOME-010", "부서 대기 건수 보기") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }} <small class="muted">{{ user.role_name }}</small></h1>
-  <p class="muted">앞 단계 부서가 일을 끝내면 다음 부서에 자동으로 알린다 · 알림은 부서 단위로 가고, 한 사람이 처리하면 같은 부서의 다른 사람에게는
-    "처리됨"으로 바뀐다 · 알림을 눌러 연 화면에서 처리하면 알림이 닫힌다 · <a href="{{ nav.path_of('HOME-030') }}">알림 설정</a></p>
-</section>
+{{ ui.screen_head(screen.name, [(nav.path_of('HOME-030'), "알림 설정")], sub=user.role_name) }}
 
 <section class="panel">
   <h2>안 읽음 <small class="muted">{{ unread_rows | length }}건</small></h2>

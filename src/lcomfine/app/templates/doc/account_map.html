@@ -1,34 +1,41 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "MES 사용자(사번)를 문서관리 계정 ID 에 잇습니다. 연결된 사용자만 MES 에서 문서관리로 바로 넘어갈 수 있습니다.") }}
+{{ ui.help_rule("한 MES 사용자에 문서관리 계정 하나만(1:1) 이을 수 있습니다.") }}
+{{ ui.help_rule("매핑이 없거나 사용 중지면, 또는 사용자가 비활성이면 문서관리로 넘어가지 않습니다.") }}
+{{ ui.help_rule("엑셀 일괄 등록은 오류 행이 하나라도 있으면 아무것도 등록하지 않고 행마다 사유를 보여 줍니다.") }}
+{{ ui.undecided_note("D-517", "양쪽 사번이 같을 때 매핑 없이 넘기는 방식") }}
+{{ f.next("SYS-010", "사용자 비활성 · 부서 변경") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">MES 사용자(사번) ↔ 문서관리 계정 ID 를 1:1 로 잇는다 — 매핑이 없거나 사용 중지면 SSO 토큰을 발급하지 않는다.
-    MES 에서 사용자를 비활성으로 바꾸면 발급도 바로 막힌다(<a href="{{ nav.path_of('SYS-010') }}">사용자 관리</a>).</p>
-  <p class="muted" data-same-id="undecided">양쪽 사번이 같으면 매핑 없이 사번을 넘기는 방식 — {{ ui.undecided("D-517") }} · 그동안 매핑은 필수.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "사번·이름·계정 ID", form.q) }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-DOC-021") and not edit %}<a class="btn btn-primary" href="#map-form">＋ 계정 매핑 등록</a>{% endif %}
+{% endcall %}
+<p class="muted form-note" data-same-id="undecided">MES 사용자와 문서관리 계정은 1:1 로 잇습니다 · 양쪽 사번이 같으면 매핑 없이 넘기는 방식은 {{ ui.undecided("D-517", "설계 때 확정") }} — 그동안 매핑은 필수입니다.</p>
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="사번 · 이름 · 계정 ID"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q %}<a class="btn btn-ghost" href="{{ nav.path_of('DOC-020') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("계정 매핑 수정 — " ~ edit.login_id, "/doc/account-map/" ~ edit.id, "F-DOC-022", cancel=nav.path_of("DOC-020")) %}
+{% call f.form_box("계정 매핑 수정 — " ~ edit.login_id, "/doc/account-map/" ~ edit.id, "F-DOC-022", open=true, cancel=nav.path_of("DOC-020"), icon="✎", id="map-form") %}
   {{ f.input("login_id", "MES 사용자", edit.login_id ~ " · " ~ edit.user_name, readonly=true) }}
   {{ f.input("account_id", "문서관리 계정 ID", edit.account_id, required=true) }}
   {{ f.use_select("Y" if edit.active else "N") }}
 {% endcall %}
 {% else %}
+{% set err_back = flash and flash.kind == "warn" %}
 {% set opts = [] %}{% for u in free_users %}{% set _ = opts.append((u.user_id, u.login_id ~ " · " ~ u.user_name)) %}{% endfor %}
-{% call f.form_panel("계정 매핑 등록", "/doc/account-map", "F-DOC-021") %}
+{% call f.form_box("계정 매핑 등록", "/doc/account-map", "F-DOC-021", open=err_back, id="map-form") %}
   {{ f.select("user_id", "MES 사용자", opts, required=true) }}
   {{ f.input("account_id", "문서관리 계정 ID", required=true) }}
 {% endcall %}
-{% call f.form_panel("엑셀 일괄 등록", "/doc/account-map", "F-DOC-021", enctype="multipart/form-data") %}
+{% call f.form_box("엑셀 일괄 등록", "/doc/account-map", "F-DOC-021", open=err_back, enctype="multipart/form-data", icon="⇪") %}
   <label class="field"><span>엑셀 파일 (.xlsx) <b aria-hidden="true">*</b></span><input type="file" name="file" accept=".xlsx" required></label>
-  <p class="muted">첫 시트 · 1행 열 이름 {% for h in headers %}<code>{{ h }}</code>{% if not loop.last %} · {% endif %}{% endfor %} ·
-    오류 행이 하나라도 있으면 아무것도 등록하지 않고 행마다 사유를 보인다.</p>
+  <p class="muted form-note field--wide">첫 시트 · 1행 열 이름 {% for h in headers %}<code>{{ h }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</p>
 {% endcall %}
 {% endif %}
 

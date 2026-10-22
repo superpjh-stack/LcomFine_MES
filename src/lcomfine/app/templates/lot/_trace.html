@@ -1,6 +1,35 @@
-{# trace 결과 렌더 — 단계(steps) 순서대로 노드 표. 읽기만 한다. #}
+{# 추적 결과 렌더 — 단계 사슬(카드 + 화살표) → 단계별 상세 표. 읽기만 한다. #}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+
+{# 카드에 보일 번호 하나 #}
+{% macro _no(key, x) -%}
+{%- if key == "shipments" %}{{ x.shipment_no }}{% elif key == "product_lots" or key == "material_lots" %}{{ x.lot_no }}{% elif key == "work_orders" %}{{ x.work_order_no }}{% elif key == "issues" %}{{ x.material_lot_no }}{% endif -%}
+{%- endmacro %}
+
+{# ── 단계 사슬 — 단계마다 카드(건수 · 앞 번호 3개 · 상세로 가기) · 사이에 화살표 ── #}
+{% macro chain(r) -%}
+{% set bad_lots = r.rejected_after_shipment | map(attribute="product_lot_no") | list %}
+<nav class="panel" aria-label="추적 단계">
+  <ol class="chain">
+  {% for st in r.steps %}
+    {% set items = r[st.key] %}
+    {% if not loop.first %}<li aria-hidden="true" class="chain__arrow">→</li>{% endif %}
+    <li class="kpi" data-chain="{{ st.key }}">
+      <span class="kpi__label">{{ loop.index }}. {{ st.label }}</span>
+      <strong class="kpi__value num">{{ items | length }}<small> 건</small></strong>
+      <div class="kpi__note">
+        {% for x in items[:3] %}<div class="truncate"><code title="{{ _no(st.key, x) }}">{{ _no(st.key, x) }}</code></div>{% endfor %}
+        {% if items | length > 3 %}<span class="muted">외 {{ items | length - 3 }}</span>{% endif %}
+        {% if not items %}<span class="muted">없음</span>{% endif %}
+      </div>
+      {% if st.key == "product_lots" and bad_lots %}<span class="chip chip--bad">출하 후 불합격 {{ bad_lots | length }}</span>{% endif %}
+      {% if items %}<a class="kpi__note" href="#step-{{ st.key }}">상세 보기 ↓</a>{% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+</nav>
+{%- endmacro %}
 
 {% macro step_table(key, rows) -%}
 {% if not rows %}{{ ui.empty() }}{% else %}
@@ -37,13 +66,14 @@
 {% macro render(r) -%}
 {% if r.rejected_after_shipment %}
 <section class="panel alert alert--bad" role="alert">
-  <strong>출하 후 불합격</strong> — 이미 확정된 출하에 들어간 제품 LOT 이 출하 뒤 재판정에서 불합격이다. 출하는 바꾸지 않는다(D-515 · 반품·정정은 SHP-020).
+  <strong>출하 후 불합격</strong> — 확정된 출하에 들어간 제품 LOT 이 출하 뒤 재판정에서 불합격입니다. 나간 출하는 바뀌지 않으니, 반품 · 정정은 <a href="{{ nav.path_of('SHP-020') }}">출하 확정</a> 화면에서 합니다.
   <ul>{% for x in r.rejected_after_shipment %}<li data-flag="rejected-after-shipment"><code>{{ x.product_lot_no }}</code> · 출하 <code>{{ x.shipment_no }}</code> 확정 {{ x.confirmed_at | dt }} · {{ x.seq }}차 불합격 {{ x.inspected_at | dt }}</li>{% endfor %}</ul>
 </section>
 {% endif %}
+{{ chain(r) }}
 {% for st in r.steps %}
-<section class="panel panel--grid">
-  <h2 class="ph__owner">{{ loop.index }}. {{ st.label }} <small class="muted">{{ r[st.key] | length }}건</small></h2>
+<section class="panel panel--grid" id="step-{{ st.key }}">
+  <h2>{{ loop.index }}. {{ st.label }} <small class="muted">{{ r[st.key] | length }}건</small></h2>
   {{ step_table(st.key, r[st.key]) }}
 </section>
 {% endfor %}

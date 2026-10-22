@@ -1,39 +1,50 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "일자를 고르고 지시별 공정 검사 수량과 불량 수량을 불량유형별로 입력합니다. 입고검사 · 제품검사 판정과는 따로 쌓이는 기록입니다.") }}
+{{ ui.help_rule("같은 지시 · 같은 일자의 검사일보는 한 행뿐입니다. 이미 있으면 목록에서 그 행을 고칩니다.") }}
+{{ ui.help_rule("불량 수량은 검사 수량을 넘을 수 없고, 유형별로 넣으면 그 합과 같아야 합니다. 불량 수량을 비우면 유형별 합으로 저장합니다.") }}
+{{ ui.help_next("INS-020", "검사일보 출력") }}
+{{ ui.help_next("QC-020", "제품 LOT 판정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "공정 검사 결과를 일 단위로 입력한다 (지시 × 일자) · 입고검사 · 제품검사 판정(품질 검사 메뉴)과는 다른 기록이다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
-    <button class="btn btn-primary">조회</button>
-    <a class="btn btn-ghost" href="{{ nav.path_of('INS-020') }}?date={{ f.date or today }}">출력</a>
-  </form>
-</section>
-{% if can_w %}
-<section class="panel">
-  <h2>검사일보 등록</h2>
-  {% if not work_orders %}{{ ui.empty("검사일보를 쓸 생산지시가 없습니다 — 생산지시서(WO-020)") }}{% else %}
+{% call ui.screen_head(screen.name) %}
+  <a class="btn" href="{{ nav.path_of('INS-020') }}?date={{ f.date or today }}">출력</a>
+{% endcall %}
+
+{% call ui.form_details("검사일보 등록", open=true, allowed=can_w) %}
+  {% if not work_orders %}{{ ui.empty("검사일보를 쓸 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}{% else %}
   <form method="post" action="{{ nav.path_of('INS-010') }}">
-    <div class="search">
-      <label class="field">일자<input type="date" name="work_date" value="{{ f.date or today }}" required></label>
-      <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
-      <label class="field">검사 수량<input name="inspected_qty" inputmode="decimal" required></label>
-      <label class="field">불량 수량 <small class="muted">비우면 유형별 합</small><input name="defect_qty" inputmode="decimal"></label>
+    <div class="form-grid">
+      <label class="field"><span>일자 <b aria-hidden="true">*</b></span><input type="date" name="work_date" value="{{ f.date or today }}" required></label>
+      <label class="field field--wide"><span>작업지시 <b aria-hidden="true">*</b></span><select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+      <label class="field"><span>검사 수량 <b aria-hidden="true">*</b></span><input name="inspected_qty" inputmode="decimal" required></label>
+      <label class="field"><span>불량 수량 <small class="muted">비우면 유형별 합</small></span><input name="defect_qty" inputmode="decimal"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
+    </div>
+    {% if defect_types %}
+    <h3>불량유형별 수량</h3>
+    <div class="form-grid">
       {% for d in defect_types %}
       <input type="hidden" name="defect_code" value="{{ d.code }}">
-      <label class="field">{{ d.code_name }}<input name="defect_code_qty" inputmode="decimal" size="5"></label>
+      <label class="field"><span>{{ d.code_name }}</span><input name="defect_code_qty" inputmode="decimal" size="5"></label>
       {% endfor %}
-      <label class="field">비고<input name="note"></label>
-      <button class="btn btn-primary">등록</button>
     </div>
+    {% endif %}
+    <div class="actions"><button class="btn btn-primary">등록</button></div>
   </form>
   {% endif %}
-</section>
-{% endif %}
-{{ u.readonly_note(can_w) }}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>일자</span><input type="date" name="date" value="{{ f.date }}"></label>
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.date or f.wo %}<a class="btn btn-ghost" href="{{ nav.path_of('INS-010') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>검사일보 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

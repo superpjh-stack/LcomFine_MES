@@ -1,21 +1,31 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "내 부서가 처리할 대기 건을 숫자로 봅니다. 카드 제목을 누르면 조건이 걸린 처리 화면이 열립니다.") }}
+{{ ui.help_item("숫자 보는 법", "화면을 열 때마다 새로 셉니다. 「미수집」은 셀 데이터가 아직 없다는 뜻이고, 0 으로 바꿔 적지 않습니다.") }}
+{{ f.next("HOME-020", "다른 부서가 보낸 알림 확인") }}
+{{ f.next("TRK-020", "납기 임박 · 지연 전체 보기") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }} <small class="muted">{{ user.role_name }}</small></h1>
-  <p class="muted">로그인한 사람의 부서에 맞는 대기 건만 모아 보여 준다 · 카드를 누르면 해당 처리 화면이 조건이 걸린 채 열린다 ·
-    할 일은 저장하지 않고 화면을 열 때 질의로 센다.</p>
-</section>
+{% set seen = [] %}{% for node in bundles %}{% for m in node.menus %}{% for x in m.screens %}{% set _ = seen.append(x.screen_id) %}{% endfor %}{% endfor %}{% endfor %}
+{% call ui.screen_head(screen.name, sub=user.role_name) %}
+  <a class="btn" href="{{ nav.path_of('HOME-020') }}">알림함</a>
+{% endcall %}
 
 {% for g in groups %}
 <section class="panel" data-dept="{{ g.dept }}">
   <h2>{{ g.dept }}</h2>
   <div class="kpis">
     {% for c in g.cards %}
-    <div class="kpi" data-card="{{ c.title }}">
-      <span class="kpi__label">{% if c.href %}<a href="{{ c.href }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}</span>
-      <strong class="kpi__value num">{% if c.count is none %}미수집{% elif c.count is string %}<span class="undecided">{{ c.count }}</span>{% else %}{{ c.count | num }}{% endif %}</strong>
-      <span class="kpi__note">{{ c.screen.name }} <code>{{ c.screen.screen_id }}</code>{% if c.note %} · {{ c.note }}{% endif %}{% if not c.href %} · 이 부서는 열 수 없는 화면{% endif %}</span>
+    <div class="kpi kpi--hero" data-card="{{ c.title }}">
+      <span class="kpi__label">{% if c.href %}<a href="{{ c.href }}">{{ c.title }} <span aria-hidden="true">→</span></a>{% else %}{{ c.title }}{% endif %}</span>
+      <strong class="kpi__value num">{% if c.count is none %}<span class="kpi__none">미수집</span>{% elif c.count is string %}{{ ui.undecided_text(c.count) }}{% else %}{{ c.count | num }}{% endif %}</strong>
+      {% if c.screen.screen_id == "RPT-080" %}
+      <span class="kpi__note">{% if c.href %}<a href="{{ c.href }}">{{ c.screen.name }} 대시보드 →</a>{% else %}{{ c.screen.name }} 대시보드{% endif %}</span>
+      {% else %}
+      <span class="kpi__note">{{ c.screen.name }}{% if c.note %} · {{ c.note }}{% endif %}{% if not c.href %} · 이 부서는 열 수 없는 화면{% endif %}</span>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -42,13 +52,14 @@
 </section>
 
 <section class="panel">
-  <h2>오늘 처리한 건 <small class="muted">{{ user.login_id }} · 변경 로그</small></h2>
+  <h2>오늘 처리한 건 <small class="muted">{{ user.login_id }}</small></h2>
   {% if today %}
   <div class="grid-wrap"><table class="grid">
-    <thead><tr><th>시각</th><th>화면</th><th>기능</th><th>대상</th><th>내용</th></tr></thead>
+    <thead><tr><th>시각</th><th>화면</th><th>내용</th></tr></thead>
     <tbody>
     {% for t in today %}
-    <tr><td>{{ t.changed_at | dt("%H:%M") }}</td><td>{{ t.screen_name }}</td><td><code>{{ t.function_id }}</code></td><td><code>{{ t.target }}</code></td><td>{{ t.detail | txt }}</td></tr>
+    <tr data-target="{{ t.target }}" data-fn="{{ t.function_id }}"><td>{{ t.changed_at | dt("%H:%M") }}</td>
+      <td>{% if t.screen_id in seen %}<a href="{{ nav.path_of(t.screen_id) }}">{{ t.screen_name }}</a>{% else %}{{ t.screen_name }}{% endif %}</td><td>{{ t.detail | txt }}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>

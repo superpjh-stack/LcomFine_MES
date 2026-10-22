@@ -51,6 +51,20 @@
     });
   }
 
+  /* 접힌 폼 열기 — 「＋ 등록」 처럼 `#id` 로 가는 링크가 접힌 <details> 안을 가리키면 그 <details> 를 연다(주소의 #id 로 열린 화면도) */
+  function openTarget(hash) {
+    if (!hash || hash.length < 2) return;
+    var el = null;
+    try { el = document.getElementById(decodeURIComponent(hash.slice(1))); } catch (e) { console.warn("앵커 해석 실패", e); return; }
+    for (var d = el; d; d = d.parentElement) { if (d.tagName === "DETAILS") d.open = true; }
+    if (el && el.tagName === "DETAILS") el.open = true;
+  }
+  openTarget(location.hash);
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
+    if (a) openTarget(a.getAttribute("href"));
+  });
+
   /* 자동 제출 — `<form data-auto-submit>` 은 화면이 열리면 한 번 제출한다(문서관리 SSO 진입 · D-514 · F-DOC-011).
      토큰은 hidden 칸에만 있고 POST 로 넘어가 주소창에 남지 않는다. 막히면 사람이 단추를 누르면 된다(단추는 그대로 보인다). */
   document.querySelectorAll("form[data-auto-submit]").forEach(function (f) {

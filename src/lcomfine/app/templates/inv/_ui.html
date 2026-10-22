@@ -1,5 +1,6 @@
 {# 개발2 화면 공용 매크로 (mat · prd · ins · qc · inv · lot) — `{% import "inv/_ui.html" as u %}`.
-   q: 수량(뒤 0 없이) · stock_chips: 재고 상태 칩 4(검사대기 · 가용 · 보류 + 할당 — D-510) · head: 화면 제목 #}
+   q: 수량(뒤 0 없이) · stock_chips: 재고 상태 칩 4(검사대기 · 가용 · 보류 + 할당 — D-510).
+   화면 머리는 `_macros.html` 의 screen_head, 설명은 `{% block help %}` (docs/ui-guide.md). #}
 {% import "_macros.html" as ui %}
 
 {% macro q(v) -%}
@@ -9,15 +10,4 @@
 {% macro stock_chips(status, allocated=none) -%}
 {% if status %}{% for st in status.split('·') %}{{ ui.chip(st) }} {% endfor %}{% else %}{{ ui.chip(none) }}{% endif %}
 {% if allocated is not none and allocated > 0 %}<span class="chip chip--muted" title="출하 지시 할당 {{ q(allocated) }}">할당</span>{% endif %}
-{%- endmacro %}
-
-{% macro head(screen, note="") -%}
-<header class="ph__head">
-  <h1>{{ screen.name }} <code>{{ screen.screen_id }}</code></h1>
-  {% if note %}<p class="muted">{{ note }}</p>{% endif %}
-</header>
-{%- endmacro %}
-
-{% macro readonly_note(can_w) -%}
-{% if not can_w %}<p class="muted" role="note">이 부서는 조회만 할 수 있습니다 — 등록 · 수정은 W 권한 부서가 합니다.</p>{% endif %}
 {%- endmacro %}

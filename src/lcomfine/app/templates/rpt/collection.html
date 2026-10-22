@@ -1,28 +1,48 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "rpt/_d.html" as d %}
 {% import "shp/_f.html" as f %}
-{% import "col/_c.html" as c %}
-{% import "_macros.html" as ui %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "회계부가 올린 ERP 수금현황으로 월별 수금액, MES 출하와 ERP 매출 · 수금, 미수 연령, 90일 넘은 미수 거래처를 봅니다.") }}
+{{ ui.help_rule("수금 숫자의 원본은 ERP 입니다. 틀린 값은 ERP 에서 고쳐 다시 업로드해야 바뀝니다.") }}
+{{ ui.help_item("출하 대비 수금", "월 · 거래처 단위로 나란히 놓습니다. 출하 한 건과 수금 한 건을 짝짓지는 않습니다.") }}
+{{ ui.help_item("미수 연령", "기준일(가장 최근 업로드의 기준 기간 끝)에서 매출일까지 경과일로 구간을 나누고, 구간마다 매출 − 수금을 보입니다 — 임시 산식입니다.") }}
+{{ ui.help_next("COL-010", "ERP 수금현황 업로드") }}
+{{ ui.help_next("COL-060", "거래처별 미수 연령") }}
+{{ ui.help_next("COL-070", "월 · 거래처별 출하 대비 수금") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ d.header(screen, "원천: ERP 수금현황 업로드분(반영 회차). 월별 수금액 · 출하 대비 수금(월 · 거래처 단위 · 건 단위로 짝짓지 않음) · 미수 연령 · 90일 초과 거래처.", data, [(nav.path_of("COL-060"), nav.by_id("COL-060").name), (nav.path_of("COL-070"), nav.by_id("COL-070").name)]) }}
-  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
-  {{ f.notice(notice) }}
-  {{ d.filters(form, customers, with_customer) }}
-</section>
+{{ d.head(screen, data, show_asof=true) }}
+{{ f.notice(notice) }}
+{{ d.filters(form, customers, with_customer) }}
 {% if data %}
-<section class="panel">{{ d.kpis(data.kpis) }}</section>
-{{ d.chart_table("collected", "월별 수금액", data.series.collected, "월", "수금액") }}
-{{ d.chart_table("shipped_qty", "월별 확정 출하 수량(MES)", data.series.shipped_qty, "월", "출하 수량", 3) }}
-{{ d.chart_table("aging", "미수 연령(구간별 순액 · 기준일 = ERP 업로드 기준일)", data.series.aging, "구간", "순액(Σ매출 − Σ수금)") }}
-{{ d.table("monthly", "출하 대비 수금(월)", [("ym", "월", none), ("shipments", "확정 출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "ERP 매출", 0), ("collected_amount", "ERP 수금", 0)], data.tables.monthly) }}
-{{ d.table("by_customer", "출하 대비 수금(월 · 거래처)", [("ym", "월", none), ("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "매출", 0), ("collected_amount", "수금", 0)], data.tables.by_customer) }}
+{{ d.kpis(data.kpis, sparks={"collected": data.series.collected, "shipped_qty": data.series.shipped_qty}) }}
+{% set sc_rows = [] %}{% for m in data.tables.monthly %}{% set _ = sc_rows.append({"label": m.ym, "parts": [{"label": "ERP 매출", "value": m.sales_amount}, {"label": "ERP 수금", "value": m.collected_amount}]}) %}{% endfor %}
+{% set buckets = data.tables.aging_buckets %}
+{% set has_aging = (data.series.aging | rejectattr("value", "none") | list | length) > 0 %}
+{% set ag_rows = [] %}{% if has_aging %}{% for r in (data.tables.aging | sort(attribute="total_net", reverse=true))[:12] %}{% set parts = [] %}{% for b in buckets %}{% set _ = parts.append({"label": b, "value": r.cells[b].net}) %}{% endfor %}{% set _ = ag_rows.append({"label": r.customer_name, "parts": parts}) %}{% endfor %}{% endif %}
+{% call ch.grid() %}
+{{ d.chart_table("collected", "월별 수금액", data.series.collected, "월", "수금액", 0, "bar", sub="원") }}
+{{ d.chart_table("shipped_qty", "월별 확정 출하 수량 (MES)", data.series.shipped_qty, "월", "출하 수량", 3, "line") }}
+<section class="panel viz-panel viz-panel--wide">
+  <header class="viz-panel__head"><h2>출하 대비 수금 — 월별 매출 · 수금 (ERP)</h2><span class="viz-panel__sub">원 · 월 단위 합 — 건 단위로 짝짓지 않음</span></header>
+  {{ ch.lines(sc_rows, ["ERP 매출", "ERP 수금"], "월", "sales_vs_collected") }}
+</section>
+{{ d.chart_table("aging", "미수 연령", data.series.aging, "구간", "순액(Σ매출 − Σ수금)", 0, "bar", sub="구간별 순액 · 기준일 = ERP 업로드 기준일") }}
+<section class="panel viz-panel">
+  <header class="viz-panel__head"><h2>거래처별 미수 연령</h2><span class="viz-panel__sub">미수 합 상위 12</span></header>
+  {% if ag_rows %}{{ ch.stacked(ag_rows, buckets, "거래처", "aging_by_customer") }}{% else %}{{ ui.empty() }}{% endif %}
+</section>
+{% endcall %}
 <section class="panel panel--grid" data-table="over90">
-  <h2>90일 초과 거래처 ({{ data.tables.over90 | length }})</h2>
+  <h2>90일 초과 거래처 <small class="muted">{{ data.tables.over90 | length }}곳</small></h2>
   {% if data.tables.over90 %}
   <div class="grid-wrap"><table class="grid"><thead><tr><th>거래처 코드</th><th>거래처</th><th class="num">90일 초과 순액</th><th class="num">미수 합</th></tr></thead>
   <tbody>{% for r in data.tables.over90 %}<tr><td>{{ r.customer_code }}</td><td>{{ r.customer_name }}</td><td class="num">{{ r.cells[data.tables.aging_buckets[-1]].net | num }}</td><td class="num">{{ r.total_net | num }}</td></tr>{% endfor %}</tbody></table></div>
   {% else %}{{ ui.empty("90일 초과 거래처 없음" if data.asof else "미수집") }}{% endif %}
 </section>
+{{ d.table("monthly", "출하 대비 수금 (월)", [("ym", "월", none), ("shipments", "확정 출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "ERP 매출", 0), ("collected_amount", "ERP 수금", 0)], data.tables.monthly) }}
+{{ d.table("by_customer", "출하 대비 수금 (월 · 거래처)", [("ym", "월", none), ("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "매출", 0), ("collected_amount", "수금", 0)], data.tables.by_customer) }}
 {% endif %}
 {% endblock %}

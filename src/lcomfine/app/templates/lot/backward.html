@@ -2,16 +2,22 @@
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
 {% import "lot/_trace.html" as t %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "클레임이 들어온 출하 번호(또는 제품 LOT 번호)를 넣으면 제품 LOT → 생산지시 → 불출 → 원자재 LOT 까지 거슬러 올라갑니다.") }}
+{{ ui.help_item("분할 LOT", "나눠 옮긴 LOT 은 원 LOT 으로 이어서 보여 줍니다. 「원자재 LOT 목록」은 원 입고 LOT 기준입니다.") }}
+{{ ui.help_rule("출하 번호와 제품 LOT 번호 중 하나만 넣습니다. 바코드 스캐너로 찍어도 됩니다.") }}
+{{ ui.help_next("LOT-010", "원자재 LOT 에서 출하까지 정방향 추적") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "클레임 대응: 출하 한 건(또는 제품 LOT 하나)에서 원자재 LOT 까지 거슬러 올라간다 · 분할 LOT 는 원 LOT 으로 잇는다 · 읽기만 한다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">출하 번호<input name="shipment_no" value="{{ f.shipment_no }}" data-scan autofocus></label>
-    <label class="field">또는 제품 LOT<input name="product_lot_no" value="{{ f.product_lot_no }}"></label>
-    <button class="btn btn-primary">추적</button>
-  </form>
-  {% if error %}<p class="alert alert--bad" role="alert">{{ error }}</p>{% endif %}
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="추적 조건">
+  <label class="field field--grow"><span>출하 번호</span><input name="shipment_no" value="{{ f.shipment_no }}" data-scan autofocus></label>
+  <label class="field field--grow"><span>또는 제품 LOT</span><input name="product_lot_no" value="{{ f.product_lot_no }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">추적</button>{% if f.shipment_no or f.product_lot_no %}<a class="btn btn-ghost" href="{{ nav.path_of('LOT-020') }}">초기화</a>{% endif %}</div>
+</form>
+{% if error %}<p class="alert alert--bad" role="alert">{{ error }}</p>{% endif %}
+
 {% if r %}
 <section class="panel">
   <h2>원자재 LOT 목록 <small class="muted">{{ r.start.kind }} {{ r.start.no }}</small></h2>
@@ -21,5 +27,5 @@
   {% else %}{{ ui.empty() }}{% endif %}
 </section>
 {{ t.render(r) }}
-{% elif not error %}{{ ui.empty("출하 번호 또는 제품 LOT 번호를 입력하면 추적한다") }}{% endif %}
+{% elif not error %}{{ ui.empty("출하 번호 또는 제품 LOT 번호를 넣고 「추적」을 누릅니다") }}{% endif %}
 {% endblock %}

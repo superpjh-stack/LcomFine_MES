@@ -1,5 +1,6 @@
 {# 개발1 화면 공용 폼 매크로 — `{% import "home/_forms.html" as f with context %}` (fn_allowed 를 읽는다).
    스크립트 없음. 확인 대화는 app.js 의 `data-confirm`. #}
+{% import "_macros.html" as ui %}
 
 {% macro input(name, label, value="", type="text", required=false, readonly=false, placeholder="", step="") -%}
 <label class="field"><span>{{ label }}{% if required %} <b aria-hidden="true">*</b>{% endif %}</span>
@@ -43,6 +44,18 @@
 </section>
 {%- endmacro %}
 
+{# 접히는 등록·수정 폼 — ui.form_details + POST 폼 + form-grid + 저장. 쓰기 권한이 없는 부서는 아무것도 그리지 않는다.
+   open: 수정 모드 · 입력 오류(422)로 돌아온 경우 #}
+{% macro form_box(label, action, fn_id, open=false, enctype="", cancel="", icon="＋", id="") -%}
+{% set body = caller() %}
+{% call ui.form_details(label, open=open, allowed=fn_allowed.get(fn_id), icon=icon) %}
+<form method="post" action="{{ action }}"{% if id %} id="{{ id }}"{% endif %}{% if enctype %} enctype="{{ enctype }}"{% endif %}>
+  <div class="form-grid">{{ body }}</div>
+  <div class="actions">{% if cancel %}<a class="btn" href="{{ cancel }}">취소</a>{% endif %}<button type="submit" class="btn btn-primary">저장</button></div>
+</form>
+{% endcall %}
+{%- endmacro %}
+
 {# 삭제(참조가 있으면 사용 중지) 단추 — 작은 폼 하나 #}
 {% macro del_btn(action, fn_id, label="삭제", hidden={}, confirm="삭제할까요? 참조가 있으면 지우지 않고 사용 중지로 바꿉니다.") -%}
 {% if fn_allowed.get(fn_id) %}
@@ -74,4 +87,11 @@
 
 {% macro edit_link(fn_id, query) -%}
 {% if fn_allowed.get(fn_id) %}<a class="btn btn-sm" href="?{{ query }}">수정</a>{% endif %}
+{%- endmacro %}
+
+{# 화면 도움말 「다음 단계 →」 — 이 사용자가 볼 수 있는 화면일 때만(메뉴 = 권한 칸). 칸 없는 화면으로 가는 링크를 두지 않는다 #}
+{% macro next(screen_id, text="") -%}
+{% set ns = namespace(ok=false) %}
+{% for node in bundles %}{% for m in node.menus %}{% for s in m.screens %}{% if s.screen_id == screen_id %}{% set ns.ok = true %}{% endif %}{% endfor %}{% endfor %}{% endfor %}
+{% if ns.ok %}{{ ui.help_next(screen_id, text) }}{% endif %}
 {%- endmacro %}

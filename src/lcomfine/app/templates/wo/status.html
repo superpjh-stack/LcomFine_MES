@@ -1,19 +1,24 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "지시별로 생산일보 양품 · 제품 입고 · 출하가 얼마나 진행됐는지 한 화면에서 봅니다.") }}
+{{ ui.help_item("남은 수량", "지시 수량에서 확정된 출하 수량을 뺀 값입니다.") }}
+{{ f.next("TRK-010", "의뢰 한 건의 진행 단계 보기") }}
+{{ f.next("PRD-010", "생산일보 입력") }}
+{% endblock %}
 {% block body %}
 {% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">지시별 진행 단계를 한 화면에서 본다 · 지시 수량 · 일보 완료(양품) 합 · 제품 입고 합 · 확정 출하 합 —
-    뷰 <code>v_work_order_status</code> 를 읽기만 한다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "지시번호·의뢰번호·제품", form.q) }}
-    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="지시번호 · 의뢰번호 · 제품"></label>
+  {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.status %}<a class="btn btn-ghost" href="{{ nav.path_of('WO-040') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>지시별 진행 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>지시번호</th><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">지시 수량</th>

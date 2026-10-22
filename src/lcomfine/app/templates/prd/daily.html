@@ -1,40 +1,48 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "일자 · 설비를 고르고, 지시번호별로 그날의 생산 수량 · 완료(양품) · 로스를 입력합니다. 목록에서 수량 · 시간을 바로 고칠 수 있습니다.") }}
+{{ ui.help_rule("같은 지시 · 같은 일자 · 같은 설비의 일보는 한 행뿐입니다. 이미 있으면 목록에서 그 행을 고칩니다.") }}
+{{ ui.help_rule("설비는 공통코드의 사용 중인 설비만 고를 수 있습니다.") }}
+{{ ui.help_next("PRD-020", "생산일보 출력") }}
+{{ ui.help_next("MAT-030", "완료 수량으로 제품 입고") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "지시 × 일자 × 설비 한 행 · 지시번호별로 생산량과 로스를 일 단위로 입력한다 · 설비는 공통코드(SYS-030)") }}
-  <form class="search" method="get" role="search">
-    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
-    <label class="field">설비<select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
-    <button class="btn btn-primary">조회</button>
-    <a class="btn btn-ghost" href="{{ nav.path_of('PRD-020') }}?date={{ f.date or today }}">출력</a>
-  </form>
-</section>
-{% if can_w %}
-<section class="panel">
-  <h2>생산일보 등록</h2>
-  {% if not work_orders %}{{ ui.empty("일보를 쓸 생산지시가 없습니다 — 생산지시서(WO-020)") }}
-  {% elif not equipments %}{{ ui.empty("사용 중인 설비 공통코드가 없습니다 — 공통코드(SYS-030)") }}
+{% call ui.screen_head(screen.name) %}
+  <a class="btn" href="{{ nav.path_of('PRD-020') }}?date={{ f.date or today }}">출력</a>
+{% endcall %}
+
+{% call ui.form_details("생산일보 등록", open=true, allowed=can_w) %}
+  {% if not work_orders %}{{ ui.empty("일보를 쓸 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}
+  {% elif not equipments %}{{ ui.empty("사용 중인 설비가 없습니다 — 공통코드에서 설비를 먼저 등록합니다") }}
   {% else %}
-  <form method="post" action="{{ nav.path_of('PRD-010') }}" class="search">
-    <label class="field">일자<input type="date" name="work_date" value="{{ f.date or today }}" required></label>
-    <label class="field">설비<select name="equipment_code" required>{% for e in equipments %}<option value="{{ e.code }}">{{ e.code_name }}</option>{% endfor %}</select></label>
-    <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
-    <label class="field">생산 수량<input name="produced_qty" inputmode="decimal" required></label>
-    <label class="field">완료(양품)<input name="good_qty" inputmode="decimal" required></label>
-    <label class="field">로스<input name="loss_qty" inputmode="decimal" value="0"></label>
-    <label class="field">가동(분)<input name="run_minutes" inputmode="numeric"></label>
-    <label class="field">정지(분)<input name="stop_minutes" inputmode="numeric"></label>
-    <label class="field">비고<input name="note"></label>
-    <button class="btn btn-primary">등록</button>
+  <form method="post" action="{{ nav.path_of('PRD-010') }}">
+    <div class="form-grid">
+      <label class="field"><span>일자 <b aria-hidden="true">*</b></span><input type="date" name="work_date" value="{{ f.date or today }}" required></label>
+      <label class="field"><span>설비 <b aria-hidden="true">*</b></span><select name="equipment_code" required>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
+      <label class="field field--wide"><span>작업지시 <b aria-hidden="true">*</b></span><select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+      <label class="field"><span>생산 수량 <b aria-hidden="true">*</b></span><input name="produced_qty" inputmode="decimal" required></label>
+      <label class="field"><span>완료(양품) <b aria-hidden="true">*</b></span><input name="good_qty" inputmode="decimal" required></label>
+      <label class="field"><span>로스</span><input name="loss_qty" inputmode="decimal" value="0"></label>
+      <label class="field"><span>가동(분)</span><input name="run_minutes" inputmode="numeric"></label>
+      <label class="field"><span>정지(분)</span><input name="stop_minutes" inputmode="numeric"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
+    </div>
+    <div class="actions"><button class="btn btn-primary">등록</button></div>
   </form>
   {% endif %}
-</section>
-{% endif %}
-{{ u.readonly_note(can_w) }}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>일자</span><input type="date" name="date" value="{{ f.date }}"></label>
+  <label class="field"><span>설비</span><select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.date or f.equipment or f.wo %}<a class="btn btn-ghost" href="{{ nav.path_of('PRD-010') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>생산일보 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

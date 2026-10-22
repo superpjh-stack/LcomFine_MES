@@ -2,35 +2,41 @@
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
 {% import "trk/_stages.html" as st %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "납기가 다가오는 의뢰(D-7 · D-3)와 납기를 넘긴 의뢰를 보고, 지연 건이 어느 단계에서 멈췄는지 확인합니다. 위 숫자를 누르면 그 구분만 봅니다.") }}
+{{ ui.help_item("기준", "납기는 생산의뢰서의 값, 완료는 출하 확정일 기준입니다.") }}
+{{ ui.help_item("납기 준수율", "고른 달에 납기가 든 의뢰로 셉니다. 셀 의뢰가 없으면 0 % 가 아니라 「미수집」으로 보입니다.") }}
+{{ f.next("TRK-010", "의뢰 한 건의 진행 단계") }}
+{% endblock %}
 {% block body %}
 {% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
 {% set b_opts = [] %}{% for b in buckets %}{% set _ = b_opts.append((b, b)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">납기 임박 (D-7, D-3) · 납기 지연 · 거래처·제품별 · 납기는 생산의뢰서 값, 완료는 출하 확정일 기준 ·
-    지연 건은 어느 단계에서 멈췄는지 함께 보여 준다 · 읽기만 한다.</p>
-  <div class="kpis">
-    {% for k in ["D-3", "D-7", "지연", "지연 완료", "완료"] %}
-    <div class="kpi"><span class="kpi__label"><a href="?bucket={{ k }}">{{ k }}</a></span><strong class="kpi__value num">{{ counts[k] | num }}</strong></div>
-    {% endfor %}
-    <div class="kpi" data-compliance="{{ (compliance.rate | num(1)) if compliance.rate is not none else "미수집" }}" data-period="{{ period }}">
-      <span class="kpi__label">납기 준수율 <small class="muted">{{ period }}</small></span>
-      <strong class="kpi__value num">{% if compliance.rate is not none %}{{ compliance.rate | num(1) }} %{% else %}미수집{% endif %}</strong>
-      <span class="kpi__note">납기 안 완료 {{ compliance.on_time | num }} · 지연 완료 {{ compliance.late_done | num }} · 지연 {{ compliance.late_open | num }} · 진행 {{ compliance.in_progress | num }}
-        (납기가 {{ period }} 인 의뢰 {{ compliance.total | num }}){% if compliance.rate is none %} · 판정할 수 있는 의뢰가 없다 — 0 % 로 적지 않는다{% endif %}</span>
-    </div>
+{{ ui.screen_head(screen.name) }}
+<div class="kpis">
+  {% for k in ["D-3", "D-7", "지연", "지연 완료", "완료"] %}
+  <div class="kpi"><span class="kpi__label"><a href="?bucket={{ k }}">{{ k }}</a></span><strong class="kpi__value num">{{ counts[k] | num }}</strong></div>
+  {% endfor %}
+  <div class="kpi" data-compliance="{{ (compliance.rate | num(1)) if compliance.rate is not none else "미수집" }}" data-period="{{ period }}">
+    <span class="kpi__label">납기 준수율 <small class="muted">{{ period }}</small></span>
+    <strong class="kpi__value num">{% if compliance.rate is not none %}{{ compliance.rate | num(1) }} %{% else %}미수집{% endif %}</strong>
+    <span class="kpi__note">납기 안 완료 {{ compliance.on_time | num }} · 지연 완료 {{ compliance.late_done | num }} · 지연 {{ compliance.late_open | num }} · 진행 {{ compliance.in_progress | num }}
+      (대상 의뢰 {{ compliance.total | num }})</span>
   </div>
-  <p class="muted" data-formula><span class="undecided">{{ compliance.formula }}</span> — 수치는 <code>stats.due_compliance</code> 가 센다 (Ruling 23).</p>
-  <form class="search" method="get" role="search">
-    {{ f.select("bucket", "구분", b_opts, bucket, blank="임박·지연") }}
-    {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
+</div>
+<p class="muted form-note" data-formula>{{ compliance.formula }}</p>
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  {{ f.select("bucket", "구분", b_opts, bucket, blank="임박·지연") }}
+  {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
+  <label class="field"><span>준수율 기간</span><input type="month" name="period" value="{{ form.period }}" pattern="[0-9]{4}-[0-9]{2}" placeholder="YYYY-MM"></label>
+  {% call ui.filters_more(open=form.item) %}
     {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
-    <label class="field"><span>준수율 기간</span><input type="month" name="period" value="{{ form.period }}" pattern="[0-9]{4}-[0-9]{2}" placeholder="YYYY-MM"></label>
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 
 <section class="panel panel--grid">
+  <h2>{{ bucket or "임박·지연" }} <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">D-day</th><th>구분</th><th>멈춘 단계</th><th>단계</th>

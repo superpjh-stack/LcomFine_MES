@@ -1,20 +1,25 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "설비 · 불량유형 · 수금수단 같은 공통코드를 그룹별로 등록하고 이름 · 표시 순서를 고칩니다.") }}
+{{ ui.help_rule("코드 그룹 · 코드 값은 등록한 뒤 바꿀 수 없습니다. 한 그룹 안에서 같은 코드 값은 둘 수 없습니다.") }}
+{{ ui.help_rule("다른 곳에서 쓰인 코드는 삭제하면 지우지 않고 사용 중지로 바뀝니다.") }}
+{{ f.next("WO-030", "설비별 작업 순서") }}
+{% endblock %}
 {% block body %}
 {% set g_opts = [] %}{% for g in groups %}{% set _ = g_opts.append((g, g)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">코드 그룹 · 코드 값 · 설비·불량유형·수금수단 코드를 여기서 관리한다 · 참조가 있으면 지우지 않고 사용 중지로 바꾼다 ·
-    그룹·코드 값은 바꾸지 않는다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.select("group", "코드 그룹", g_opts, form.group, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-SYS-031") and not edit %}<a class="btn btn-primary" href="#code-form">＋ 공통코드 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  {{ f.select("group", "코드 그룹", g_opts, form.group, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.group %}<a class="btn btn-ghost" href="{{ nav.path_of('SYS-030') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("공통코드 수정 — " ~ edit.group_code ~ " · " ~ edit.code, "/sys/codes", "F-SYS-031", cancel=nav.path_of("SYS-030")) %}
+{% call f.form_box("공통코드 수정 — " ~ edit.group_code ~ " · " ~ edit.code, "/sys/codes", "F-SYS-031", open=true, cancel=nav.path_of("SYS-030"), icon="✎", id="code-form") %}
   <input type="hidden" name="id" value="{{ edit.id }}">
   {{ f.input("group_code", "코드 그룹", edit.group_code, readonly=true) }}
   {{ f.input("code", "코드 값", edit.code, readonly=true) }}
@@ -24,7 +29,7 @@
   {{ f.use_select(edit.use_yn) }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("공통코드 등록", "/sys/codes", "F-SYS-031") %}
+{% call f.form_box("공통코드 등록", "/sys/codes", "F-SYS-031", open=(flash and flash.kind == "warn"), id="code-form") %}
   {{ f.select("group_code", "코드 그룹", g_opts, form.group, required=true) }}
   {{ f.input("code", "코드 값", required=true) }}
   {{ f.input("code_name", "코드 이름", required=true) }}
@@ -34,6 +39,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>공통코드 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>코드 그룹</th><th>코드 값</th><th>코드 이름</th><th class="num">순서</th><th>비고</th><th>사용</th><th></th></tr></thead>

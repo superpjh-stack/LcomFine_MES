@@ -1,26 +1,46 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기간 · 지시 조건으로 지시별 지시 수량 · 생산 · 양품 · 로스 수량을 모아 봅니다. 차트는 최근 지시부터 보여 줍니다.") }}
+{{ ui.help_rule("로스율은 산식이 정해지지 않아 숫자 대신 「미확정」으로 둡니다. 생산 · 로스 원 수량으로 판단하세요.") }}
+{{ ui.undecided_note("D-519", "생산 로스율 산식") }}
+{{ ui.help_next("PRD-030", "일자별 생산일보 현황") }}
+{{ ui.help_next("INS-040", "지시별 검사 · 불량 수량") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "지시 수량 대비 생산 로스를 비율로 본다 — 산식은 미확정 (D-519). 비율을 지어내지 않고 원 수량(지시 · 생산 · 양품 · 로스)을 함께 보인다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
-    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{% set top = rows[:12] %}
+{% set s_prod = [] %}{% set s_loss = [] %}
+{% for r in top %}{% set _ = s_prod.append({"label": r.work_order_no, "value": r.produced_qty}) %}{% set _ = s_loss.append({"label": r.work_order_no, "value": r.loss_qty}) %}{% endfor %}
+{% call ui.screen_head(screen.name) %}{{ ui.undecided_text("로스율 산식 미확정 (D-519)", "생산 로스율 산식이 정해지지 않았습니다") }}{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
+  <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.from or f.to or f.wo %}<a class="btn btn-ghost" href="{{ nav.path_of('PRD-040') }}">초기화</a>{% endif %}</div>
+</form>
+
+{% if rows %}
+{% set sub = "최근 지시 " ~ (top | length) ~ "건" ~ (" · 전체 " ~ (rows | length) ~ "건은 아래 표" if rows | length > top | length else "") %}
+{% call ch.grid() %}
+{{ ch.chart_panel("produced_qty", "지시별 생산 수량", s_prod, "지시번호", "생산 수량", kind="hbar", sub=sub) }}
+{{ ch.chart_panel("loss_qty", "지시별 로스 수량", s_loss, "지시번호", "로스 수량", kind="hbar", sub=sub) }}
+{% endcall %}
+{% endif %}
+
 <section class="panel panel--grid">
+  <h2>지시별 로스율 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">
-    <thead><tr><th>작업지시</th><th>품목</th><th>상태</th><th class="num">일보 일수</th><th class="num">지시 수량</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th><th>로스율 <small class="muted">산식 미확정 (D-519)</small></th></tr></thead>
+    <thead><tr><th>작업지시</th><th>품목</th><th>상태</th><th class="num">일보 일수</th><th class="num">지시 수량</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th><th>로스율</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td><td>{{ r.status }}</td><td class="num">{{ r.days }}</td>
         <td class="num">{{ u.q(r.order_qty) }}</td><td class="num">{{ u.q(r.produced_qty) }}</td><td class="num">{{ u.q(r.good_qty) }}</td>
-        <td class="num">{{ u.q(r.loss_qty) }}</td><td>{{ ui.undecided(decision) }}</td></tr>
+        <td class="num">{{ u.q(r.loss_qty) }}</td><td>{{ ui.undecided(decision, "생산 로스율 산식") }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

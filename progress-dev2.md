@@ -129,6 +129,28 @@ trace.NotFound      # LookupError 의 하위 — 입력한 번호가 없다 (라
 - 테스트 기준 데이터: `tests/test_dev2_world.py` 가 품목 · 거래처 · 창고 · 위치 · 의뢰 · 지시를 고유 접두 `T<시각><난수>-` 로 SQL 로 만들고, 출하(개발3 SHP)도 SQL 로 직접 만든 뒤 전부 지운다(불변 `stock_adjust` 테스트 행은 정리 트랜잭션 안에서만 `session_replication_role = replica` 로 지운다).
 - 시드 `db/seed_dev2.py` 는 만들지 않았다 — 개발2 행은 BAS 품목 · 위치와 WO 지시 위에 서는데 그 시드 코드를 아직 받지 못했다(§3-1).
 
+### 2.2 화면 정리 — 운영 화면 틀 (2026-10-22 · docs/ui-guide.md)
+
+화면 **20/20** 을 공용 틀로 옮겼다(템플릿만 — 라우터 · trace · 데이터 그대로). 본문의 개발 메모(기능 ID · D 번호 나열 · 「읽기만 한다」 · 정본 인용)를 지우고, 업무 안내는 오른쪽 「화면 도움말」(`{% block help %}` 2~5 항목 · 규칙은 라우터가 실제로 막는 것만)으로 옮겼다.
+
+| 묶음 | 화면 | 틀 |
+|---|---|---|
+| 현장 입력 | MAT-010 · 020 · 030 · PRD-010 · INS-010 | `screen_head` → 입력 폼 맨 위 펼친 채(`form_details(open=true, allowed=can_w)`) → `.filters` → 목록 |
+| 조회 + 가끔 등록 | INV-020 · 030 | 폼 접힘(422 로 돌아오면 열림) · 머리 단추 「＋ …」 |
+| 판정 작업대 | QC-010 · 020 | `.filters`(조건 풀기 링크 유지) → 대기 목록(판정 칸) → 판정한 목록(재판정) |
+| 조회 · 이력 · 출력 | MAT-040 · PRD-020 · 030 · INS-020 · 030 · QC-030 · INV-010 | `.filters` 한 줄 + 「상세 조건」 접기 → (KPI) → 목록. 출력 화면은 도움말 패널을 되살렸다(인쇄에서 빠진다) |
+| 로스율 | PRD-040 · INS-040 | 머리 칩 `로스율 산식 미확정 (D-519)` + 지시별 원 수량 가로 막대 2(`ch.chart_panel` · hbar · 최근 지시 12) + 표(로스율 칸 = 칩) |
+| LOT 추적 | LOT-010 · 020 | 단계 사슬(카드 + 화살표 · 단계마다 건수 · 앞 번호 3 · 상세로 가기) → 단계별 상세 표(`data-step` 그대로). LOT-020 은 「원자재 LOT 목록」(`data-origin-lots`) 을 사슬 위에 |
+
+| 항목 | 실측 | 검증 방법 |
+|---|---|---|
+| 개발2 · QA1 · QA2 테스트 | 개발2 46 passed · QA1 · QA2 파일별 단독 전부 passed (한꺼번에 돌린 1회는 동시 실행 충돌 — `test_qa2_flow.py` 단독 재실행 18 passed) | `uv run pytest -q tests/test_dev2_*.py tests/test_qa1_*.py tests/test_qa2_*.py` |
+| check_data | 종료코드 0 (G-05~G-15 FAIL 행 0 · LOT-020/010 화면 글자 대조 포함) | `uv run python tools/check_data.py` |
+| 가로 스크롤 | 18 화면 × 1280 · 390 `scrollWidth` = 창 폭 | Playwright 캡처 스크립트(스크래치) |
+
+- 테스트 수정 0 — 테스트가 찾는 글자(「검사 대기 LOT」 「판정 대기 제품 LOT」 「조건 풀기」 「LOT 라벨」 「print-sheet」 「일보 완료 − 기존 입고 = 」 「출하 후 불합격」 · `data-lot` · `data-available` · `data-step` · `data-origin-lots`)는 본문에 남겼다.
+- `inv/_ui.html` 의 `head` · `readonly_note` 매크로를 지웠다(「내 권한 · 조회만」 은 도움말 패널이 늘 보인다).
+
 ## 3. 요청 (스키마 · 계약 · 공용 파일)
 
 1. **(아키텍트 · 개발1) 시드 시나리오** — G-07 을 시드 데이터로도 보이려면 개발1 시드(품목 · 위치 · 의뢰 · 지시)의 코드가 정해진 뒤 `seed_dev2.run()` 이 그 위에 입고 → 판정 → 불출 → 일보 → 제품 입고 → 판정을 HTTP 없이 SQL 로 깔 수 있다. 개발1 이 시드 행 코드(품목 · 위치 · 지시 번호)를 `progress-dev1.md` §1 에 공표하면 만든다.
@@ -137,3 +159,6 @@ trace.NotFound      # LookupError 의 하위 — 입력한 번호가 없다 (라
 3. **(아키텍트 · 선택) 템플릿 필터** — `screen.num` 의 기본 자릿수 0 은 numeric(14,3) 수량의 소수를 반올림해 보인다. 개발2 화면은 자체 매크로 `templates/inv/_ui.html` `q()`(뒤 0 없이)를 쓴다. 공용 `qty` 필터가 생기면 그것으로 바꾼다.
 4. **(개발1) `order_issued` 알림 링크** — `/mat/issues?wo=<지시번호>` 꼴이면 불출 등록 때 닫힌다(D-704).
 5. **(개발3) 출하 쪽 연결** — 판정 알림 링크는 `/shp/orders?lot=<제품 LOT>`. 「출하 후 불합격」 은 `trace.backward(...)["rejected_after_shipment"]` 로 읽을 수 있다(§1.1).
+6. **(아키텍트 · 선택) 단계 사슬 CSS** — LOT-010 · 020 의 단계 사슬은 공용 클래스가 없어 `lot/_trace.html` 에 배치용 인라인 style(flex · 줄임표 — 색 없음)을 썼다. `style.css` 에 `.chain` (가로 카드 + 화살표 · 좁으면 안에서 가로 스크롤)이 생기면 그것으로 바꾼다.
+   **종결** (2026-10-22) — 아키텍트가 `.chain` · `.chain__arrow` · `.chain .truncate` 를 넣었다. `lot/_trace.html` 의 인라인 style 0 (`grep -c 'style=' src/lcomfine/app/templates/lot/_trace.html` = 0). `test_dev2_lot.py` 3 passed · check_data 종료코드 0.
+7. **(아키텍트) `.chain__arrow` 우선순위** — `.chain > li { flex: 1 1 140px }`(0,1,1) 이 `.chain__arrow { flex: 0 0 auto }`(0,1,0) 를 이겨 화살표 칸이 140px 로 넓어진다(1280 · 390 캡처에서 확인). `.chain > .chain__arrow { flex: 0 0 auto; }` 로 고쳐 주기를 요청한다.

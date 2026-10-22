@@ -1,20 +1,26 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기간 · 제품 조건으로 검사일보를 모아 검사 · 불량 합계와 불량유형별 수량을 봅니다.") }}
+{{ ui.help_next("INS-040", "지시별 검사 · 불량 수량") }}
+{{ ui.help_next("QC-030", "LOT 판정 이력") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "기간별 검사일보를 모아 본다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
-    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
-    <label class="field">제품<input name="item" value="{{ f.item }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
+  <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
+  <label class="field field--grow"><span>제품</span><input type="search" name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.from or f.to or f.item %}<a class="btn btn-ghost" href="{{ nav.path_of('INS-030') }}">초기화</a>{% endif %}</div>
+</form>
+
 {% if rows %}
 <section class="kpis">{{ ui.kpi("검사일보 행", rows | length) }}{{ ui.kpi("검사 합", u.q(totals.inspected_qty)) }}{{ ui.kpi("불량 합", u.q(totals.defect_qty)) }}</section>
 {% endif %}
 <section class="panel panel--grid">
+  <h2>검사일보 현황 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

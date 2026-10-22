@@ -4,34 +4,43 @@
 {% macro loc_options(sel=none) -%}
 {% for l in locations %}<option value="{{ l.id }}"{% if sel == l.id %} selected{% endif %}>{{ l.warehouse_code }} / {{ l.location_code }} {{ l.location_name }}</option>{% endfor %}
 {%- endmacro %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "LOT 을 다른 위치로 옮기거나, 일부만 나눠(분할) 옮깁니다.") }}
+{{ ui.help_rule("이동 수량은 출발 위치의 가용 수량(현재고 − 할당) 안에서만 됩니다. 출발 · 도착 위치가 같으면 이동할 수 없습니다.") }}
+{{ ui.help_rule("「분할」을 고르면 원 LOT 번호에 분할 순번(-01, -02 …)을 붙인 새 LOT 이 생깁니다. LOT 추적은 원 LOT 으로 이어집니다.") }}
+{{ ui.help_rule("목록에서는 위치 이동 행만 고칠 수 있습니다. 옮긴 수량이 이미 불출 · 할당 · 이동됐으면 되돌릴 수 없습니다.") }}
+{{ ui.help_next("INV-010", "이동 뒤 재고 확인") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "LOT 를 나눠 옮기면 원 LOT 번호에 분할 순번(-01)을 붙인 새 LOT 이 생긴다 (D-509) · 이동 수량은 가용 수량 안에서") }}
-  <form class="search" method="get" role="search">
-    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
-    <label class="field">위치<input name="location" value="{{ f.location }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
-{% if can_w %}
-<section class="panel">
-  <h2>재고 이동 등록</h2>
-  {% if not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리(BAS-030)") }}{% else %}
-  <form method="post" action="{{ nav.path_of('INV-020') }}" class="search">
-    <label class="field">구분<select name="lot_kind" required>{% for k in kinds %}<option>{{ k }}</option>{% endfor %}</select></label>
-    <label class="field">LOT 번호<input name="lot_no" required></label>
-    <label class="field">출발 위치<select name="from_location_id" required>{{ loc_options() }}</select></label>
-    <label class="field">도착 위치<select name="to_location_id" required>{{ loc_options() }}</select></label>
-    <label class="field">수량<input name="qty" inputmode="decimal" required></label>
-    <label class="field"><span>분할</span><input type="checkbox" name="split" value="1"></label>
-    <label class="field">비고<input name="note"></label>
-    <button class="btn btn-primary">등록</button>
+{% call ui.screen_head(screen.name) %}
+  {% if can_w and locations %}<a class="btn btn-primary" href="#move-form">＋ 재고 이동</a>{% endif %}
+{% endcall %}
+
+{% call ui.form_details("재고 이동 등록", open=(flash and flash.kind == "warn"), allowed=can_w) %}
+  {% if not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리에서 먼저 등록합니다") }}{% else %}
+  <form method="post" action="{{ nav.path_of('INV-020') }}" id="move-form">
+    <div class="form-grid">
+      <label class="field"><span>구분 <b aria-hidden="true">*</b></span><select name="lot_kind" required>{% for k in kinds %}<option>{{ k }}</option>{% endfor %}</select></label>
+      <label class="field"><span>LOT 번호 <b aria-hidden="true">*</b></span><input name="lot_no" required></label>
+      <label class="field"><span>출발 위치 <b aria-hidden="true">*</b></span><select name="from_location_id" required>{{ loc_options() }}</select></label>
+      <label class="field"><span>도착 위치 <b aria-hidden="true">*</b></span><select name="to_location_id" required>{{ loc_options() }}</select></label>
+      <label class="field"><span>수량 <b aria-hidden="true">*</b></span><input name="qty" inputmode="decimal" required></label>
+      <label class="field"><span>분할 (새 LOT 으로 나눔)</span><input type="checkbox" name="split" value="1"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
+    </div>
+    <div class="actions"><button class="btn btn-primary">등록</button></div>
   </form>
   {% endif %}
-</section>
-{% endif %}
-{{ u.readonly_note(can_w) }}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <label class="field field--grow"><span>위치</span><input type="search" name="location" value="{{ f.location }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.lot or f.location %}<a class="btn btn-ghost" href="{{ nav.path_of('INV-020') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>이동 내역 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

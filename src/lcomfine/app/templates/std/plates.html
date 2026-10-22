@@ -6,19 +6,26 @@
   {{ f.input("work_order_no", "사용한 지시번호") }}
   {{ f.input("usage_note", "사용 비고") }}
 {%- endmacro %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "인쇄 판의 보유 현황을 관리하고, 판을 쓸 때마다 사용 이력(사용일 · 지시번호)을 남깁니다.") }}
+{{ ui.help_rule("판 코드는 등록한 뒤 바꿀 수 없습니다. 같은 코드는 두 번 등록할 수 없습니다.") }}
+{{ ui.help_rule("사용 이력을 남기려면 사용일을 꼭 넣습니다. 지시번호는 실제로 있는 번호만 받습니다.") }}
+{{ ui.help_rule("사용 이력이 있는 판은 삭제하면 지우지 않고 사용 중지로 바뀝니다.") }}
+{{ f.next("WO-020", "생산지시서 보기") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">인쇄 판의 보유와 사용 이력을 관리한다 · 판 코드는 바꾸지 않는다 · 사용 이력이 있는 판은 지우지 않고 사용 중지로 바꾼다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "코드·이름", form.q) }}
-    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-STD-031") and not edit %}<a class="btn btn-primary" href="#plate-form">＋ 판 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="판 코드 · 판 이름"></label>
+  {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.use %}<a class="btn btn-ghost" href="{{ nav.path_of('STD-030') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("판 수정 — " ~ edit.plate_code, "/std/plates/" ~ edit.id, "F-STD-032", cancel=nav.path_of("STD-030")) %}
+{% call f.form_box("판 수정 — " ~ edit.plate_code, "/std/plates/" ~ edit.id, "F-STD-032", open=true, cancel=nav.path_of("STD-030"), icon="✎", id="plate-form") %}
   {{ f.input("plate_code", "판 코드", edit.plate_code, readonly=true) }}
   {{ f.input("plate_name", "판 이름", edit.plate_name, required=true) }}
   {{ f.item_select(items, edit.item_id, required=false, blank="없음") }}
@@ -29,7 +36,7 @@
   {{ usage_fields() }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("판 등록", "/std/plates", "F-STD-031") %}
+{% call f.form_box("판 등록", "/std/plates", "F-STD-031", open=(flash and flash.kind == "warn"), id="plate-form") %}
   {{ f.input("plate_code", "판 코드", required=true) }}
   {{ f.input("plate_name", "판 이름", required=true) }}
   {{ f.item_select(items, required=false, blank="없음") }}
@@ -41,6 +48,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>판 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>판 코드</th><th>판 이름</th><th>제품</th><th>제작일</th><th>보관 위치</th><th class="num">사용 이력</th><th>마지막 사용</th><th>사용</th><th></th></tr></thead>

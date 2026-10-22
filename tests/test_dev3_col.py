@@ -210,7 +210,7 @@ def test_upload_screen_shows_live_batch_errors_and_preview_writes_nothing(c, w):
     assert c["ac"].get("/col/uploads", params={"batch": "999999999"}).status_code == 404
     assert c["ac"].get("/col/uploads", params={"batch": "abc"}).status_code == 404
     assert c["sl"].get("/col/uploads").status_code == 200                           # 영업부 R — 화면은 보되 폼 없음
-    assert "F-COL-011" in c["sl"].get("/col/uploads").text
+    assert "이 부서는 이 기능을 실행할 권한이 없습니다" in c["sl"].get("/col/uploads").text   # 폼 대신 안내(기능 ID 는 /ia 에만)
     assert c["sh"].get("/col/uploads").status_code == 403
     # 미리보기 — 아무것도 쓰지 않는다
     before = conn.q1("select (select count(*) from erp_upload_batch) as b, (select count(*) from erp_upload_row) as r, "

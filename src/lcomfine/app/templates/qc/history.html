@@ -1,20 +1,29 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "입고검사 · 제품검사 판정을 기간 · 품목 · 판정 조건으로 모아 봅니다.") }}
+{{ ui.help_item("재판정", "재판정한 건은 이전 판정을 함께 보여 줍니다. LOT 의 현재 판정은 가장 큰 차수입니다.") }}
+{{ ui.help_next("QC-010", "입고검사 판정") }}
+{{ ui.help_next("QC-020", "제품검사 판정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "재판정 건은 이전 판정을 함께 보여 준다 · LOT 의 현재 판정 = 가장 큰 차수") }}
-  <form class="search" method="get" role="search">
-    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
-    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
-    <label class="field">품목<input name="item" value="{{ f.item }}"></label>
-    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
-    <label class="field">구분<select name="kind"><option value="">전체</option>{% for k in ("입고검사", "제품검사") %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
-    <label class="field">판정<select name="result"><option value="">전체</option>{% for r in results %}<option{% if f.result == r %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
+  <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
+  <label class="field field--grow"><span>품목</span><input type="search" name="item" value="{{ f.item }}"></label>
+  <label class="field"><span>판정</span><select name="result"><option value="">전체</option>{% for r in results %}<option{% if f.result == r %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+  {% call ui.filters_more(open=(f.lot or f.kind)) %}
+    <label class="field"><span>LOT</span><input name="lot" value="{{ f.lot }}"></label>
+    <label class="field"><span>구분</span><select name="kind"><option value="">전체</option>{% for k in ("입고검사", "제품검사") %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.from or f.to or f.item or f.lot or f.kind or f.result %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-030') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>검사 이력 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

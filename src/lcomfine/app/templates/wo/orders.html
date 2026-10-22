@@ -1,24 +1,31 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "생산의뢰 한 건을 골라 생산지시서를 만들고, 제조사양기준서 · 시안을 불러와 함께 출력합니다.") }}
+{{ ui.help_rule("「확인대기」 · 「확정」 의뢰로만 지시서를 만들 수 있습니다. 지시서를 만들면 의뢰가 「지시완료」로 바뀝니다.") }}
+{{ ui.help_rule("그 제품의 사양 · 시안만 불러올 수 있고, 사용 중지된 것은 불러오지 않습니다.") }}
+{{ ui.help_rule("지시번호는 저장할 때 자동으로 붙고 바꿀 수 없습니다. 자재 불출 · 제품 입고에서 이 번호를 고릅니다.") }}
+{{ f.next("WO-030", "설비별 작업 순서 정하기") }}
+{{ f.next("MAT-020", "지시번호로 자재 불출") }}
+{% endblock %}
 {% block body %}
 {% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
 {% set eq_opts = [] %}{% for e in equipment %}{% set _ = eq_opts.append((e.code, e.code ~ " · " ~ e.code_name)) %}{% endfor %}
 {% set spec_opts = [] %}{% for x in specs %}{% set _ = spec_opts.append((x.id, "개정 " ~ x.revision ~ " · " ~ x.title)) %}{% endfor %}
 {% set art_opts = [] %}{% for x in artworks %}{% set _ = art_opts.append((x.id, "차수 " ~ x.version ~ " · " ~ x.title)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">생산의뢰 한 건에서 지시서를 만든다 · 사양은 <a href="{{ nav.path_of('STD-010') }}">제조사양기준서</a>, 시안은
-    <a href="{{ nav.path_of('STD-040') }}">시안등록</a>에서 불러온다 · 지시번호는 불출·제품 입고에서 고르는 값이 된다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "지시번호·의뢰번호·제품", form.q) }}
-    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-WO-021") and not edit and not picked %}<a class="btn btn-primary" href="#order-form">＋ 지시서 작성</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="지시번호 · 의뢰번호 · 제품"></label>
+  {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.status %}<a class="btn btn-ghost" href="{{ nav.path_of('WO-020') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("지시서 수정 — " ~ edit.work_order_no, "/wo/orders/" ~ edit.id, "F-WO-022", cancel=nav.path_of("WO-020")) %}
+{% call f.form_box("지시서 수정 — " ~ edit.work_order_no, "/wo/orders/" ~ edit.id, "F-WO-022", open=true, cancel=nav.path_of("WO-020"), icon="✎", id="order-form") %}
   {{ f.input("work_order_no", "지시번호", edit.work_order_no, readonly=true) }}
   {{ f.select("spec_sheet_id", "제조사양기준서", spec_opts, edit.spec_sheet_id, blank="불러오지 않음") }}
   {{ f.select("artwork_id", "시안", art_opts, edit.artwork_id, blank="불러오지 않음") }}
@@ -29,9 +36,9 @@
   {{ f.input("note", "비고", edit.note) }}
 {% endcall %}
 {% elif picked %}
-{% call f.form_panel("지시서 작성 — 의뢰 " ~ picked.request_no ~ " · 다음 번호 " ~ next_no, "/wo/orders", "F-WO-021", cancel=nav.path_of("WO-020")) %}
+{% call f.form_box("지시서 작성 — 의뢰 " ~ picked.request_no ~ " · 다음 번호 " ~ next_no, "/wo/orders", "F-WO-021", open=true, cancel=nav.path_of("WO-020"), id="order-form") %}
   <input type="hidden" name="request_id" value="{{ picked.id }}">
-  <p class="field"><span>의뢰</span><strong>{{ picked.request_no }} · {{ picked.customer_name }} · <code>{{ picked.item_code }}</code> {{ picked.item_name }} · 납기 {{ picked.due_date | dt }} · {{ picked.status }}</strong></p>
+  <p class="field field--wide"><span>의뢰</span><strong>{{ picked.request_no }} · {{ picked.customer_name }} · <code>{{ picked.item_code }}</code> {{ picked.item_name }} · 납기 {{ picked.due_date | dt }} · {{ picked.status }}</strong></p>
   {{ f.select("spec_sheet_id", "제조사양기준서 불러오기", spec_opts, (specs[0].id if specs else ""), blank="불러오지 않음") }}
   {{ f.select("artwork_id", "시안 불러오기", art_opts, (artworks[0].id if artworks else ""), blank="불러오지 않음") }}
   {{ f.input("qty", "지시 수량", picked.qty, type="number", required=true, step="0.001") }}
@@ -40,19 +47,17 @@
   {{ f.input("note", "비고") }}
 {% endcall %}
 {% else %}
-<section class="panel">
-  <h2>지시서 작성 — 의뢰 고르기</h2>
-  {% if fn_allowed.get("F-WO-021") %}
-  <form class="search" method="get">
-    {% set rq_opts = [] %}{% for r in open_requests %}{% set _ = rq_opts.append((r.request_no, r.request_no ~ " · " ~ r.customer_name ~ " · " ~ r.item_code ~ " · 납기 " ~ (r.due_date | dt) ~ " · " ~ r.status)) %}{% endfor %}
-    {{ f.select("request_no", "생산의뢰", rq_opts, form.request_no, required=true) }}
-    <div class="actions"><button type="submit" class="btn btn-primary">사양·시안 불러오기</button></div>
-  </form>
-  {% else %}<p class="muted">이 부서는 이 기능을 실행할 권한이 없습니다 <code>F-WO-021</code></p>{% endif %}
-</section>
+{% call ui.form_details("지시서 작성", open=(flash and flash.kind == "warn"), allowed=fn_allowed.get("F-WO-021")) %}
+<form method="get" id="order-form">
+  {% set rq_opts = [] %}{% for r in open_requests %}{% set _ = rq_opts.append((r.request_no, r.request_no ~ " · " ~ r.customer_name ~ " · " ~ r.item_code ~ " · 납기 " ~ (r.due_date | dt) ~ " · " ~ r.status)) %}{% endfor %}
+  <div class="form-grid">{{ f.select("request_no", "생산의뢰", rq_opts, form.request_no, required=true) }}</div>
+  <div class="actions"><button type="submit" class="btn btn-primary">사양·시안 불러오기</button></div>
+</form>
+{% endcall %}
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>지시 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>지시번호</th><th>의뢰번호</th><th>거래처</th><th>제품</th><th class="num">지시 수량</th><th>설비</th><th>예정일</th>

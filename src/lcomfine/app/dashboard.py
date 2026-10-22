@@ -157,7 +157,7 @@ def orders(period, customer_id: int | None = None) -> dict:
         _kpi("requests", "의뢰 건수", _n(len(rows)), unit="건"),
         _kpi("qty", "의뢰 수량", _n(sum((r["qty"] for r in rows), Decimal(0))) if rows else None, digits=3),
         _kpi("customers", "거래처 수", _n(len(by_customer)), unit="곳"),
-        _kpi("not_started", "미착수 의뢰", _n(len(not_started)), unit="건", note="의뢰는 있고 취소 아닌 지시가 없는 건"),
+        _kpi("not_started", "미착수 의뢰", _n(len(not_started)), unit="건", note="생산지시가 아직 없는 의뢰"),
     ]
     out["series"] = {"requests": _series(labels, list(by_bucket.values()), "bucket", "requests"),
                      "qty": _series(labels, list(by_bucket.values()), "bucket", "qty"),
@@ -204,8 +204,8 @@ def production(period, customer_id: int | None = None) -> dict:
         _kpi("produced_qty", "생산 수량", _n(sum((r["produced_qty"] for r in by_wo), Decimal(0))) if by_wo else None, digits=3),
         _kpi("good_qty", "양품 수량", _n(sum((r["good_qty"] for r in by_wo), Decimal(0))) if by_wo else None, digits=3),
         _kpi("loss_qty", "로스 수량", sum((r["loss_qty"] for r in by_wo), Decimal(0)) if by_wo else None, digits=3),
-        _kpi("loss_rate", "생산 로스율", None, text=UNDECIDED_LOSS, note="산식 미확정 — 원 수량만 보인다"),
-        _kpi("utilization", "가동률(%)", rate, digits=1, unit="%", note="가설 D-801 — 가동 ÷ (가동 + 정지)"),
+        _kpi("loss_rate", "생산 로스율", None, text=UNDECIDED_LOSS, note="산식 확정 전 — 수량으로 판단"),
+        _kpi("utilization", "가동률(%)", rate, digits=1, unit="%", note="가동 ÷ (가동 + 정지) · 임시 산식"),
     ]
     out["series"] = {"good_qty": _series(labels, by_bucket, "bucket", "good_qty"),
                      "produced_qty": _series(labels, by_bucket, "bucket", "produced_qty"),
@@ -262,7 +262,7 @@ def quality(period, customer_id: int | None = None) -> dict:
     out["kpis"] = [
         _kpi("inspected_qty", "검사 수량", _n(sum((d["inspected_qty"] for d in daily), Decimal(0))) if daily else None, digits=3),
         _kpi("defect_qty", "불량 수량", sum((d["defect_qty"] for d in daily), Decimal(0)) if daily else None, digits=3),
-        _kpi("loss_rate", "검사 로스율", None, text=UNDECIDED_LOSS, note="산식 미확정 — 원 수량만 보인다"),
+        _kpi("loss_rate", "검사 로스율", None, text=UNDECIDED_LOSS, note="산식 확정 전 — 수량으로 판단"),
         _kpi("judgements", "판정 건수", _n(len(judgements)), unit="건", note="입고검사 + 제품검사"),
         _kpi("rejected_lots", "불합격 LOT", _n(len({(j["inspection_kind"], j["lot_no"]) for j in rejected})), unit="LOT"),
         _kpi("rejudged", "재판정", _n(len(rejudged)), unit="건", note="차수 2 이상"),
@@ -422,7 +422,7 @@ def shipment(period, customer_id: int | None = None) -> dict:
         _kpi("shipments", "출하 건수", _n(len(recent)), unit="건"),
         _kpi("qty", "출하 수량", _n(sum((r["qty"] for r in recent), Decimal(0))) if recent else None, digits=3),
         _kpi("customers", "거래처 수", _n(len(by_customer)), unit="곳"),
-        _kpi("due_rate", "납기 준수율(%)", rate, digits=1, unit="%", note="가설 D-804 · 의뢰번호 있는 출하만"),
+        _kpi("due_rate", "납기 준수율(%)", rate, digits=1, unit="%", note="의뢰번호가 있는 출하만 셈"),
         _kpi("on_time", "납기 안 완료", _n(counts["on_time"]), unit="건"),
         _kpi("late_done", "지연 완료", _n(counts["late_done"]), unit="건"),
         _kpi("late_open", "지연", _n(counts["late_open"]), unit="건"),
@@ -483,7 +483,7 @@ def collection(period, customer_id: int | None = None) -> dict:
         _kpi("sales", "기간 매출액", sales, digits=0, unit="원", text=sales_text),
         _kpi("shipped_qty", "기간 확정 출하 수량", stats._sum_or_none(monthly, "shipped_qty"), digits=3),
         _kpi("over90", "90일 초과 거래처", _n(len(over90)) if over90_text is None else None, unit="곳", text=over90_text,
-             note="가설 D-803 · 기준일 기준"),
+             note="기준일에 90일 넘은 미수"),
     ]
     out["series"] = {"collected": [{"label": m["ym"], "value": m["collected_amount"]} for m in monthly],
                      "shipped_qty": [{"label": m["ym"], "value": m["shipped_qty"]} for m in monthly],
@@ -540,7 +540,7 @@ def order_flow(period, customer_id: int | None = None) -> dict:
                    _kpi("shipped", "출하까지 간 의뢰", _n(sum(1 for r in rows if r["shipped_on"] is not None)), unit="건")]
     for n, s in enumerate(stages, start=1):
         out["kpis"].append(_kpi(f"avg_{n}", f"평균 {s['stage']}", s["avg_days"], digits=1, unit="일"))
-    out["kpis"].append(_kpi("bottleneck", "병목 단계", None, text=UNDECIDED_BOTTLENECK, note="기준일 수는 설계 때 확정 — 소요일만 보인다"))
+    out["kpis"].append(_kpi("bottleneck", "병목 단계", None, text=UNDECIDED_BOTTLENECK, note="기준 일수 확정 전 — 단계 소요일로 판단"))
     out["series"] = {"avg_days": [{"label": s["stage"], "value": s["avg_days"]} for s in stages],
                      "collected": [{"label": m["ym"], "value": m["collected_amount"]} for m in svc["monthly"]]}
     out["tables"] = {"rows": rows, "stages": stages, "collection_monthly": svc["monthly"], "collection_by_customer": svc["rows"]}

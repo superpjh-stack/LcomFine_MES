@@ -63,7 +63,7 @@ def test_utilization_per_equipment(c, w, daily):
     assert rows[eq_b]["rate"] is None and rows[eq_b]["entries"] == 1
     page = r.text
     seg = page[page.index(f'data-equipment="{eq_a}"'):]
-    assert "80.0" in seg[:600] and "D-801" in page
+    assert "80.0" in seg[:600] and "임시 산식" in page                         # 가동률 산식(가설) — 화면 도움말 · KPI 보조 문장(옛 본문 「D-801」)
     seg_b = page[page.index(f'data-equipment="{eq_b}"'):]
     assert "미수집" in seg_b[:600]
     for eq in ("EQ01", "EQ02"):                                              # 공통코드 설비는 일보가 없어도 행이 있다

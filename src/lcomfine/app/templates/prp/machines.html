@@ -1,25 +1,35 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기간 안 생산일보를 설비별로 모아 생산 · 양품 · 로스 수량과 가동 · 정지 시간을 봅니다.") }}
+{{ ui.help_rule("로스율은 산식이 정해지지 않아 숫자 대신 「미확정」으로 둡니다. 생산 · 양품 · 로스 원 수량으로 판단하세요.") }}
+{{ ui.undecided_note(loss_decision, "생산 로스율 산식") }}
+{{ ui.help_next("PRP-010", "월별 설비 가동률") }}
+{{ ui.help_next("RPT-020", "생산 리포트") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">기계별 생산 통계 — 원천은 생산일보. 로스율은 산식이 정해지지 않아 {{ ui.undecided(loss_decision) }} 이고, 생산 · 양품 · 로스 원 수량을 함께 보인다.</p>
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
-    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건 — 기간 선택">
+  {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+  {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 
 {% if rows %}
-<section class="panel">
-  <h2>설비별 양품 수량</h2>
-  {% if rows | selectattr("good_qty") | list %}{{ ui.svg_bar(series) }}{% else %}{{ ui.empty() }}{% endif %}
+{% set gl_rows = [] %}{% for r in rows %}{% set _ = gl_rows.append({"label": r.equipment_name or r.equipment_code, "parts": [{"label": "양품", "value": r.good_qty}, {"label": "로스", "value": r.loss_qty}]}) %}{% endfor %}
+{% call ch.grid() %}
+{{ ch.chart_panel("good_by_equipment", "설비별 양품 수량", series, "설비", "양품 수량", kind="hbar", sort=true) }}
+<section class="panel viz-panel">
+  <header class="viz-panel__head"><h2>설비별 양품 · 로스</h2><span class="viz-panel__sub">막대 길이 = 생산 수량</span></header>
+  {% if rows | selectattr("good_qty") | list %}{{ ch.stacked(gl_rows, ["양품", "로스"], "설비", "good_loss") }}{% else %}{{ ui.empty() }}{% endif %}
 </section>
+{% endcall %}
 {% endif %}
 <section class="panel panel--grid">
+  <h2>기계별 생산 · 로스 통계 <small class="muted">로스율 {{ ui.undecided(loss_decision, "로스율 산식 미정 — 원 수량으로 판단") }}</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>설비 코드</th><th>설비</th><th class="num">지시 수</th><th class="num">일보 행</th><th class="num">생산</th><th class="num">양품</th><th class="num">로스</th><th>로스율</th><th class="num">가동(분)</th><th class="num">정지(분)</th></tr></thead>

@@ -1,15 +1,21 @@
 {# F-DOC-011 진입 — 토큰은 이 폼의 hidden 칸에만 싣는다(주소창 · 로그에 없음). 템플릿에 스크립트를 넣지 않는다:
    자동 제출 보조가 static/app.js 에 생기면 `data-auto-submit` 으로 바로 넘어가고, 그 전에는 사람이 단추를 누른다. #}
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_rule("이 단추는 " ~ ttl ~ "초 동안 한 번만 쓸 수 있습니다. 시간이 지나면 문서관리 바로가기에서 다시 엽니다.") }}
+{{ f.next("DOC-010", "다시 열기") }}
+{% endblock %}
 {% block body %}
+{{ ui.screen_head("문서관리 열기") }}
 <section class="panel" data-doc-go="issued">
-  <h1>문서관리 열기</h1>
-  <p>일회용 토큰을 발급했다 — 유효 {{ ttl }}초 · 한 번만 사용. 아래 단추를 누르면 문서관리 시스템으로 넘어간다.</p>
+  <p>문서관리 시스템으로 넘어갑니다. 자동으로 넘어가지 않으면 아래 단추를 누릅니다.</p>
   <form method="post" action="{{ action }}" data-auto-submit>
     <input type="hidden" name="token" value="{{ token }}">
     <div class="actions"><button type="submit" class="btn btn-primary">문서관리 열기</button></div>
   </form>
-  <p class="muted">{{ ttl }}초가 지나거나 한 번 쓴 토큰은 문서관리 시스템이 거부한다 — 그때는
-    <a href="{{ nav.path_of('DOC-010') }}">문서관리 바로가기</a>에서 다시 연다.</p>
+  <p class="muted">{{ ttl }}초가 지나거나 한 번 쓴 단추는 문서관리 시스템이 받지 않습니다 — 그때는
+    <a href="{{ nav.path_of('DOC-010') }}">문서관리 바로가기</a>에서 다시 엽니다.</p>
 </section>
 {% endblock %}

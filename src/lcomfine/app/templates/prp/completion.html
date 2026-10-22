@@ -1,35 +1,37 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "제품 입고된 수량을 생산 완료로 보고 기간 · 거래처별로 모읍니다.") }}
+{{ ui.help_rule("취소 표시된 제품 입고는 세지 않습니다. 기간은 입고일, 거래처는 생산의뢰의 거래처 기준입니다.") }}
+{{ ui.help_next("MAT-030", "제품 입고 등록 · 취소") }}
+{{ ui.help_next("RPT-070", "의뢰부터 출하까지 단계 소요일") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">생산 완료 = <a href="{{ nav.path_of('MAT-030') }}">제품 입고</a>(취소 표시 행 제외) · 기간은 입고일 · 거래처는 생산의뢰의 거래처.</p>
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
-    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
-    <label class="field"><span>거래처</span>
-      <select name="customer"><option value="">전체</option>
-        {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == form.customer %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
-      </select></label>
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% set cust_opts = [] %}{% for cu in customers %}{% set _ = cust_opts.append((cu.id, cu.customer_code ~ " · " ~ cu.customer_name)) %}{% endfor %}
+{{ ui.screen_head(screen.name) }}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처 조건">
+  {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+  {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+  {{ f.select("customer", "거래처", cust_opts, form.customer) }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 
 {% if data %}
-<section class="panel">
-  <div class="kpis">
-    {{ ui.kpi("완료 지시 수", data.total.work_orders | num if data.total.receipts else none) }}
-    {{ ui.kpi("제품 입고 건수", data.total.receipts | num if data.total.receipts else none) }}
-    {{ ui.kpi("완료 수량", data.total.qty | num(3) if data.total.qty is not none else none) }}
-  </div>
-</section>
-<section class="panel">
-  <h2>월별 완료 수량</h2>
-  {{ ui.svg_bar(series) }}
-</section>
+<div class="kpis">
+  {{ ch.kpi_tile("", "완료 수량", data.total.qty if data.total.receipts else none, digits=3) }}
+  {{ ch.kpi_tile("", "제품 입고 건수", data.total.receipts or none, unit="건") }}
+  {{ ch.kpi_tile("", "완료 지시 수", data.total.work_orders if data.total.receipts else none, unit="건") }}
+</div>
+{% set top_s = [] %}{% for r in (data.rows | sort(attribute="qty", reverse=true))[:10] %}{% set _ = top_s.append({"label": r.customer_name ~ " · " ~ r.item_name, "value": r.qty}) %}{% endfor %}
+{% call ch.grid() %}
+{{ ch.chart_panel("monthly_qty", "월별 완료 수량", series, "월", "완료 수량") }}
+{{ ch.chart_panel("top_items", "거래처 · 제품별 완료 수량", top_s, "거래처 · 제품", "완료 수량", kind="hbar", sub="상위 10") }}
+{% endcall %}
 <section class="panel panel--grid">
+  <h2>완료 수량 집계 <small class="muted">{{ data.rows | length }}행</small></h2>
   {% if data.rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>거래처</th><th>제품 코드</th><th>제품</th><th class="num">지시 수</th><th class="num">입고 건수</th><th class="num">완료 수량</th></tr></thead>

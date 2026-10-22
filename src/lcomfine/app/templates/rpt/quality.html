@@ -1,19 +1,32 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "rpt/_d.html" as d %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "검사일보의 검사 · 불량 수량과 불량유형, 입고검사 · 제품검사의 불합격 LOT 와 재판정을 봅니다.") }}
+{{ ui.help_rule("검사 로스율은 산식이 정해지지 않아 숫자 대신 「미확정」으로 둡니다. 검사 · 불량 원 수량으로 판단하세요.") }}
+{{ ui.undecided_note("D-519", "검사 로스율 산식") }}
+{{ ui.help_item("기간", "검사일보는 일보 일자, 판정은 판정 일시 기준입니다.") }}
+{{ ui.help_next("INS-040", "공정 검사 수량 · 불량 상세") }}
+{{ ui.help_next("QC-030", "불합격 LOT 재판정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ d.header(screen, "원천: 검사일보(공정) · 입고검사·제품검사 판정. 기간 = 검사일보 일자 · 판정 일시. 검사 로스율 산식은 미확정 (D-519) — 원 수량만 보인다.", data, [(nav.path_of("INS-040"), nav.by_id("INS-040").name), (nav.path_of("QC-030"), nav.by_id("QC-030").name)]) }}
-  {{ f.notice(notice) }}
-  {{ d.filters(form, customers, with_customer) }}
-</section>
+{{ d.head(screen, data) }}
+{{ f.notice(notice) }}
+{{ d.filters(form, customers, with_customer) }}
 {% if data %}
-<section class="panel">{{ d.kpis(data.kpis) }}</section>
-{{ d.chart_table("defect_qty", "기간별 불량 수량(검사일보)", data.series.defect_qty, "구간", "불량 수량", 3) }}
-{{ d.chart_table("inspected_qty", "기간별 검사 수량(검사일보)", data.series.inspected_qty, "구간", "검사 수량", 3, "line") }}
-{{ d.chart_table("defects", "불량유형별 수량", data.series.defects, "불량유형", "수량", 3) }}
-{{ d.table("rejected", "입고·제품 불합격 LOT(판정 행)", [("inspection_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "제품·자재", none), ("seq", "차수", 0), ("result", "판정", none), ("inspected_at", "판정 일시", none), ("inspector", "판정자", none)], data.tables.rejected, "불합격 판정 없음") }}
-{{ d.table("rejudged", "재판정(차수 2 이상 · 이전 판정 함께)", [("inspection_kind", "구분", none), ("lot_no", "LOT", none), ("seq", "차수", 0), ("previous_result", "이전 판정", none), ("result", "이번 판정", none), ("inspected_at", "판정 일시", none)], data.tables.rejudged, "재판정 없음") }}
+{{ d.kpis(data.kpis, sparks={"inspected_qty": data.series.inspected_qty, "defect_qty": data.series.defect_qty}) }}
+{% set kinds = ["입고검사", "제품검사"] %}
+{% set rej_s = [] %}{% for k in kinds %}{% set n = data.tables.rejected | selectattr("inspection_kind", "equalto", k) | list | length %}{% set _ = rej_s.append({"label": k, "value": (n or none)}) %}{% endfor %}
+{% call ch.grid() %}
+{{ d.chart_table("inspected_qty", "기간별 검사 수량", data.series.inspected_qty, "구간", "검사 수량", 3, "line") }}
+{{ d.chart_table("defect_qty", "기간별 불량 수량", data.series.defect_qty, "구간", "불량 수량", 3) }}
+{{ d.chart_table("defects", "불량유형별 수량", data.series.defects, "불량유형", "수량", 3, ("donut" if (data.series.defects | length) <= 6 else "hbar"), sub="많은 순") }}
+{{ d.chart_table("rejected_by_kind", "입고·제품 불합격 판정", rej_s, "구분", "판정 행", 0, "donut") }}
+{% endcall %}
+{{ d.table("rejected", "입고·제품 불합격 LOT", [("inspection_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "제품·자재", none), ("seq", "차수", 0), ("result", "판정", none), ("inspected_at", "판정 일시", none), ("inspector", "판정자", none)], data.tables.rejected, "불합격 판정 없음") }}
+{{ d.table("rejudged", "재판정 (이전 판정과 함께)", [("inspection_kind", "구분", none), ("lot_no", "LOT", none), ("seq", "차수", 0), ("previous_result", "이전 판정", none), ("result", "이번 판정", none), ("inspected_at", "판정 일시", none)], data.tables.rejudged, "재판정 없음") }}
 {{ d.table("daily_by_work_order", "검사일보 지시별 합", [("work_order_no", "지시번호", none), ("item_name", "제품", none), ("entries", "일보 행", 0), ("inspected_qty", "검사", 3), ("defect_qty", "불량", 3)], data.tables.daily_by_work_order) }}
 {% endif %}
 {% endblock %}

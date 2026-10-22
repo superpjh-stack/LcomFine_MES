@@ -184,5 +184,39 @@ def spark(series: list[Any]) -> str:
     return " ".join(f"{round(i / n * 100, 2)},{round(27 - (v - lo) / span * 24, 2)}" for i, v in pts)
 
 
+def multi(rows: list[dict], keys: list[str], *, max_labels: int = 6) -> dict:
+    """여러 줄 선(같은 단위 · 축 하나) — rows: [{label, parts: [{label: key, value}]}](stacked 와 같은 모양) · keys: 계열 순서(색 순서 · 최대 6).
+    눈금은 모든 계열의 값을 함께 본다. {n, w, x: [{label, short, x, show_x, values: {key: value}}], ticks, y0, series: [{key, slot, segments, dots}]}."""
+    n = len(rows)
+    vals: dict[str, list[Any]] = {k: [] for k in keys}
+    for r in rows:
+        m = {p.get("label"): p.get("value") for p in (r.get("parts") or [])}
+        for k in keys:
+            vals[k].append(m.get(k))
+    sc = scale([v for k in keys for v in vals[k]])
+    w = 100.0 / n if n else 100.0
+    every = _label_every(n, max_labels)
+    xs = [{"label": r.get("label"), "short": short_label(r.get("label")), "x": round(w * i + w / 2, 3),
+           "show_x": (i % every == 0) or (i == n - 1 and n <= max_labels), "values": {k: vals[k][i] for k in keys}}
+          for i, r in enumerate(rows)]
+    series = []
+    for j, k in enumerate(keys):
+        segs, cur, dots = [], [], []
+        for i, v in enumerate(vals[k]):
+            fv = _f(v)
+            if fv is None:
+                if cur:
+                    segs.append(" ".join(cur))
+                cur = []
+                continue
+            y = sc["y"](fv)
+            cur.append(f"{xs[i]['x']},{y}")
+            dots.append({"x": xs[i]["x"], "y": y})
+        if cur:
+            segs.append(" ".join(cur))
+        series.append({"key": k, "slot": (j % 6) + 1, "segments": segs, "dots": dots})
+    return {"n": n, "w": round(w, 3), "x": xs, "ticks": sc["ticks"], "y0": sc["y0"], "series": series}
+
+
 GLOBALS = {"viz_columns": columns, "viz_bars_h": bars_h, "viz_parts": parts, "viz_meter": meter, "viz_spark": spark,
-           "viz_short": short_label}
+           "viz_short": short_label, "viz_multi": multi}

@@ -61,8 +61,8 @@
 
 {# 다음 단계 링크 — 화면 이름은 nav 에서(전역). text 를 주면 이름 뒤 설명 #}
 {% macro help_next(screen_id, text="") -%}
-{% set sc = nav.by_id(screen_id) %}
-<p class="help__next"><a href="{{ sc.path }}">{{ sc.name }} <span aria-hidden="true">→</span></a>{% if text %} <span class="muted">{{ text }}</span>{% endif %}</p>
+{% if screen_visible(screen_id) %}{% set sc = nav.by_id(screen_id) %}
+<p class="help__next"><a href="{{ sc.path }}">{{ sc.name }} <span aria-hidden="true">→</span></a>{% if text %} <span class="muted">{{ text }}</span>{% endif %}</p>{% endif %}
 {%- endmacro %}
 
 {# 미확정 항목 설명 — 패널에 「미확정 (D-nn)」 칩과 한 줄 뜻 #}

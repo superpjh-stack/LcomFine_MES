@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "창고를 등록하고, 창고 아래에 위치(랙 · 구역)를 둡니다. 입고 · 재고는 이 위치 단위로 관리합니다.") }}
+{{ ui.help_rule("창고 코드 · 위치 코드는 등록한 뒤 바꿀 수 없습니다. 위치 코드는 한 창고 안에서 겹칠 수 없습니다.") }}
+{{ ui.help_rule("재고가 남은 위치(또는 그런 위치가 있는 창고)는 삭제할 수 없습니다.") }}
+{{ ui.help_rule("사용 중지 창고에는 새 위치를 둘 수 없습니다.") }}
+{{ f.next("MAT-010", "원자재 입고") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">위치(랙·구역)는 창고 아래에 둔다 · 코드는 바꾸지 않는다 · 재고가 남은 위치는 삭제할 수 없다.</p>
-</section>
+{% set err_back = flash and flash.kind == "warn" %}
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-BAS-031") and not edit and not edit_location %}<a class="btn btn-primary" href="#wh-form">＋ 창고 등록</a><a class="btn" href="#loc-form">＋ 위치 등록</a>{% endif %}
+{% endcall %}
 
 {% if edit %}
-{% call f.form_panel("창고 수정 — " ~ edit.warehouse_code, "/bas/warehouses/" ~ edit.id, "F-BAS-032", cancel=nav.path_of("BAS-030")) %}
+{% call f.form_box("창고 수정 — " ~ edit.warehouse_code, "/bas/warehouses/" ~ edit.id, "F-BAS-032", open=true, cancel=nav.path_of("BAS-030"), icon="✎", id="wh-form") %}
   <input type="hidden" name="target" value="warehouse">
   {{ f.input("warehouse_code", "창고 코드", edit.warehouse_code, readonly=true) }}
   {{ f.input("warehouse_name", "창고명", edit.warehouse_name, required=true) }}
@@ -16,20 +23,20 @@
   {{ f.use_select(edit.use_yn) }}
 {% endcall %}
 {% elif edit_location %}
-{% call f.form_panel("위치 수정 — " ~ edit_location.location_code, "/bas/warehouses/" ~ edit_location.id, "F-BAS-032", cancel=nav.path_of("BAS-030")) %}
+{% call f.form_box("위치 수정 — " ~ edit_location.location_code, "/bas/warehouses/" ~ edit_location.id, "F-BAS-032", open=true, cancel=nav.path_of("BAS-030"), icon="✎", id="loc-form") %}
   <input type="hidden" name="target" value="location">
   {{ f.input("location_code", "위치 코드", edit_location.location_code, readonly=true) }}
   {{ f.input("location_name", "위치명", edit_location.location_name, required=true) }}
   {{ f.use_select(edit_location.use_yn) }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("창고 등록", "/bas/warehouses", "F-BAS-031") %}
+{% call f.form_box("창고 등록", "/bas/warehouses", "F-BAS-031", open=err_back, id="wh-form") %}
   <input type="hidden" name="target" value="warehouse">
   {{ f.input("warehouse_code", "창고 코드", required=true) }}
   {{ f.input("warehouse_name", "창고명", required=true) }}
   {{ f.input("note", "비고") }}
 {% endcall %}
-{% call f.form_panel("위치 등록", "/bas/warehouses", "F-BAS-031") %}
+{% call f.form_box("위치 등록", "/bas/warehouses", "F-BAS-031", open=err_back, id="loc-form") %}
   <input type="hidden" name="target" value="location">
   {% set opts = [] %}
   {% for w in warehouses if w.use_yn == "Y" %}{% set _ = opts.append((w.id, w.warehouse_code ~ " " ~ w.warehouse_name)) %}{% endfor %}
@@ -40,7 +47,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
-  <h2 class="panel__title" style="margin:12px 16px 0">창고</h2>
+  <h2>창고 <small class="muted">{{ warehouses | length }}곳</small></h2>
   {% if warehouses %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>창고 코드</th><th>창고명</th><th class="num">위치 수</th><th>사용</th><th>비고</th><th></th></tr></thead>
@@ -59,7 +66,7 @@
 </section>
 
 <section class="panel panel--grid">
-  <h2 class="panel__title" style="margin:12px 16px 0">위치 (랙·구역)</h2>
+  <h2>위치 (랙·구역) <small class="muted">{{ locations | length }}곳</small></h2>
   {% if locations %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>창고</th><th>위치 코드</th><th>위치명</th><th class="num">현재고</th><th>사용</th><th></th></tr></thead>

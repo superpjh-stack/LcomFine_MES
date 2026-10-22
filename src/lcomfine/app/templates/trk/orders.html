@@ -2,20 +2,25 @@
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
 {% import "trk/_stages.html" as st %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "생산의뢰 번호 하나로 지금 어느 단계인지와 남은 수량을 봅니다. 고객이 납기를 물으면 생산부에 묻지 않고 바로 답할 수 있습니다.") }}
+{{ ui.help_item("단계", "의뢰 → 지시 → 생산 → 검사 → 제품 입고 → 출하. 도달한 단계는 초록색으로 표시됩니다.") }}
+{{ f.next("TRK-020", "납기 임박 · 지연 보기") }}
+{{ f.next("TRK-030", "거래처 한 곳 종합 조회") }}
+{% endblock %}
 {% block body %}
 {% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">생산의뢰 번호 하나로 지금 어느 단계인지와 남은 수량을 실시간으로 보여 준다 · 고객 납기 문의에 영업부가 생산부에 묻지 않고
-    바로 답할 수 있게 하는 화면이다 · 읽기만 한다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("request", "의뢰번호", form.request) }}
-    {{ f.input("q", "의뢰번호·거래처·제품 검색", form.q) }}
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  {{ f.input("request", "의뢰번호", form.request) }}
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="의뢰번호 · 거래처 · 제품"></label>
+  {% call ui.filters_more(open=(form.customer or form.item)) %}
     {{ f.select("customer", "거래처", cust_opts, form.customer, blank="전체") }}
     {{ f.item_select(items, form.item, name="item", required=false, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.request or form.q or form.customer or form.item %}<a class="btn btn-ghost" href="{{ nav.path_of('TRK-010') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if detail %}
 <section class="panel" data-request="{{ detail.request_no }}">
@@ -38,6 +43,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>의뢰 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th class="num">의뢰 수량</th><th>납기</th><th>단계</th><th>지금</th><th class="num">남은 수량</th><th>상태</th></tr></thead>

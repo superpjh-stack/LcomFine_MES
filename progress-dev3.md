@@ -313,3 +313,11 @@ dataquery.MAX_ROWS(200) · STATEMENT_TIMEOUT_MS(5000) · QUESTION_MAX_CHARS(1000
     **종결** — 아키텍트가 api-contract.md §2 에 F-RPT-132 브라우저 200 예외 한 줄을 넣었다(2026-10-22).
 18. **[아키텍트 · static/style.css · 선택]** RPT 템플릿은 색을 전부 토큰 클래스로 썼고 인라인 style 은 레이아웃(패널 안 `h2` 여백 `margin: 12px 16px 0` · 질문 칸 `flex: 1 1 100%`)만 남았다. `.panel--grid > h2 { margin: 12px 16px 0 }` 와 `.search .field--wide { flex: 1 1 100% }` 를 넣어 주면 인라인 style 을 뺀다.
     **종결** — 아키텍트가 두 클래스를 style.css 에 넣었고, `templates/rpt/` 의 인라인 `style=` 를 전부(h2 여백 → `.panel--grid > h2` · 질문 칸 → `.field--wide` · 결과 `<pre>` · 요약 탭 nav 의 style 제거) 빼서 **`style=` 0** 이다(`grep -rc 'style=' src/lcomfine/app/templates/rpt/` → 전부 0 · `uv run pytest -q tests/test_dev3_rpt.py` 45 passed · 2026-10-22).
+
+## UI 정리 (2026-10-22 · 운영 화면 · docs/ui-guide.md)
+
+- 범위: `templates/{shp,prp,col,rpt}/` 22 화면 — 본문 개발 메모 · 기능 ID · D 번호 나열을 걷어내고 `screen_head` · `.filters` · `form_details` · 오른쪽 `{% block help %}` 로. 대시보드 7 + RPT-020 은 `d.head` → KPI 줄 → 2열 차트 격자(접힌 데이터 표) → 상세 표. RPT-130 은 질문 칸 · 예시 칩(`?q=`) · 결과 표 · 생성된 쿼리 접기.
+- `dashboard.py` 는 KPI `note` 문장만 운영 말투로(수치 · key · 계산 그대로). `shp/_f.html` `denied` 는 기능 ID 없이 문장만. `col/_c.html` 에 `asof_chip` · `rpt/_d.html` 의 옛 `header` 를 지우고 `head(show_asof=)`.
+- 공용에 더한 것(기존 동작 불변): `_charts.html` `lines(rows, keys)`(같은 단위 여러 줄 선 · 축 하나) · `util/viz.py` `multi` + GLOBALS `viz_multi` · `style.css` `.viz__line--sN` · `.viz__dot--sN`.
+- 테스트 최소 수정(옮겨진 문장): test_dev3_rpt 3곳(D-805 → 「체류일(오늘 − LOT 생성일)」 · D-804 → 「납기 안 완료 ÷」 · 「해설 문장은 없다」 → 「…없습니다」) · test_dev3_prp 1(D-801 → 「임시 산식」) · test_dev3_col 1(「F-COL-011」 → 권한 없음 문장).
+- 검증: `uv run pytest -q tests/test_dev3_*.py tests/test_qa1_*.py tests/test_qa2_*.py tests/test_qa3_*.py` 241 통과(G-05 두 건은 동시 세션 쓰기로 겹쳐 실패 → 단독 재실행 통과) · `uv run python tools/check_data.py` 종료코드 0(G-15 전부 PASS) · `uv run python tools/check_screens.py` 종료코드 0.

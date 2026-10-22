@@ -1,49 +1,49 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
 {% import "col/_c.html" as c %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "반영된 회차의 ERP 수금 행을 일자 · 거래처 · 수단으로 찾습니다. 「엑셀」로 같은 조건의 목록을 내려받습니다.") }}
+{{ ui.help_rule("오류 없는 행만 보입니다. 거래처는 거래처 코드 매핑으로 연결된 MES 거래처입니다.") }}
+{{ ui.help_item("어음", "어음 만기일과 함께 기준일 기준 만기 「도래」 · 「예정」을 표시합니다.") }}
+{{ ui.undecided_note(decision, "ERP 엑셀 열 구성 — 매핑되지 않은 열은 비어 있음") }}
+{{ ui.help_next("COL-050", "거래처별 미수 잔액") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">반영 회차의 오류 없는 행만 · 거래처는 <a href="{{ nav.path_of('COL-030') }}">거래처 코드 매핑</a>으로 잇는다. 어음은 만기일과 만기 도래 여부를 함께 보인다. 기간은 일자(양끝 포함). 열 구성은 {{ ui.undecided(decision) }} — 매핑되지 않은 열은 비어 있다.</p>
-  {% if data %}{{ c.asof_line(data.asof) }}{% endif %}
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("date_from", "시작일", form.date_from, type="date") }}
-    {{ f.input("date_to", "종료일", form.date_to, type="date") }}
-    <label class="field"><span>거래처</span>
-      <select name="customer"><option value="">전체</option>
-        {% for cu in customers %}<option value="{{ cu.id }}"{% if (cu.id | string) == form.customer %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
-      </select></label>
-    <label class="field"><span>수단</span>
-      <select name="method"><option value="">전체</option>
-        {% for m in methods %}<option value="{{ m.method }}"{% if m.method == form.method %} selected{% endif %}>{{ m.method }}{% if m.code_name %} · {{ m.code_name }}{% endif %}</option>{% endfor %}
-      </select></label>
-    <div class="actions">
-      <button type="submit" class="btn btn-primary">조회</button>
-      {% if data %}<a class="btn" href="?date_from={{ form.date_from }}&amp;date_to={{ form.date_to }}&amp;customer={{ form.customer }}&amp;method={{ form.method | urlencode }}&amp;format=xlsx">엑셀</a>{% endif %}
-    </div>
-  </form>
-</section>
+{% set cust_opts = [] %}{% for cu in customers %}{% set _ = cust_opts.append((cu.id, cu.customer_code ~ " · " ~ cu.customer_name)) %}{% endfor %}
+{% set m_opts = [] %}{% for m in methods %}{% set _ = m_opts.append((m.method, m.method ~ (" · " ~ m.code_name if m.code_name else ""))) %}{% endfor %}
+{% call ui.screen_head(screen.name) %}{% if data %}{{ c.asof_chip(data.asof) }}{% endif %}
+  {% if data %}<a class="btn" href="?date_from={{ form.date_from }}&amp;date_to={{ form.date_to }}&amp;customer={{ form.customer }}&amp;method={{ form.method | urlencode }}&amp;format=xlsx">엑셀</a>{% endif %}
+{% endcall %}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처·수단 조건">
+  {{ f.input("date_from", "시작일", form.date_from, type="date") }}
+  {{ f.input("date_to", "종료일", form.date_to, type="date") }}
+  {{ f.select("customer", "거래처", cust_opts, form.customer) }}
+  {{ f.select("method", "수단", m_opts, form.method) }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 {% if data %}
-<section class="panel">
-  <div class="kpis">
-    {{ ui.kpi("행", data.total.rows | num if data.total.rows else none) }}
-    {{ ui.kpi("매출액 합", data.total.sales_amount | num if data.total.sales_amount is not none else none, "" if data.fields.sales_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")") }}
-    {{ ui.kpi("수금액 합", data.total.collected_amount | num if data.total.collected_amount is not none else none, "" if data.fields.collected_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")") }}
-  </div>
-</section>
-<section class="panel">
-  <h2>수단별 수금액</h2>
-  {{ ui.svg_bar(series) }}
+<div class="kpis">
+  {{ ch.kpi_tile("", "수금액 합", data.total.collected_amount, unit="원", note=("" if data.fields.collected_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")")) }}
+  {{ ch.kpi_tile("", "매출액 합", data.total.sales_amount, unit="원", note=("" if data.fields.sales_amount else "열 미매핑 — 미확정 (" ~ decision ~ ")")) }}
+  {{ ch.kpi_tile("", "행", data.total.rows or none, unit="행") }}
+</div>
+{% call ch.grid() %}
+{{ ch.chart_panel("by_method", "수단별 수금액", series, "수단", "수금액", kind=("donut" if (series | length) <= 6 else "hbar"), sub="원") }}
+<section class="panel panel--grid">
+  <h2>수단별 <small class="muted">행 · 수금액</small></h2>
   {% if data.by_method %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>수단</th><th class="num">행</th><th class="num">수금액</th></tr></thead>
     <tbody>{% for m in data.by_method %}<tr><td>{{ m.method | txt("(수단 없음)") }}</td><td class="num">{{ m.rows | num }}</td><td class="num">{{ m.collected_amount | num }}</td></tr>{% endfor %}</tbody>
   </table></div>
-  {% endif %}
+  {% else %}{{ ui.empty() }}{% endif %}
 </section>
+{% endcall %}
 <section class="panel panel--grid">
+  <h2>일자별 수금 목록 <small class="muted">{{ data.rows | length }}행</small></h2>
   {% if data.rows %}
   <div class="grid-wrap grid-wrap--tall"><table class="grid">
     <thead><tr><th>일자</th><th>ERP 거래처코드</th><th>거래처</th><th class="num">매출액</th><th class="num">수금액</th><th class="num">잔액</th><th>수단</th><th>어음 만기</th><th>만기 도래</th><th>회차</th></tr></thead>

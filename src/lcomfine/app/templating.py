@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,18 @@ env = Environment(
     lstrip_blocks=True,
 )
 env.globals.update(NOT_COLLECTED=screen.NOT_COLLECTED, EXAMPLE=screen.EXAMPLE, nav=nav, **viz.GLOBALS)   # 매크로(import)도 nav · viz_* 를 본다
+
+
+#: 지금 렌더 중인 사용자가 볼 수 있는 화면 ID — 문맥 없이 import 된 매크로도 읽게(render 가 채운다)
+_VISIBLE: ContextVar[frozenset] = ContextVar("lcomfine_visible_screens", default=frozenset())
+
+
+def _screen_visible(screen_id: str) -> bool:
+    """그 화면이 지금 사용자의 좌측 메뉴(권한 칸)에 있는가 — 도움말의 「다음 단계」 링크를 거른다(권한 없는 화면을 가리키지 않는다)."""
+    return screen_id in _VISIBLE.get()
+
+
+env.globals["screen_visible"] = _screen_visible
 env.filters.update(txt=screen.txt, num=screen.num, qty=screen.qty, dt=screen.dt)
 
 #: 접근 로그에 `조회` 로 남기지 않는 공통 화면 (로그인은 `로그인` 구분으로 따로 남는다)
@@ -112,7 +125,11 @@ def render(request: Request, template: str, ctx: dict | None = None, *, screen_i
         audit.write_log(log_type=audit.VIEW, login_id=user.login_id, role_code=user.role_code, method=request.method,
                         path=request.url.path, screen_id=screen_id, ok=status_code < 400, detail="",
                         ip=audit.client_ip(request))
-    html = env.get_template(template).render(**base)
+    token = _VISIBLE.set(frozenset(s.screen_id for node in base.get("bundles") or () for m in node["menus"] for s in m.screens))
+    try:
+        html = env.get_template(template).render(**base)
+    finally:
+        _VISIBLE.reset(token)
     return HTMLResponse(html, status_code=status_code)
 
 

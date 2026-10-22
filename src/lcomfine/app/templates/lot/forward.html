@@ -2,20 +2,22 @@
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
 {% import "lot/_trace.html" as t %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "원자재 LOT 번호를 넣으면 불출 → 생산지시 → 제품 입고(제품 LOT) → 출하까지 어디로 쓰였는지 따라갑니다.") }}
+{{ ui.help_item("분할 LOT", "원 LOT 을 넣으면 나눠 옮긴 분할 LOT(-01 …)까지 함께 따라갑니다.") }}
+{{ ui.help_rule("바코드 스캐너로 LOT 번호를 찍으면 바로 추적합니다.") }}
+{{ ui.help_next("LOT-020", "출하에서 원자재 LOT 까지 역방향 추적") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "원자재 LOT → 불출 → 지시 → 제품 입고 → 출하 · 분할 LOT 는 원 LOT 에서 이어진다 · 읽기만 한다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">원자재 LOT<input name="lot_no" value="{{ f.lot_no }}" required data-scan autofocus></label>
-    <button class="btn btn-primary">추적</button>
-  </form>
-  {% if error %}<p class="alert alert--bad" role="alert">{{ error }}</p>{% endif %}
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="추적 조건">
+  <label class="field field--grow"><span>원자재 LOT</span><input name="lot_no" value="{{ f.lot_no }}" required data-scan autofocus></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">추적</button>{% if f.lot_no %}<a class="btn btn-ghost" href="{{ nav.path_of('LOT-010') }}">초기화</a>{% endif %}</div>
+</form>
+{% if error %}<p class="alert alert--bad" role="alert">{{ error }}</p>{% endif %}
+
 {% if r %}
-<section class="kpis">
-  {{ ui.kpi("원자재 LOT", r.material_lots | length, "분할 자식 포함") }}{{ ui.kpi("작업지시", r.work_orders | length) }}
-  {{ ui.kpi("제품 LOT", r.product_lots | length) }}{{ ui.kpi("출하", r.shipments | length) }}
-</section>
 {{ t.render(r) }}
-{% elif not error %}{{ ui.empty("원자재 LOT 번호를 입력하면 추적한다") }}{% endif %}
+{% elif not error %}{{ ui.empty("원자재 LOT 번호를 넣고 「추적」을 누릅니다") }}{% endif %}
 {% endblock %}

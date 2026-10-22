@@ -1,32 +1,48 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
 {% import "col/_c.html" as c %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기준일에서 매출일까지 지난 날 수로 30 · 60 · 90일 · 90일 초과 구간을 나눠 거래처별 미수 금액을 봅니다.") }}
+{% if data %}{{ ui.help_item("구간 금액", data.formula) }}{% endif %}
+{{ ui.help_rule("ERP 엑셀에 매출액 열이 매핑되지 않으면 연령 금액을 계산하지 않고 「미확정」으로 둡니다.") }}
+{{ ui.undecided_note(decision, "ERP 수금현황에 매출(청구)액 열이 있다는 가정") }}
+{{ ui.help_next("RPT-060", "90일 초과 거래처 · 월별 수금") }}
+{{ ui.help_next("COL-050", "거래처별 미수 잔액") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">기준일 기준 매출일 경과일로 30 · 60 · 90일 · 90일 초과 구간을 나눈다. 90일 초과는 <a href="{{ nav.path_of('RPT-060') }}">수금 리포트</a>가 따로 짚는다.
-    매출 열이 매핑되지 않으면 {{ ui.undecided(decision) }}.{% if data %} {{ data.formula }}{% endif %}</p>
-  {{ c.asof_line(erp_asof) }}
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("asof", "기준일", form.asof, type="date") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}{{ c.asof_chip(erp_asof) }} {{ ui.undecided(decision, "매출액 열이 매핑되지 않으면 연령 금액을 계산하지 않음") }}{% endcall %}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  {{ f.input("asof", "기준일", form.asof, type="date") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 {% if data %}
 {% if data.undecided %}
-<section class="panel"><p class="undecided">매출액 열이 매핑되지 않아 연령 금액을 낼 수 없다 — {{ ui.undecided(data.undecided) }}. 구간별 수금 합만 보인다.</p></section>
+<div class="alert undecided" role="status">매출액 열이 매핑되지 않아 연령 금액을 낼 수 없습니다 — {{ ui.undecided(data.undecided) }}. 구간별 수금 합만 보입니다.</div>
 {% endif %}
-<section class="panel">
-  <div class="kpis">
-    {% for b in data.buckets %}
-    {{ ui.kpi(b, (data.totals[b].net | num) if data.totals[b].net is not none else ("미확정 (" ~ decision ~ ")" if data.undecided else none), "수금 " ~ (data.totals[b].collected_amount | num)) }}
-    {% endfor %}
-  </div>
-  {% if series %}{{ ui.svg_bar(series) }}{% endif %}
+<div class="kpis">
+  {% for b in data.buckets %}
+  {{ ch.kpi_tile("", b, data.totals[b].net, unit="원", text=("미확정 (" ~ decision ~ ")" if data.undecided else ""), note="수금 " ~ (data.totals[b].collected_amount | num)) }}
+  {% endfor %}
+</div>
+{% set ag_rows = [] %}{% if not data.undecided %}{% for r in (data.rows | sort(attribute="total_net", reverse=true))[:15] %}{% set parts = [] %}{% for b in data.buckets %}{% set _ = parts.append({"label": b, "value": r.cells[b].net}) %}{% endfor %}{% set _ = ag_rows.append({"label": r.customer_name, "parts": parts}) %}{% endfor %}{% endif %}
+{% call ch.grid() %}
+{% if series %}{{ ch.chart_panel("aging_buckets", "구간별 금액 (30·60·90일, 90일 초과)", series, "구간", "순액", sub="원") }}{% endif %}
+<section class="panel viz-panel">
+  <header class="viz-panel__head"><h2>거래처별 미수 연령</h2><span class="viz-panel__sub">원 · 미수 합 상위 15</span></header>
+  {% if ag_rows %}{{ ch.stacked(ag_rows, data.buckets, "거래처", "aging_by_customer") }}{% else %}{{ ui.empty() }}{% endif %}
 </section>
+{% endcall %}
+{% if data.over90 %}
+<section class="panel">
+  <h2>90일 초과 거래처 <small class="muted">{{ data.over90 | length }}곳</small></h2>
+  <ul>{% for r in data.over90 %}<li>{{ r.customer_code }} · {{ r.customer_name }} — <span class="num">{{ r.cells[data.buckets[-1]].net | num }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
 <section class="panel panel--grid">
+  <h2>거래처별 구간 금액 <small class="muted">{{ data.rows | length }}곳</small></h2>
   {% if data.rows %}
   <div class="grid-wrap grid-wrap--tall"><table class="grid">
     <thead><tr><th>거래처</th>{% for b in data.buckets %}<th class="num">{{ b }}</th>{% endfor %}<th class="num">합</th></tr></thead>
@@ -43,11 +59,5 @@
   </table></div>
   {% else %}{{ ui.empty() }}{% endif %}
 </section>
-{% if data.over90 %}
-<section class="panel">
-  <h2>90일 초과 거래처 ({{ data.over90 | length }})</h2>
-  <ul>{% for r in data.over90 %}<li>{{ r.customer_code }} · {{ r.customer_name }} — <span class="num">{{ r.cells[data.buckets[-1]].net | num }}</span></li>{% endfor %}</ul>
-</section>
-{% endif %}
 {% endif %}
 {% endblock %}

@@ -1,23 +1,30 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "사용자를 등록하고 부서 · 상태를 바꿉니다. 비밀번호를 잊은 사용자는 수정에서 초기화합니다.") }}
+{{ ui.help_rule("사번은 등록한 뒤 바꿀 수 없습니다. 같은 사번은 두 번 등록할 수 없습니다.") }}
+{{ ui.help_rule("퇴사자는 삭제하지 않고 「비활성」(중지)으로 바꿉니다. 바꾸면 그 사람은 다음 요청부터 로그인이 끊기고 문서관리로도 넘어가지 않습니다.") }}
+{{ ui.help_rule("자기 계정의 부서 · 상태는 바꿀 수 없습니다. 다른 관리자가 바꿉니다.") }}
+{{ f.next("SYS-020", "부서별 화면 권한") }}
+{{ f.next("DOC-020", "문서관리 계정 연결") }}
+{% endblock %}
 {% block body %}
 {% set role_opts = [] %}{% for r in roles %}{% set _ = role_opts.append((r.code, r.name ~ " (" ~ r.code ~ ")")) %}{% endfor %}
 {% set st_opts = [] %}{% for s in statuses %}{% set _ = st_opts.append((s, s)) %}{% endfor %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">등록·비활성 · 퇴사자는 삭제하지 않고 비활성(중지)으로 둔다 · 비활성 사용자는 다음 요청부터 401 이고 SSO 토큰도 발급되지 않는다 ·
-    부서(역할) 변경은 다음 요청부터 반영된다 · 비밀번호는 해시로만 저장한다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "사번·이름", form.q) }}
-    {{ f.select("role", "부서", role_opts, form.role, blank="전체") }}
-    {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-SYS-011") and not edit %}<a class="btn btn-primary" href="#user-form">＋ 사용자 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="사번 · 이름"></label>
+  {{ f.select("role", "부서", role_opts, form.role, blank="전체") }}
+  {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.role or form.status %}<a class="btn btn-ghost" href="{{ nav.path_of('SYS-010') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("사용자 수정 — " ~ edit.login_id, "/sys/users/" ~ edit.user_id, "F-SYS-012", cancel=nav.path_of("SYS-010")) %}
+{% call f.form_box("사용자 수정 — " ~ edit.login_id, "/sys/users/" ~ edit.user_id, "F-SYS-012", open=true, cancel=nav.path_of("SYS-010"), icon="✎", id="user-form") %}
   {{ f.input("login_id", "사번(로그인 ID)", edit.login_id, readonly=true) }}
   {{ f.input("user_name", "이름", edit.user_name, required=true) }}
   {{ f.select("role_code", "부서", role_opts, edit.role_code, required=true, blank=none) }}
@@ -25,7 +32,7 @@
   {{ f.input("password", "비밀번호 초기화 (비우면 그대로)", type="password") }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("사용자 등록", "/sys/users", "F-SYS-011") %}
+{% call f.form_box("사용자 등록", "/sys/users", "F-SYS-011", open=(flash and flash.kind == "warn"), id="user-form") %}
   {{ f.input("login_id", "사번(로그인 ID)", required=true) }}
   {{ f.input("user_name", "이름", required=true) }}
   {{ f.select("role_code", "부서", role_opts, "", required=true) }}
@@ -34,6 +41,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>사용자 목록 <small class="muted">{{ rows | length }}명</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>사번</th><th>이름</th><th>부서</th><th>상태</th><th class="num">로그인 실패</th><th>마지막 로그인</th><th>수정</th><th></th></tr></thead>
@@ -44,7 +52,7 @@
       <td><span class="chip chip--{{ 'ok' if r.status == '정상' else 'bad' }}">{{ r.status }}</span></td>
       <td class="num">{{ r.fail_count }}</td><td>{{ r.last_login_at | dt }}</td><td>{{ r.updated_at | dt }} {{ r.updated_by | txt('') }}</td>
       <td>{{ f.edit_link("F-SYS-012", "edit=" ~ r.user_id) }}
-          {% if r.status != "중지" and r.login_id != user.login_id %}{{ f.del_btn("/sys/users/" ~ r.user_id ~ "/delete", "F-SYS-013", label="비활성", confirm="비활성(중지)으로 바꿀까요? 다음 요청부터 로그인이 끊긴다.") }}{% endif %}</td>
+          {% if r.status != "중지" and r.login_id != user.login_id %}{{ f.del_btn("/sys/users/" ~ r.user_id ~ "/delete", "F-SYS-013", label="비활성", confirm="비활성(중지)으로 바꿀까요? 다음 요청부터 로그인이 끊깁니다.") }}{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

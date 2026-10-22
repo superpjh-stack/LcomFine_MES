@@ -1,19 +1,35 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "rpt/_d.html" as d %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기간 안의 원자재 입고 · 불출 · 제품 입고, 재고 이동이 많은 LOT, 오래 머문 LOT, 실사 차이를 봅니다.") }}
+{{ ui.help_rule("취소된 입고 · 불출은 세지 않습니다. 기간은 입고일 · 불출일 · 이동 일시 기준입니다.") }}
+{{ ui.help_item("장기 체류 LOT", "현재고가 남은 LOT 를 체류일(오늘 − LOT 생성일)이 긴 순서로 10개 보입니다. 몇 일부터 장기인지 기준 일수는 아직 정하지 않았습니다.") }}
+{{ ui.help_item("실사 차이", "실사 수량 − 장부 수량. 음수는 장부보다 적게 있었다는 뜻입니다.") }}
+{{ ui.help_next("INV-010", "LOT별 현재고") }}
+{{ ui.help_next("INV-030", "실사 조정 등록") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ d.header(screen, "원천: 자재·입고 · 재고. 입고·불출(취소 제외 · 기간 = 입고일 · 불출일) · 재고 변동 상위(재고 이동 합) · 장기 체류 LOT(현재고가 남은 LOT 의 체류일 상위) · 실사 차이(재고 조정).", data, [(nav.path_of("INV-030"), nav.by_id("INV-030").name)]) }}
-  {{ f.notice(notice) }}
-  {{ d.filters(form, customers, with_customer) }}
-</section>
+{{ d.head(screen, data) }}
+{{ f.notice(notice) }}
+{{ d.filters(form, customers, with_customer) }}
 {% if data %}
-<section class="panel">{{ d.kpis(data.kpis) }}</section>
+{{ d.kpis(data.kpis, sparks={"material_receipt_qty": data.series.receipt_qty, "issue_qty": data.series.issue_qty}) }}
+{% set mv_s = [] %}{% for r in data.tables.top_moves %}{% set _ = mv_s.append({"label": r.lot_no, "value": r.qty}) %}{% endfor %}
+{% set ls_s = [] %}{% for r in data.tables.long_stay %}{% set _ = ls_s.append({"label": r.lot_no, "value": r.days}) %}{% endfor %}
+{% set it_s = [] %}{% for r in data.tables.receipts_by_item[:10] %}{% set _ = it_s.append({"label": r.item_name, "value": r.qty}) %}{% endfor %}
+{% call ch.grid() %}
 {{ d.chart_table("receipt_qty", "기간별 원자재 입고 수량", data.series.receipt_qty, "구간", "입고 수량", 3) }}
 {{ d.chart_table("issue_qty", "기간별 불출 수량", data.series.issue_qty, "구간", "불출 수량", 3) }}
-{{ d.table("top_moves", "재고 변동 상위(LOT 별 이동 수량 합)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("kinds", "이동 종류", none), ("moves", "건수", 0), ("qty", "수량 합", 3)], data.tables.top_moves, "기간 안 재고 이동 없음") }}
-{{ d.table("long_stay", "장기 체류 LOT(체류일 = 오늘 − LOT 생성일 · 기준일 수 없음 D-805)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("warehouse_code", "창고", none), ("location_code", "위치", none), ("status", "상태", none), ("qty", "현재고", 3), ("allocated_qty", "할당", 3), ("since", "생성일", none), ("days", "체류일", 0)], data.tables.long_stay, "현재고가 남은 LOT 없음") }}
-{{ d.table("adjusts", "실사 차이(재고 조정)", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("book_qty", "장부", 3), ("actual_qty", "실사", 3), ("diff_qty", "차이", 3), ("reason", "사유", none), ("adjusted_at", "조정 일시", none)], data.tables.adjusts, "기간 안 조정 없음") }}
+{{ d.chart_table("top_moves_chart", "재고 변동 상위", mv_s, "LOT", "이동 수량 합", 3, "hbar", sub="LOT 별 이동 수량 합") }}
+{{ d.chart_table("long_stay_chart", "장기 체류 LOT", ls_s, "LOT", "체류일", 0, "hbar", sub="체류일 · 긴 순") }}
+{{ d.chart_table("receipts_by_item_chart", "원자재 입고 품목별", it_s, "품목", "입고 수량", 3, "hbar", sub="상위 10", wide=true) }}
+{% endcall %}
+{{ d.table("top_moves", "재고 변동 상위", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("kinds", "이동 종류", none), ("moves", "건수", 0), ("qty", "수량 합", 3)], data.tables.top_moves, "기간 안 재고 이동 없음") }}
+{{ d.table("long_stay", "장기 체류 LOT", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("warehouse_code", "창고", none), ("location_code", "위치", none), ("status", "상태", none), ("qty", "현재고", 3), ("allocated_qty", "할당", 3), ("since", "생성일", none), ("days", "체류일", 0)], data.tables.long_stay, "현재고가 남은 LOT 없음") }}
+{{ d.table("adjusts", "실사 차이", [("lot_kind", "구분", none), ("lot_no", "LOT", none), ("item_name", "품목", none), ("book_qty", "장부", 3), ("actual_qty", "실사", 3), ("diff_qty", "차이", 3), ("reason", "사유", none), ("adjusted_at", "조정 일시", none)], data.tables.adjusts, "기간 안 조정 없음") }}
 {{ d.table("receipts_by_item", "원자재 입고 품목별", [("item_code", "품목 코드", none), ("item_name", "품목", none), ("receipts", "입고 건", 0), ("lots", "LOT", 0), ("qty", "수량", 3)], data.tables.receipts_by_item) }}
 {% endif %}
 {% endblock %}

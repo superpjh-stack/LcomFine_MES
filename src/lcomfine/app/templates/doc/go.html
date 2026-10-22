@@ -1,36 +1,46 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "왼쪽 메뉴의 「" ~ screen.name ~ "」를 누르면 새 창에서 MES 로그인 그대로 문서관리 시스템으로 넘어갑니다. 넘어가지 않으면 이 화면에 사유가 보입니다.") }}
+{{ ui.help_rule("문서관리 계정이 연결되지 않았거나 사용자가 비활성이면 넘어가지 않습니다. 계정 연결은 전산 관리자에게 요청합니다.") }}
+{{ ui.undecided_note("D-517", "SSO 연계 방식 — 그동안 서명 토큰") }}
+{{ f.next("DOC-020", "문서관리 계정 매핑(전산 관리자)") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">좌측 메뉴를 누르면 이 화면이 새 창으로 열리고, 발급할 수 있는 상태(SSO 주소 · 서명 비밀 · 계정 매핑 · 활성 사용자)면
-    곧바로 MES 가 일회용 SSO 토큰(서명 · 유효 {{ ttl }}초 · 한 번만 사용)을 발급해 문서관리 시스템으로 넘긴다 — 한 번 클릭.
-    토큰은 주소창에 남지 않게 POST 로 보낸다. 발급할 수 없는 상태면 넘어가지 않고 아래에 사유만 보인다. 토큰 검증이 실패하면 문서관리 시스템의 로그인 화면에서 직접 로그인할 수 있다 ·
-    문서별 권한은 문서관리 시스템이 관리한다.</p>
-  <p class="muted">연계 방식(SAML 2.0 · OIDC · 서명 토큰)은 {{ ui.undecided("D-517") }} — 그동안 서명 토큰(D-514).</p>
-</section>
+{{ ui.screen_head(screen.name) }}
 
 <section class="panel" data-doc-go="{{ 'undecided' if missing else ('refused' if reason else 'ready') }}">
   {% if missing %}
   <h2>문서관리 SSO 연결 정보 {{ ui.undecided("D-517") }}</h2>
-  <p>다음 설정이 없어 토큰을 발급하지 않는다:</p>
+  <p>다음 설정이 없어 넘어갈 수 없습니다:</p>
   <ul>{% for m in missing %}<li>{{ m }} — {{ ui.undecided("D-517") }}</li>{% endfor %}</ul>
   {% elif reason %}
   <h2>{{ request_mapping }}</h2>
-  <p role="status">토큰을 발급하지 않는다 — {{ reason }}</p>
-  <p class="muted">계정 연결은 전산 관리자가 <a href="{{ nav.path_of('DOC-020') }}">문서관리 계정 매핑</a>에서 한다.</p>
+  <p role="status">문서관리로 넘어가지 않았습니다 — {{ reason }}</p>
+  <p class="muted">계정 연결은 전산 관리자가 <a href="{{ nav.path_of('DOC-020') }}">문서관리 계정 매핑</a>에서 합니다.</p>
   {% else %}
   <h2>문서관리 열기</h2>
   <dl class="kv"><dt>연결된 문서관리 계정 ID</dt><dd><code>{{ mapping.account_id }}</code></dd></dl>
   {% if fn_allowed.get("F-DOC-011") %}
   {# 발급할 수 있을 때만 자동 제출(static/app.js `form[data-auto-submit]`) — 이 화면이 이미 새 창이라 target 은 두지 않는다 (DEF-QA1-010) #}
   <form method="post" action="{{ nav.path_of('DOC-010') }}" data-auto-submit>
-    <p class="muted">자동으로 넘어가지 않으면 단추를 누른다.</p>
+    <p class="muted">자동으로 넘어가지 않으면 단추를 누릅니다.</p>
     <div class="actions"><button type="submit" class="btn btn-primary">문서관리 열기</button></div>
   </form>
   {% else %}
-  <p class="muted">이 부서는 이 기능을 실행할 권한이 없습니다 <code>F-DOC-011</code></p>
+  <p class="muted">이 부서는 이 기능을 실행할 권한이 없습니다</p>
   {% endif %}
   {% endif %}
+</section>
+
+<section class="panel">
+  <h2>연결 정보</h2>
+  <dl class="kv">
+    <dt>넘기는 방법</dt><dd>일회용 서명 토큰 · 유효 {{ ttl }}초 · 한 번만 사용 · POST 로 보내 주소창에 남지 않음</dd>
+    <dt>넘어가지 못하면</dt><dd>문서관리 시스템의 로그인 화면에서 직접 로그인</dd>
+    <dt>문서별 권한</dt><dd>문서관리 시스템이 관리</dd>
+    <dt>연계 방식</dt><dd>SAML 2.0 · OIDC · 서명 토큰 중 {{ ui.undecided("D-517", "연계 방식이 정해지지 않았습니다") }} — 그동안 서명 토큰</dd>
+  </dl>
 </section>
 {% endblock %}

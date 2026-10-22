@@ -1,34 +1,44 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "고른 달의 설비별 가동 · 정지 시간과 가동률을 봅니다. 원천은 생산일보에 적은 가동 · 정지 시간(분)입니다.") }}
+{{ ui.help_item("가동률", "가동 시간 ÷ (가동 시간 + 정지 시간) × 100 — 임시 산식입니다.") }}
+{{ ui.help_rule("그 달에 가동 · 정지 시간을 적은 일보가 없는 설비는 「미수집」으로 보입니다.") }}
+{{ ui.help_next("RPT-020", "기간별 생산 · 양품 · 설비 실적") }}
+{{ ui.help_next("PRP-020", "기계별 생산 · 로스 수량") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">월 단위 설비 가동률 — 원천은 생산일보의 가동 · 정지 시간(분). {% if data %}{{ data.formula }}{% else %}가동률 산식은 가설 (D-801){% endif %}.
-    대시보드는 <a href="{{ nav.path_of('RPT-020') }}">생산 리포트</a>.</p>
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("year", "연도", form.year, type="number") }}
-    <label class="field"><span>월</span>
-      <select name="month">{% for m in range(1, 13) %}<option value="{{ m }}"{% if (m | string) == form.month %} selected{% endif %}>{{ m }}월</option>{% endfor %}</select></label>
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}{% if data %}<span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }} 전</span>{% endif %}{% endcall %}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건 — 연·월 선택">
+  {{ f.input("year", "연도", form.year, type="number") }}
+  <label class="field"><span>월</span>
+    <select name="month">{% for m in range(1, 13) %}<option value="{{ m }}"{% if (m | string) == form.month %} selected{% endif %}>{{ m }}월</option>{% endfor %}</select></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 
 {% if data %}
-<section class="panel">
-  <div class="kpis">
-    {{ ui.kpi("기간", data.period[0] | dt ~ " ~ " ~ (data.period[1] | dt) ~ " 전") }}
-    {{ ui.kpi("가동 시간(분)", data.total.run_minutes | num if data.total.run_minutes is not none else none) }}
-    {{ ui.kpi("정지 시간(분)", data.total.stop_minutes | num if data.total.stop_minutes is not none else none) }}
-    {{ ui.kpi("전체 가동률(%)", data.total.rate | num(1) if data.total.rate is not none else none, "가설 D-801") }}
-  </div>
+<div class="kpis">
+  {{ ch.kpi_tile("", "전체 가동률", data.total.rate, unit="%", digits=1, meter_max=100, note="가동 ÷ (가동 + 정지) · 임시 산식") }}
+  {{ ch.kpi_tile("", "가동 시간", data.total.run_minutes, unit="분") }}
+  {{ ch.kpi_tile("", "정지 시간", data.total.stop_minutes, unit="분") }}
+  {{ ch.kpi_tile("", "일보가 있는 설비", (data.rows | selectattr("entries") | list | length) or none, unit="대") }}
+</div>
+{% set rt_rows = [] %}{% for r in data.rows %}{% set _ = rt_rows.append({"label": r.equipment_name or r.equipment_code, "parts": [{"label": "가동", "value": r.run_minutes}, {"label": "정지", "value": r.stop_minutes}]}) %}{% endfor %}
+{% call ch.grid() %}
+<section class="panel viz-panel">
+  <header class="viz-panel__head"><h2>설비별 가동률</h2><span class="viz-panel__sub">%</span></header>
+  {% if data.rows %}<div class="meters">{% for r in data.rows %}{{ ch.meter(r.equipment_name or r.equipment_code, r.rate, tone="accent") }}{% endfor %}</div>{% else %}{{ ui.empty() }}{% endif %}
 </section>
-<section class="panel">
-  <h2>설비별 가동률(%)</h2>
-  {% if data.rows | selectattr("rate") | list %}{{ ui.svg_bar(series) }}{% else %}{{ ui.empty() }}{% endif %}
+<section class="panel viz-panel">
+  <header class="viz-panel__head"><h2>설비별 가동 · 정지 시간</h2><span class="viz-panel__sub">분</span></header>
+  {% if data.rows | selectattr("run_minutes") | list %}{{ ch.stacked(rt_rows, ["가동", "정지"], "설비", "run_stop") }}{% else %}{{ ui.empty() }}{% endif %}
 </section>
+{% endcall %}
 <section class="panel panel--grid">
+  <h2>설비별 가동률 <small class="muted">{{ data.rows | length }}대</small></h2>
   {% if data.rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>설비 코드</th><th>설비</th><th class="num">일보 일수</th><th class="num">일보 행</th><th class="num">가동(분)</th><th class="num">정지(분)</th><th class="num">가동률(%)</th></tr></thead>

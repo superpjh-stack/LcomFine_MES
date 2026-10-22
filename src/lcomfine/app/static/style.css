@@ -430,3 +430,22 @@ rect.viz-s1, rect.viz-s2, rect.viz-s3, rect.viz-s4, rect.viz-s5, rect.viz-s6 { s
 
 /* 접히는 폼 안 보조 한 줄 (다음 번호 등) */
 .form-note { margin: 0 0 8px; font-size: 12px; }
+
+/* 여러 줄 선(_charts.html lines — 개발3 추가) — 계열 색은 --viz-n 고정 순서 · 면(wash) 없음 */
+.viz__line--s1 { stroke: var(--viz-1); } .viz__dot--s1 { stroke: var(--viz-1); }
+.viz__line--s2 { stroke: var(--viz-2); } .viz__dot--s2 { stroke: var(--viz-2); }
+.viz__line--s3 { stroke: var(--viz-3); } .viz__dot--s3 { stroke: var(--viz-3); }
+.viz__line--s4 { stroke: var(--viz-4); } .viz__dot--s4 { stroke: var(--viz-4); }
+.viz__line--s5 { stroke: var(--viz-5); } .viz__dot--s5 { stroke: var(--viz-5); }
+.viz__line--s6 { stroke: var(--viz-6); } .viz__dot--s6 { stroke: var(--viz-6); }
+.viz--lines > .legend { margin: 0 0 4px; }
+
+/* 폼 안 긴 선택칸이 옆 칸을 덮지 않게 */
+.panel--form select, .form-grid select { width: 100%; min-width: 0; }
+/* 단계 칩(TRK) — 칩 안 글자는 줄바꿈하지 않는다 */
+.flow__mini .chip { white-space: nowrap; }
+/* 단계 사슬(LOT 추적) — 카드와 화살표 */
+.chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.chain > li { flex: 1 1 140px; min-width: 0; }
+.chain > .chain__arrow { flex: 0 0 auto; align-self: center; color: var(--muted); }
+.chain .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

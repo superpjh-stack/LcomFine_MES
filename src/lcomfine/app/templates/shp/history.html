@@ -1,28 +1,28 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "확정된 출하를 확정일 · 거래처 · 품목으로 찾습니다. 반품·정정 행은 원래 출하 바로 아래에 묶여 보입니다.") }}
+{{ ui.help_item("역추적", "「역추적」을 누르면 그 출하의 제품 LOT 에서 생산지시 · 불출 · 원자재 LOT 까지 거슬러 올라갑니다.") }}
+{{ ui.undecided_note("D-515", "반품·정정을 재고에 반영하는 방식") }}
+{{ ui.help_next("COL-070", "출하 대비 수금 대조") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">확정된 출하 — 반품·정정 행을 원 출하 아래에 묶어 보여 준다(재고 반영은 {{ ui.undecided("D-515") }}). 수금 대조는 <a href="{{ nav.path_of('COL-070') }}">출하 대비 수금 조회</a>.</p>
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("date_from", "확정일 시작", form.date_from, type="date") }}
-    {{ f.input("date_to", "확정일 끝", form.date_to, type="date") }}
-    <label class="field"><span>거래처</span>
-      <select name="customer"><option value="">전체</option>
-        {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == form.customer %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
-      </select></label>
-    <label class="field"><span>품목</span>
-      <select name="item"><option value="">전체</option>
-        {% for i in items %}<option value="{{ i.id }}"{% if (i.id | string) == form.item %} selected{% endif %}>{{ i.item_code }} · {{ i.item_name }}</option>{% endfor %}
-      </select></label>
-    {{ f.input("no", "출하 번호", form.no) }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% set cust_opts = [] %}{% for cu in customers %}{% set _ = cust_opts.append((cu.id, cu.customer_code ~ " · " ~ cu.customer_name)) %}{% endfor %}
+{% set item_opts = [] %}{% for i in items %}{% set _ = item_opts.append((i.id, i.item_code ~ " · " ~ i.item_name)) %}{% endfor %}
+{{ ui.screen_head(screen.name) }}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처·품목 조건">
+  <label class="field field--grow"><span>출하 번호</span><input type="search" name="no" value="{{ form.no }}" placeholder="출하 번호"></label>
+  {{ f.input("date_from", "확정일 시작", form.date_from, type="date") }}
+  {{ f.input("date_to", "확정일 끝", form.date_to, type="date") }}
+  {{ f.select("customer", "거래처", cust_opts, form.customer) }}
+  {{ f.select("item", "품목", item_opts, form.item) }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.no or form.date_from or form.date_to or form.customer or form.item %}<a class="btn btn-ghost" href="{{ nav.path_of('SHP-030') }}">초기화</a>{% endif %}</div>
+</form>
 
 <section class="panel panel--grid">
+  <h2>확정 출하 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid plain">
     <thead><tr><th>출하 번호</th><th>확정 일시</th><th>거래처</th><th>생산의뢰</th><th>납기</th><th>LOT · 품목</th><th class="num">출하 수량</th><th class="num">반품·정정 합</th><th></th></tr></thead>

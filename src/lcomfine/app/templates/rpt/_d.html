@@ -21,10 +21,19 @@
 {%- endmacro %}
 
 {# KPI 줄 — kpis: [{key, label, value, digits, unit, text, note}] · sparks: {key: series}(선택 · 스파크라인) · 단위 % 는 진행 막대를 단다 #}
+{#   text 가 「미확정 (D-nn)」 이 아닌 글자(기준일 날짜 · 미수집)면 칩 대신 글자 그대로 — 값 글자(.kpi__value)는 같다 #}
 {% macro kpis(items, sparks={}) -%}
 <div class="kpis">
   {% for k in items %}
+  {% if k.text and "미확정" not in k.text %}
+  <div class="kpi" data-kpi="{{ k.key }}">
+    <span class="kpi__label">{{ k.label }}</span>
+    <strong class="kpi__value num">{% if k.text == "미수집" %}<span class="kpi__none">미수집</span>{% else %}{{ k.text }}{% endif %}</strong>
+    {% if k.note %}<span class="kpi__note">{{ k.note }}</span>{% endif %}
+  </div>
+  {% else %}
   {{ ch.kpi_tile(k.key, k.label, k.value, unit=k.unit, digits=k.digits, text=k.text, note=k.note, spark=sparks.get(k.key), meter_max=(100 if k.unit == "%" else none)) }}
+  {% endif %}
   {% endfor %}
 </div>
 {%- endmacro %}
@@ -59,17 +68,9 @@
 </section>
 {%- endmacro %}
 
-{# 화면 머리(대시보드) — 제목 한 줄 + 오른쪽에 기간 · 구간. 설명 문단 없음(설명은 {% block help %}) #}
-{% macro head(screen, data) -%}
-{% call ui.screen_head(screen.name) %}{% if data %}<span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }} · {{ "일" if data.bucket == "day" else "월" }} 단위</span>{% endif %}{% endcall %}
-{%- endmacro %}
-
-{# (옛 머리 — 각 담당이 head + help 블록으로 옮기면 지운다) links: [(경로, 이름)] — 매크로는 템플릿 컨텍스트(nav)를 보지 못해 호출하는 쪽이 nav 로 만들어 준다 #}
-{% macro header(screen, lead, data, links=[]) -%}
-<h1>{{ screen.name }}</h1>
-<p class="muted">{{ lead }}{% if links %} 연결: {% for path, name in links %}<a href="{{ path }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.{% endif %}</p>
-{% if data %}
-<p class="muted">기간 <strong>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }}</strong> · 구간 {{ "일" if data.bucket == "day" else "월" }} 단위 · 화면을 열 때 집계(캐시 없음 · D-512)
-  {% for n in data.notes %}· {{ n }}{% endfor %}</p>
-{% endif %}
+{# 화면 머리(대시보드) — 제목 한 줄 + 오른쪽에 기간 · 구간(· ERP 업로드 기준일 칩). 설명 문단 없음(설명은 {% block help %})
+   asof: show_asof=true 면 기준일 칩(없으면 「미수집」) — 수금을 보이는 화면(RPT-060 · 070 · 080 주간·월간) #}
+{% macro head(screen, data, show_asof=false) -%}
+{% import "col/_c.html" as c %}
+{% call ui.screen_head(screen.name) %}{% if data %}<span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }} · {{ "일" if data.bucket == "day" else "월" }} 단위</span>{% if show_asof %} {{ c.asof_chip(data.asof) }}{% endif %}{% endif %}{% endcall %}
 {%- endmacro %}

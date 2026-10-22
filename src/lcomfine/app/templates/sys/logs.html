@@ -1,37 +1,41 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "누가 언제 접속하고 무엇을 바꿨는지, ERP 업로드 · AI 호출 · 데이터 질의 · 문서관리 SSO 기록을 탭별로 조회합니다.") }}
+{{ ui.help_rule("기록은 조회만 할 수 있고 고치거나 지울 수 없습니다. 한 번에 최근 " ~ limit ~ "행까지 보입니다.") }}
+<div class="help__item"><h3>원본 기록</h3><p><code>{{ source[0] }}</code> · {% for c in source[1] %}<code>{{ c }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</p></div>
+{{ f.next("SYS-010", "사용자 관리") }}
+{% endblock %}
 {% block body %}
 {# 탭 = 정본 L3 「접속 로그 · 변경 감사 로그 · 업로드·AI 호출 로그」 — 업로드·AI 호출 로그는 표 셋(ERP 업로드 · AI 호출 · 데이터 질의)으로, SSO 는 W4 의 구분 SSO 행(D-609) #}
 {% set TABS = [("access", "접속 로그"), ("change", "변경 감사 로그"), ("erp", "ERP 업로드"), ("ai", "AI 호출"), ("dq", "데이터 질의"), ("sso", "SSO")] %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">접속 로그(로그인 · 화면 조회 · 오류) · 변경 감사 로그(누가 · 언제 · 무엇을) · 업로드·AI 호출 로그(ERP 업로드 회차·교체 이력 ·
-    AI 호출 건수·실패·응답 시간 · 데이터 질의 — 거부 포함) · 문서관리 SSO 호출의 사용자·시각·성공 여부 — 읽기만 한다 · 최근 {{ limit }}행.</p>
-  <nav class="search" aria-label="로그 탭">
-    {% for k, label in TABS %}<a class="btn{% if tab == k %} btn-primary{% endif %}" href="?tab={{ k }}"{% if tab == k %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
-  </nav>
-  <form class="search" method="get" role="search">
-    <input type="hidden" name="tab" value="{{ tab }}">
-    {{ f.input("login", "사용자", form.login) }}
-    {% if tab == "access" %}
-    {{ f.select("log_type", "구분", [("로그인", "로그인"), ("조회", "조회"), ("변경", "변경"), ("오류", "오류"), ("SSO", "SSO")], form.log_type, blank="전체") }}
-    {% elif tab == "change" %}
-    {{ f.input("log_type", "기능 ID", form.log_type, placeholder="F-WO-011") }}
-    {% elif tab == "erp" %}
-    {{ f.select("log_type", "회차 상태", [("반영", "반영"), ("교체", "교체")], form.log_type, blank="전체") }}
-    {% elif tab == "ai" %}
-    {{ f.input("log_type", "호출 용도", form.log_type) }}
-    {% elif tab == "dq" %}
-    {{ f.select("log_type", "허용/거부", [("허용", "허용"), ("거부", "거부")], form.log_type, blank="전체") }}
-    {% else %}
-    {{ f.select("log_type", "결과", [("성공", "성공"), ("실패", "실패")], form.log_type, blank="전체") }}
-    {% endif %}
+{{ ui.screen_head(screen.name, sub="최근 " ~ limit ~ "행") }}
+<nav class="search" aria-label="로그 탭">
+  {% for k, label in TABS %}<a class="btn{% if tab == k %} btn-primary{% endif %}" href="?tab={{ k }}"{% if tab == k %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  {{ f.input("login", "사용자", form.login) }}
+  {% if tab == "access" %}
+  {{ f.select("log_type", "구분", [("로그인", "로그인"), ("조회", "조회"), ("변경", "변경"), ("오류", "오류"), ("SSO", "SSO")], form.log_type, blank="전체") }}
+  {% elif tab == "change" %}
+  {{ f.input("log_type", "기능 ID", form.log_type, placeholder="F-WO-011") }}
+  {% elif tab == "erp" %}
+  {{ f.select("log_type", "회차 상태", [("반영", "반영"), ("교체", "교체")], form.log_type, blank="전체") }}
+  {% elif tab == "ai" %}
+  {{ f.input("log_type", "호출 용도", form.log_type) }}
+  {% elif tab == "dq" %}
+  {{ f.select("log_type", "허용/거부", [("허용", "허용"), ("거부", "거부")], form.log_type, blank="전체") }}
+  {% else %}
+  {{ f.select("log_type", "결과", [("성공", "성공"), ("실패", "실패")], form.log_type, blank="전체") }}
+  {% endif %}
+  {% call ui.filters_more(open=(form.date_from or form.date_to), label="기간") %}
     {{ f.input("date_from", "시작일", form.date_from, type="date") }}
     {{ f.input("date_to", "끝일", form.date_to, type="date") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.login or form.log_type or form.date_from or form.date_to %}<a class="btn btn-ghost" href="?tab={{ tab }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if summary %}
 <section class="panel" data-log-tab="{{ tab }}" data-n="{{ summary.n }}"
@@ -55,7 +59,7 @@
   {{ ui.kpi("거부", summary.rejected | num if summary.n else none) }}
   {{ ui.kpi("평균 응답(ms)", summary.avg_ms | num if summary.avg_ms is not none else none) }}
   {% else %}
-  {{ ui.kpi("SSO 호출", summary.n | num if summary.n else none, "" if summary.n else "문서관리 SSO 는 W4 (F-DOC-011)") }}
+  {{ ui.kpi("SSO 호출", summary.n | num if summary.n else none) }}
   {{ ui.kpi("실패", summary.failed | num if summary.n else none) }}
   {% endif %}
   </div>
@@ -76,6 +80,5 @@
   {% else %}
   {{ ui.table([("at", "일시"), ("login_id", "사용자"), ("role_code", "부서"), ("result", "성공 여부"), ("path", "경로"), ("target", "대상"), ("detail", "내용"), ("client_ip", "IP")], rows) }}
   {% endif %}
-  <p class="muted">원본 <code>{{ source[0] }}</code> · 열 {% for c in source[1] %}<code>{{ c }}</code>{% if not loop.last %} · {% endif %}{% endfor %} (db-schema.md 그대로 · 읽기만)</p>
 </section>
 {% endblock %}

@@ -1,43 +1,26 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "공급사에서 들어온 원자재를 입고 헤더(공급사 · 입고일)와 LOT 행으로 등록합니다. 목록의 「라벨」을 누르면 LOT 라벨이 열리고, 브라우저 인쇄로 출력합니다.") }}
+{{ ui.help_rule("LOT 번호는 저장할 때 자동으로 붙고, 입고한 LOT 은 「검사대기」로 재고에 잡힙니다. 입고검사에서 합격해야 불출할 수 있습니다.") }}
+{{ ui.help_rule("사용 중지된 품목은 고를 수 없습니다. 이미 불출 · 이동 · 할당된 LOT 은 수량을 고치거나 취소할 수 없습니다 — 재고 조정으로 맞춥니다.") }}
+{{ ui.help_next("QC-010", "입고한 LOT 판정") }}
+{{ ui.help_next("MAT-040", "입고 · 불출 내역 조회") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "입고 LOT 번호는 자동 채번 · 입고 LOT 은 검사대기로 재고에 잡힌다 (D-510) · 사용 중지 품목은 고를 수 없다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">공급사<input name="supplier" value="{{ f.supplier }}"></label>
-    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
 
-{% if label %}
-<section class="panel label-sheet" aria-label="LOT 라벨">
-  <h2>LOT 라벨 <small class="muted">입고 {{ f.label }} · 인쇄는 브라우저 인쇄</small></h2>
-  <div class="kpis">
-  {% for l in label %}
-    <div class="kpi">
-      <span class="kpi__label">{{ l.item_code }} {{ l.item_name }}</span>
-      <strong class="kpi__value"><code>{{ l.lot_no }}</code></strong>
-      <span class="kpi__note">{{ u.q(l.qty) }} {{ l.unit | txt('') }} · {{ l.supplier_name }} · {{ l.received_on | dt }} · 공급사 LOT {{ l.supplier_lot_no | txt }}</span>
-    </div>
-  {% endfor %}
-  </div>
-  <p class="muted">라벨 양식(바코드 규격)은 받은 적이 없다 — LOT 번호 글자만 찍는다.</p>
-</section>
-{% endif %}
-
-{% if can_w %}
-<section class="panel">
-  <h2>원자재 입고 등록 <small class="muted">다음 LOT 번호 {{ next_lot if next_lot else "미확정 (D-509)" }}</small></h2>
+{% call ui.form_details("원자재 입고 등록", open=true, allowed=can_w) %}
   {% if not items or not locations %}
-  {{ ui.empty("사용 중인 원자재 품목 · 위치가 없습니다 — 기준정보(BAS-010 · BAS-030)에서 먼저 등록합니다") }}
+  {{ ui.empty("사용 중인 원자재 품목 · 위치가 없습니다 — 기준정보에서 품목 · 창고·위치를 먼저 등록합니다") }}
   {% else %}
   <form method="post" action="{{ nav.path_of('MAT-010') }}">
-    <div class="search">
-      <label class="field">공급사<input name="supplier_name" required></label>
-      <label class="field">입고일<input type="date" name="received_on"></label>
-      <label class="field">비고<input name="note"></label>
+    <p class="muted form-note">다음 LOT 번호 {% if next_lot %}<strong>{{ next_lot }}</strong>{% else %}{{ ui.undecided("D-509", "원자재 LOT 채번 형식") }}{% endif %}</p>
+    <div class="form-grid">
+      <label class="field"><span>공급사 <b aria-hidden="true">*</b></span><input name="supplier_name" required></label>
+      <label class="field"><span>입고일 (비우면 오늘)</span><input type="date" name="received_on"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
     </div>
     <div class="grid-wrap">
     <table class="grid plain">
@@ -56,11 +39,32 @@
     <div class="actions"><button class="btn btn-primary">입고 등록</button></div>
   </form>
   {% endif %}
+{% endcall %}
+
+{% if label %}
+<section class="panel label-sheet" aria-label="LOT 라벨">
+  <h2>LOT 라벨 <small class="muted">입고 {{ f.label }}</small></h2>
+  <div class="kpis">
+  {% for l in label %}
+    <div class="kpi">
+      <span class="kpi__label">{{ l.item_code }} {{ l.item_name }}</span>
+      <strong class="kpi__value"><code>{{ l.lot_no }}</code></strong>
+      <span class="kpi__note">{{ u.q(l.qty) }} {{ l.unit | txt('') }} · {{ l.supplier_name }} · {{ l.received_on | dt }} · 공급사 LOT {{ l.supplier_lot_no | txt }}</span>
+    </div>
+  {% endfor %}
+  </div>
+  <div class="actions"><a class="btn btn-ghost" href="{{ nav.path_of('MAT-010') }}">라벨 닫기</a></div>
 </section>
 {% endif %}
-{{ u.readonly_note(can_w) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>공급사</span><input type="search" name="supplier" value="{{ f.supplier }}"></label>
+  <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.supplier or f.lot %}<a class="btn btn-ghost" href="{{ nav.path_of('MAT-010') }}">초기화</a>{% endif %}</div>
+</form>
 
 <section class="panel panel--grid">
+  <h2>입고 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">
@@ -72,7 +76,7 @@
         <td>{{ r.id }}</td><td>{{ r.received_on | dt }}</td><td>{{ r.supplier_name }}</td><td><code>{{ r.lot_no }}</code></td>
         <td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td><td>{{ r.supplier_lot_no | txt }}</td>
         <td>{% if r.canceled_at %}{{ ui.chip("취소") }}{% else %}{{ u.stock_chips(r.stock_status) }}{% endif %}</td>
-        <td><a href="?label={{ r.id }}">라벨</a></td>
+        <td><a class="btn btn-sm" href="?label={{ r.id }}">라벨</a></td>
         {% if can_w %}<td>{% if not r.canceled_at %}
           <form method="post" action="{{ nav.path_of('MAT-010') }}/{{ r.id }}" class="inline">
             <input type="hidden" name="lot_id" value="{{ r.lot_id }}">

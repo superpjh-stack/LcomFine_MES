@@ -1,23 +1,29 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "기간 · 설비 · 제품 조건으로 생산일보를 모아 생산 · 양품 · 로스 합계와 일자별 행을 봅니다.") }}
+{{ ui.help_next("PRD-040", "지시별 생산 · 로스 수량") }}
+{{ ui.help_next("RPT-020", "생산 리포트 차트") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "기간별 일보를 모아 본다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
-    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
-    <label class="field">설비<select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
-    <label class="field">제품<input name="item" value="{{ f.item }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
+  <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
+  <label class="field"><span>설비</span><select name="equipment"><option value="">전체</option>{% for e in equipments %}<option value="{{ e.code }}"{% if f.equipment == e.code %} selected{% endif %}>{{ e.code_name }}</option>{% endfor %}</select></label>
+  <label class="field field--grow"><span>제품</span><input type="search" name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.from or f.to or f.equipment or f.item %}<a class="btn btn-ghost" href="{{ nav.path_of('PRD-030') }}">초기화</a>{% endif %}</div>
+</form>
+
 {% if rows %}
 <section class="kpis">
   {{ ui.kpi("일보 행", rows | length) }}{{ ui.kpi("생산 합", u.q(totals.produced_qty)) }}{{ ui.kpi("양품 합", u.q(totals.good_qty)) }}{{ ui.kpi("로스 합", u.q(totals.loss_qty)) }}
 </section>
 {% endif %}
 <section class="panel panel--grid">
+  <h2>생산일보 현황 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

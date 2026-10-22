@@ -298,7 +298,7 @@ def test_inventory_report(c, w):
     got = {p["label"]: p["value"] for p in d["series"]["receipt_qty"]}
     assert got["2002-05-03"] == Decimal("100") and got["2002-05-04"] == Decimal("50")
     r = c["pr"].get("/rpt/inventory", params={"date_from": F.isoformat(), "date_to": T.isoformat()})
-    assert r.status_code == 200 and "-3.000" in r.text and "D-805" in r.text
+    assert r.status_code == 200 and "-3.000" in r.text and "체류일(오늘 − LOT 생성일)" in r.text   # 장기 체류 정의 — 화면 도움말(옛 본문 「D-805」)
     titles, cells = _series_numbers(r.text, "issue_qty")
     assert "30" in titles and "30" in cells and titles == cells
     assert c["sl"].get("/rpt/inventory").status_code == 403
@@ -323,7 +323,7 @@ def test_shipment_report(c, w):
     assert got["2002-05-15"] == Decimal("50") and got["2002-05-16"] == Decimal("5")
     assert dashboard.shipment(P)["kpis"][0]["value"] >= 2                        # 전체 거래처
     r = c["sh"].get("/rpt/shipment", params={"date_from": F.isoformat(), "date_to": T.isoformat(), "customer": str(w.customer_id)})
-    assert r.status_code == 200 and o["shipment_no"] in r.text and "50.0" in _kpi_html(r.text, "due_rate") and "D-804" in r.text
+    assert r.status_code == 200 and o["shipment_no"] in r.text and "50.0" in _kpi_html(r.text, "due_rate") and "납기 안 완료 ÷" in r.text   # 산식 — 화면 도움말(옛 본문 「D-804」)
     titles, cells = _series_numbers(r.text, "qty")
     assert "50" in titles and "50" in cells and "5" in cells and titles == cells
     assert c["pr"].get("/rpt/shipment").status_code == 403
@@ -408,7 +408,7 @@ def test_summary_tabs(c, w):
     assert monthly.status_code == 200
     for sid in ("RPT-040", "RPT-050", "RPT-010", "RPT-020", "RPT-060"):
         assert f'data-section="{sid}"' in monthly.text
-    assert "미확정 (D-519)" in monthly.text and "해설 문장은 없다" in monthly.text
+    assert "미확정 (D-519)" in monthly.text and "해설 문장은 없습니다" in monthly.text
     weekly = c["admin"].get("/rpt/summary", params={"tab": "weekly"})
     assert weekly.status_code == 200 and "주간" in weekly.text
     assert c["ex"].get("/rpt/summary", params={"tab": "yearly"}).status_code == 422

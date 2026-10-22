@@ -239,3 +239,41 @@
 {% macro grid() -%}
 <div class="viz-grid">{{ caller() }}</div>
 {%- endmacro %}
+
+{# ── 여러 줄 선(같은 단위 · 축 하나 — 매출 vs 수금처럼) — rows: [{label, parts: [{label: key, value}]}](stacked 와 같은 모양) · keys: 계열(색 순서 · 최대 6).
+   단위가 다른 두 수치는 한 차트에 넣지 않는다(축 둘 금지 — 차트를 나눈다). 칸마다 투명 띠 하나에 title 「구간 — 계열: 값 · 계열: 값」.
+   2열 데이터 표와 짝이 아니므로 data-series 묶음 밖에 둔다 · 자체 접힌 표(열 = keys). (개발3 추가 — 기존 매크로는 그대로) ── #}
+{% macro lines(rows, keys, label_hdr="구분", name="", height=200) -%}
+{% if not rows %}{{ ui.empty() }}{% else %}
+{% set g = viz_multi(rows, keys) %}
+<figure class="viz viz--line viz--lines" style="--n: {{ g.n }}; --h: {{ height }}px">
+  <ul class="legend legend--row" aria-hidden="true">{% for s in g.series %}<li><i class="sw viz-s{{ s.slot }}"></i><span class="legend__name">{{ s.key }}</span></li>{% endfor %}</ul>
+  <div class="viz__plot">
+    <div class="viz__y" aria-hidden="true">{% for t in g.ticks %}<span style="top: {{ t.y }}%">{{ t.text }}</span>{% endfor %}</div>
+    <div class="viz__area">
+      <svg class="viz__svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="선 그래프 {{ g.series | length }}계열 · {{ g.n }}칸">
+        {% for t in g.ticks %}<line class="viz__grid" x1="0" x2="100" y1="{{ t.y }}" y2="{{ t.y }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+        <line class="viz__base" x1="0" x2="100" y1="{{ g.y0 }}" y2="{{ g.y0 }}" vector-effect="non-scaling-stroke"/>
+        {% for s in g.series %}
+        {% for seg in s.segments %}<polyline class="viz__line viz__line--s{{ s.slot }}" points="{{ seg }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+        {% if g.n <= 45 %}{% for d in s.dots %}<line class="viz__ring" x1="{{ d.x }}" y1="{{ d.y }}" x2="{{ d.x }}" y2="{{ d.y }}" vector-effect="non-scaling-stroke"/><line class="viz__dot viz__dot--s{{ s.slot }}" x1="{{ d.x }}" y1="{{ d.y }}" x2="{{ d.x }}" y2="{{ d.y }}" vector-effect="non-scaling-stroke"/>{% endfor %}{% endif %}
+        {% endfor %}
+        {% for it in g.x %}
+        <rect class="viz__hit" x="{{ it.x - g.w / 2 }}" y="0" width="{{ g.w }}" height="100"><title>{{ it.label }} — {% for k in keys %}{{ k }}: {{ _val(it["values"][k]) }}{% if not loop.last %} · {% endif %}{% endfor %}</title></rect>
+        {% endfor %}
+      </svg>
+    </div>
+  </div>
+  <ol class="viz__x" aria-hidden="true">{% for it in g.x %}<li>{{ it.short if it.show_x else "" }}</li>{% endfor %}</ol>
+</figure>
+<details class="data-table">
+  <summary>데이터 표 <small class="muted">{{ rows | length }}행</small></summary>
+  <div class="grid-wrap"><table class="grid"{% if name %} data-lines-table="{{ name }}"{% endif %}>
+    <thead><tr><th scope="col">{{ label_hdr }}</th>{% for k in keys %}<th scope="col" class="num">{{ k }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for it in g.x %}<tr><td>{{ it.label }}</td>{% for k in keys %}<td class="num">{{ _val(it["values"][k]) }}</td>{% endfor %}</tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endif %}
+{%- endmacro %}

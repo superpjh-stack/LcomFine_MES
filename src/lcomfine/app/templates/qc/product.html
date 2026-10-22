@@ -2,24 +2,30 @@
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
 {% import "qc/_judge.html" as j %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "제품 입고된 LOT 을 검사하고 합격 · 불합격을 판정합니다. 검사 결과(항목 · 값)는 판정 칸 옆에 함께 적습니다.") }}
+{{ ui.help_rule("합격한 제품 LOT 만 출하 지시에 할당할 수 있습니다. 판정 전(검사대기) · 불합격(보류) LOT 은 출하할 수 없습니다.") }}
+{{ ui.help_rule("나눠 옮긴 분할 LOT 은 원 LOT 의 판정을 따릅니다.") }}
+{{ ui.help_rule("출하 확정 뒤에 불합격으로 재판정해도 이미 나간 출하는 바뀌지 않습니다. 「출하 후 불합격」으로 표시되니 출하 화면에서 반품 · 정정합니다.") }}
+{{ ui.help_next("SHP-010", "합격한 LOT 으로 출하 지시") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "미판정 · 불합격 제품 LOT 은 출하 확정 불가 · 재판정은 새 행 · 출하 확정 후의 재판정은 나간 출하를 바꾸지 않는다 (D-515)") }}
-  <form class="search" method="get" role="search">
-    <label class="field">제품 LOT<input name="lot" value="{{ f.lot }}"></label>
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
-    {% if f.status %}<input type="hidden" name="status" value="{{ f.status }}">{% endif %}
-    <button class="btn btn-primary">조회</button>
-    {% if f.status %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-020') }}">재고 상태 {{ f.status }} 조건 풀기</a>{% endif %}
-  </form>
-</section>
-{{ u.readonly_note(can_w) }}
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>제품 LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
+  {% if f.status %}<input type="hidden" name="status" value="{{ f.status }}">{% endif %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>
+    {% if f.status %}<a class="btn btn-ghost" href="{{ nav.path_of('QC-020') }}">재고 상태 {{ f.status }} 조건 풀기</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
-  <h2 class="ph__owner">판정 대기 제품 LOT</h2>
-  {% if not pending %}{{ ui.empty() }}{% else %}
+  <h2>판정 대기 제품 LOT <small class="muted">{{ pending | length }}건</small></h2>
+  {% if not pending %}{{ ui.empty("판정 대기 제품 LOT 이 없습니다") }}{% else %}
   <div class="grid-wrap">
   <table class="grid">
-    <thead><tr><th>제품 LOT</th><th>작업지시</th><th>품목</th><th class="num">수량</th><th>재고 상태</th>{% if can_w %}<th>판정</th>{% endif %}</tr></thead>
+    <thead><tr><th>제품 LOT</th><th>작업지시</th><th>품목</th><th class="num">수량</th><th>재고 상태</th>{% if can_w %}<th>판정 (검사 결과)</th>{% endif %}</tr></thead>
     <tbody>
     {% for r in pending %}
       <tr><td><code>{{ r.lot_no }}</code>{% if r.parent_lot_id %} <small class="muted">분할</small>{% endif %}</td><td>{{ r.work_order_no }}</td>
@@ -31,8 +37,9 @@
   </div>
   {% endif %}
 </section>
+
 <section class="panel panel--grid">
-  <h2 class="ph__owner">판정한 제품 LOT</h2>
+  <h2>판정한 제품 LOT <small class="muted">{{ judged | length }}건</small></h2>
   {% if not judged %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap">
   <table class="grid">

@@ -1,20 +1,27 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "원자재 입고 · 불출 · 제품 입고를 기간 · 품목 · 공급사 조건으로 한 목록에서 봅니다. 「엑셀(CSV)」로 내려받을 수 있습니다.") }}
+{{ ui.help_rule("취소한 건은 지우지 않고 「취소」 표시로 남습니다.") }}
+{{ ui.help_next("LOT-010", "원자재 LOT 이 어디로 갔는지 추적") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "원자재 입고 · 불출 · 제품 입고 — 취소 건은 지우지 않고 취소 표시로 남긴다") }}
-  <form class="search" method="get" role="search">
-    <label class="field">시작일<input type="date" name="from" value="{{ f.from }}"></label>
-    <label class="field">종료일<input type="date" name="to" value="{{ f.to }}"></label>
-    <label class="field">품목<input name="item" value="{{ f.item }}"></label>
-    <label class="field">공급사<input name="supplier" value="{{ f.supplier }}"></label>
-    <label class="field">구분<select name="kind"><option value="">전체</option>{% for k in ("원자재 입고", "불출", "제품 입고") %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
-    <button class="btn btn-primary">조회</button>
-    <button class="btn" name="format" value="csv">엑셀(CSV)</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
+  <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
+  <label class="field field--grow"><span>품목</span><input type="search" name="item" value="{{ f.item }}"></label>
+  <label class="field"><span>구분</span><select name="kind"><option value="">전체</option>{% for k in ("원자재 입고", "불출", "제품 입고") %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+  {% call ui.filters_more(open=f.supplier) %}
+    <label class="field"><span>공급사</span><input name="supplier" value="{{ f.supplier }}"></label>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button><button class="btn" name="format" value="csv">엑셀(CSV)</button>{% if f.from or f.to or f.item or f.kind or f.supplier %}<a class="btn btn-ghost" href="{{ nav.path_of('MAT-040') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>입고 · 불출 내역 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

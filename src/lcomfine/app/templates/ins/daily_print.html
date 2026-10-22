@@ -1,18 +1,20 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "일자를 골라 그날의 검사일보를 출력 양식으로 봅니다. 불량은 유형별 열로 나뉩니다.") }}
+{{ ui.help_item("인쇄", "브라우저 인쇄(Ctrl+P)로 출력합니다. 메뉴 · 조회 조건 · 이 도움말은 인쇄되지 않습니다.") }}
+{{ ui.help_next("INS-010", "검사일보 입력 · 수정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <form class="search" method="get" role="search">
-    <label class="field">일자<input type="date" name="date" value="{{ f.date }}"></label>
-    <button class="btn btn-primary">조회</button>
-    <span class="muted">인쇄는 브라우저 인쇄(메뉴 · 머리 · 계약 패널은 인쇄에서 빠진다)</span>
-  </form>
-</section>
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field"><span>일자</span><input type="date" name="date" value="{{ f.date }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 <section class="panel print-sheet">
   <h1>검사일보 <small>{{ f.date }}</small></h1>
-  <p class="muted">INS-010 에 입력한 검사일보를 그대로 찍는다 — 양식(결재란 등)은 받은 적이 없다.</p>
   {% if not rows %}{{ ui.empty() }}{% else %}
+  <div class="grid-wrap">
   <table class="grid plain">
     <thead><tr><th>작업지시</th><th>품목</th><th class="num">지시 수량</th><th class="num">검사</th><th class="num">불량</th>
       {% for d in defect_types %}<th class="num">{{ d.code_name }}</th>{% endfor %}<th>비고</th></tr></thead>
@@ -26,7 +28,7 @@
     <tfoot><tr><th colspan="3">합계</th><td class="num">{{ u.q(totals.inspected_qty) }}</td><td class="num">{{ u.q(totals.defect_qty) }}</td>
       <td colspan="{{ defect_types | length + 1 }}"></td></tr></tfoot>
   </table>
+  </div>
   {% endif %}
 </section>
 {% endblock %}
-{% block aside %}{% endblock %}

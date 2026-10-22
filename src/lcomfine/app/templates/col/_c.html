@@ -53,3 +53,8 @@
 {% macro asof_line(asof) -%}
 <p class="muted">ERP 업로드 기준일: {% if asof %}<strong>{{ asof | dt }}</strong> (반영 회차의 마지막 기준 기간 끝){% else %}<strong>미수집</strong> — 반영된 회차가 없다{% endif %}</p>
 {%- endmacro %}
+
+{# 화면 머리 오른쪽에 붙는 기준일 칩 — 글자 「ERP 업로드 기준일: <strong>날짜</strong>」 는 QA 가 본다(RPT-060 · 070 · 080 · COL) #}
+{% macro asof_chip(asof) -%}
+<span class="chip chip--muted" data-asof>ERP 업로드 기준일: <strong>{{ asof | dt if asof else "미수집" }}</strong></span>
+{%- endmacro %}

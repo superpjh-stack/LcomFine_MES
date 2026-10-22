@@ -1,20 +1,26 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "인쇄 표준 조건을 등록하고 조회합니다. 조건은 한 줄에 「항목=값」 하나씩 적습니다.") }}
+{{ ui.help_rule("표준 코드는 등록한 뒤 바꿀 수 없습니다. 같은 코드는 두 번 등록할 수 없습니다.") }}
+{{ ui.help_rule("지금은 등록 · 조회만 합니다. 다른 화면에 자동으로 적용하지 않습니다.") }}
+{{ ui.undecided_note("D-519", "표준 조건을 다른 화면에 적용하는 규칙") }}
+{{ f.next("STD-010", "제품별 제조사양기준서") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">표준 조건을 관리한다 (FINE_MES 화면 내용 확인 필요) · 적용 규칙은 {{ ui.undecided("D-519") }} —
-    등록 · 조회만 하고 다른 화면에 적용하지 않는다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "코드·이름", form.q) }}
-    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-STD-021") and not edit %}<a class="btn btn-primary" href="#std-form">＋ 표준 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="표준 코드 · 표준명"></label>
+  {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.use %}<a class="btn btn-ghost" href="{{ nav.path_of('STD-020') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("표준 수정 — " ~ edit.standard_code, "/std/standards/" ~ edit.id, "F-STD-022", cancel=nav.path_of("STD-020")) %}
+{% call f.form_box("표준 수정 — " ~ edit.standard_code, "/std/standards/" ~ edit.id, "F-STD-022", open=true, cancel=nav.path_of("STD-020"), icon="✎", id="std-form") %}
   {{ f.input("standard_code", "표준 코드", edit.standard_code, readonly=true) }}
   {{ f.input("standard_name", "표준명", edit.standard_name, required=true) }}
   {{ f.textarea("content", "조건 항목 (항목=값)", edit_content) }}
@@ -22,7 +28,7 @@
   {{ f.use_select(edit.use_yn) }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("표준 등록", "/std/standards", "F-STD-021") %}
+{% call f.form_box("표준 등록", "/std/standards", "F-STD-021", open=(flash and flash.kind == "warn"), id="std-form") %}
   {{ f.input("standard_code", "표준 코드", required=true) }}
   {{ f.input("standard_name", "표준명", required=true) }}
   {{ f.textarea("content", "조건 항목 (항목=값)") }}
@@ -31,6 +37,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>표준 목록 <small class="muted">{{ rows | length }}건</small> {{ ui.undecided_text("적용 규칙 미확정 (D-519)", "다른 화면에 적용하는 규칙이 정해지지 않았습니다") }}</h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>표준 코드</th><th>표준명</th><th>조건 항목</th><th>적용</th><th>사용</th><th></th></tr></thead>

@@ -1,35 +1,46 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_charts.html" as ch %}
 {% import "rpt/_d.html" as d %}
 {% import "shp/_f.html" as f %}
+{% import "col/_c.html" as c %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "각 대시보드의 핵심 수치만 한 화면에 모읍니다. 숫자만 보이고 해설 문장은 없습니다.") }}
+{{ ui.help_item("일일 · 주간 · 월간", "일일 = 기준일 하루의 재고·창고 · 출하. 주간(기준일까지 7일) · 월간(기준일이 속한 달 1일부터)은 수주 · 생산 · 수금을 더합니다.") }}
+{{ ui.help_rule("숫자는 각 대시보드와 같은 계산입니다. 절 제목을 누르면 그 대시보드로 갑니다.") }}
+{{ ui.help_next("RPT-050", "출하 리포트") }}
+{{ ui.help_next("RPT-040", "재고·창고 리포트") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">일일 · 주간 · 월간. 일일은 창고·출하 중심, 주간·월간에 수주·생산·수금을 더한다. 해설 문장은 없다(D-505) — 수치는 각 리포트의 집계와 같다.</p>
-  {{ f.notice(notice) }}
-  <nav class="actions" aria-label="요약 단위">
+{% call ui.screen_head(screen.name) %}
+  <nav class="seg" aria-label="요약 단위">
     {% for key, label in tabs %}
-    <a class="btn{% if form.tab == key %} btn-primary{% endif %}" href="{{ nav.path_of('RPT-080') }}?tab={{ key }}&amp;asof={{ form.asof }}&amp;customer={{ form.customer }}"{% if form.tab == key %} aria-current="page"{% endif %} data-tab="{{ key }}">{{ label }}</a>
+    <a class="btn btn-sm{% if form.tab == key %} btn-primary{% endif %}" href="{{ nav.path_of('RPT-080') }}?tab={{ key }}&amp;asof={{ form.asof }}&amp;customer={{ form.customer }}"{% if form.tab == key %} aria-current="page"{% endif %} data-tab="{{ key }}">{{ label }}</a>
     {% endfor %}
   </nav>
-  <form class="search" method="get" role="search">
-    <input type="hidden" name="tab" value="{{ form.tab }}">
-    {{ f.input("asof", "기준일", form.asof, type="date") }}
-    <label class="field"><span>거래처</span>
-      <select name="customer"><option value="">전체</option>
-      {% for c in customers %}<option value="{{ c.id }}"{% if (c.id | string) == (form.customer | string) %} selected{% endif %}>{{ c.customer_code }} · {{ c.customer_name }}</option>{% endfor %}
-      </select></label>
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-  {% if data %}<p class="muted"><strong>{{ data.kind }}</strong> 요약 · 기간 {{ data.period[0] | dt }} ~ {{ data.period[1] | dt }}{% if data.asof %} · ERP 업로드 기준일 {{ data.asof | dt }}{% endif %}</p>{% endif %}
-</section>
+{% endcall %}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <input type="hidden" name="tab" value="{{ form.tab }}">
+  {{ f.input("asof", "기준일", form.asof, type="date") }}
+  <label class="field"><span>거래처</span>
+    <select name="customer"><option value="">전체</option>
+    {% for cu in customers %}<option value="{{ cu.id }}"{% if (cu.id | string) == (form.customer | string) %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
+    </select></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
+</form>
 {% if data %}
+<p class="summary-line"><span class="chip chip--muted"><strong>{{ data.kind }}</strong> 요약</span> <span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }}</span>{% if data.asof %} {{ c.asof_chip(data.asof) }}{% endif %}</p>
+{% set sparks = {"qty": data.series.shipment_qty, "issue_qty": data.series.issue_qty} if data.kind != "일일" else {} %}
 {% for s in data.tables.sections %}
 <section class="panel" data-section="{{ s.screen_id }}">
-  <h2><a href="{{ nav.path_of(s.screen_id) }}">{{ s.title }}</a></h2>
-  {{ d.kpis(s.kpis) }}
+  <h2><a href="{{ nav.path_of(s.screen_id) }}">{{ s.title }} <span aria-hidden="true">→</span></a></h2>
+  {{ d.kpis(s.kpis, sparks=(sparks if s.screen_id in ("RPT-040", "RPT-050") else {})) }}
 </section>
 {% endfor %}
+{% call ch.grid() %}
 {{ d.chart_table("shipment_qty", "구간별 확정 출하 수량", data.series.shipment_qty, "구간", "출하 수량", 3) }}
 {{ d.chart_table("issue_qty", "구간별 불출 수량", data.series.issue_qty, "구간", "불출 수량", 3) }}
+{% endcall %}
 {% endif %}
 {% endblock %}

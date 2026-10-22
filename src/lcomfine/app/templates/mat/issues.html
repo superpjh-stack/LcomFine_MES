@@ -1,28 +1,27 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "생산지시에 쓸 원자재를 고르고, LOT 마다 불출 수량을 넣어 한 번에 불출합니다.") }}
+{{ ui.help_rule("검사대기 · 보류(입고검사 불합격) LOT 은 불출할 수 없습니다. 불출 수량은 가용 수량을 넘을 수 없습니다.") }}
+{{ ui.help_rule("불출을 취소하면 재고가 되돌아가고 기록은 남습니다. LOT 을 바꾸려면 취소한 뒤 다시 불출합니다.") }}
+{{ ui.help_next("QC-010", "검사대기 LOT 판정") }}
+{{ ui.help_next("PRD-010", "불출한 지시로 생산일보 입력") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "작업지시는 생산지시서 목록에서 고른다 · 검사대기 · 보류(불합격) LOT 은 불출할 수 없다 · 불출 수량은 가용 수량 안에서") }}
-  <form class="search" method="get" role="search">
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}"></label>
-    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
 
-{% if can_w %}
-<section class="panel">
-  <h2>불출 등록</h2>
-  {% if not work_orders %}{{ ui.empty("불출할 생산지시가 없습니다 — 생산지시서(WO-020)") }}
-  {% elif not stock %}{{ ui.empty("원자재 재고가 없습니다 — 원자재 입고(MAT-010) · 입고검사(QC-010)") }}
+{% call ui.form_details("불출 등록", open=true, allowed=can_w) %}
+  {% if not work_orders %}{{ ui.empty("불출할 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}
+  {% elif not stock %}{{ ui.empty("원자재 재고가 없습니다 — 원자재 입고 · 입고검사를 먼저 합니다") }}
   {% else %}
   <form method="post" action="{{ nav.path_of('MAT-020') }}">
-    <div class="search">
-      <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}"{% if f.wo == w.work_order_no %} selected{% endif %}>{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }} · {{ u.q(w.qty) }}</option>{% endfor %}</select></label>
-      <label class="field">불출일<input type="date" name="issued_on"></label>
-      <label class="field">비고<input name="note"></label>
+    <div class="form-grid">
+      <label class="field field--wide"><span>작업지시 번호 <b aria-hidden="true">*</b></span><select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}"{% if f.wo == w.work_order_no %} selected{% endif %}>{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }} · {{ u.q(w.qty) }}</option>{% endfor %}</select></label>
+      <label class="field"><span>불출일 (비우면 오늘)</span><input type="date" name="issued_on"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
     </div>
+    <h3>불출 LOT 선택</h3>
     <div class="grid-wrap">
     <table class="grid plain">
       <thead><tr><th>LOT</th><th>품목</th><th>위치</th><th class="num">가용</th><th>상태</th><th>불출 수량</th></tr></thead>
@@ -45,11 +44,16 @@
     <div class="actions"><button class="btn btn-primary">불출 등록</button></div>
   </form>
   {% endif %}
-</section>
-{% endif %}
-{{ u.readonly_note(can_w) }}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
+  <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.wo or f.lot %}<a class="btn btn-ghost" href="{{ nav.path_of('MAT-020') }}">초기화</a>{% endif %}</div>
+</form>
 
 <section class="panel panel--grid">
+  <h2>불출 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

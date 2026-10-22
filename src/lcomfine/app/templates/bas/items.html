@@ -1,21 +1,22 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "home/_forms.html" as f with context %}
+{# help 블록을 채우지 않는다 — 기본 목록(기능 이름 · 내 권한)의 본보기 화면 (tests/test_arch_layout.py) #}
 {% block body %}
 {% set TYPES = [("제품", "제품"), ("원자재", "원자재")] %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">품목 코드는 바꾸지 않는다 · 사용 중지 품목은 의뢰 · 입고 · 출하 지시에서 고를 수 없다.</p>
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "코드·이름", form.q) }}
-    {{ f.select("item_type", "구분", TYPES, form.item_type, blank="전체") }}
-    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-BAS-011") and not edit %}<a class="btn btn-primary" href="#item-form">＋ 품목 등록</a>{% endif %}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="품목 코드 · 품목명"></label>
+  {{ f.select("item_type", "구분", TYPES, form.item_type, blank="전체") }}
+  {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.item_type or form.use %}<a class="btn btn-ghost" href="{{ nav.path_of('BAS-010') }}">초기화</a>{% endif %}</div>
+</form>
 
 {% if edit %}
-{% call f.form_panel("품목 수정 — " ~ edit.item_code, "/bas/items/" ~ edit.id, "F-BAS-012", cancel=nav.path_of("BAS-010")) %}
+{% call f.form_box("품목 수정 — " ~ edit.item_code, "/bas/items/" ~ edit.id, "F-BAS-012", open=true, cancel=nav.path_of("BAS-010"), icon="✎", id="item-form") %}
   {{ f.input("item_code", "품목 코드", edit.item_code, readonly=true) }}
   {{ f.input("item_name", "품목명", edit.item_name, required=true) }}
   {{ f.select("item_type", "구분", TYPES, edit.item_type, required=true, blank=none) }}
@@ -25,7 +26,7 @@
   {{ f.use_select(edit.use_yn) }}
 {% endcall %}
 {% else %}
-{% call f.form_panel("품목 등록", "/bas/items", "F-BAS-011") %}
+{% call f.form_box("품목 등록", "/bas/items", "F-BAS-011", open=(flash and flash.kind == "warn"), id="item-form") %}
   {{ f.input("item_code", "품목 코드", required=true) }}
   {{ f.input("item_name", "품목명", required=true) }}
   {{ f.select("item_type", "구분", TYPES, "", required=true) }}
@@ -36,6 +37,7 @@
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>품목 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>품목 코드</th><th>품목명</th><th>구분</th><th>규격</th><th>단위</th><th>사용</th><th>비고</th><th></th></tr></thead>

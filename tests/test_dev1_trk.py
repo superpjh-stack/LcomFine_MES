@@ -137,7 +137,7 @@ def test_due_compliance_from_stats(p):
     r = c.get("/trk/due", params={"period": "1986-03", "customer": str(cu["id"])})
     assert r.status_code == 200 and late["request_no"] in r.text and 'data-period="1986-03"' in r.text
     assert f'data-compliance="{expected("1986-03")}"' in r.text and stats.due_compliance("1986-03")["late_open"] >= 1
-    assert stats.DUE_COMPLIANCE_FORMULA in r.text and "D-804" in r.text and "stats.due_compliance" in r.text
+    assert stats.DUE_COMPLIANCE_FORMULA in r.text and "D-804" in r.text and "data-formula" in r.text   # 산식 문장(D-804) — 함수 이름은 화면에 두지 않는다(ui-guide §1)
     r = c.get("/trk/due")                                                       # 기본 = 이번 달
     assert r.status_code == 200 and f'data-period="{date.today():%Y-%m}"' in r.text
     assert f'data-compliance="{expected(date.today().strftime("%Y-%m"))}"' in r.text

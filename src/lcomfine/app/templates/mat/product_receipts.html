@@ -1,48 +1,54 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "생산을 마친 제품을 작업지시 번호로 입고합니다. 제품 LOT 번호는 저장할 때 자동으로 붙고 지시번호와 묶입니다.") }}
+{{ ui.help_item("수량 기본값", "수량을 비우고 저장하면 생산일보의 완료(양품) 수량에서 이미 입고한 수량을 뺀 값으로 입고합니다. 조회 칸에 지시번호를 넣고 조회하면 그 값이 수량 칸에 미리 채워집니다.") }}
+{{ ui.help_rule("입고한 제품 LOT 은 「검사대기」입니다. 제품검사에서 합격해야 출하할 수 있습니다.") }}
+{{ ui.help_rule("이동 · 분할 · 할당되었거나 출하에 쓰인 제품 LOT 은 수량을 고치거나 취소할 수 없습니다.") }}
+{{ ui.help_next("QC-020", "입고한 제품 LOT 판정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "지시를 고르면 생산일보의 완료 수량을 기본값으로 불러온다 · 제품 LOT 은 지시번호와 묶이고 제품검사 판정 전까지 검사대기") }}
-  <form class="search" method="get" role="search">
-    <label class="field">지시번호<input name="wo" value="{{ f.wo }}" list="wo-list"></label>
-    <datalist id="wo-list">{% for w in work_orders %}<option value="{{ w.work_order_no }}">{% endfor %}</datalist>
-    <label class="field">제품 LOT<input name="lot" value="{{ f.lot }}"></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
 
-{% if can_w %}
-<section class="panel">
-  <h2>제품 입고 등록</h2>
-  {% if not work_orders %}{{ ui.empty("입고할 생산지시가 없습니다 — 생산지시서(WO-020)") }}
-  {% elif not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리(BAS-030)") }}
+{% call ui.form_details("제품 입고 등록", open=true, allowed=can_w) %}
+  {% if not work_orders %}{{ ui.empty("입고할 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}
+  {% elif not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리에서 먼저 등록합니다") }}
   {% elif not picked %}
-  <p class="muted">위 조회칸에 지시번호를 넣고 조회하면 일보 완료 수량이 기본값으로 채워진다.</p>
-  <form method="post" action="{{ nav.path_of('MAT-030') }}" class="search">
-    <label class="field">작업지시<select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
-    <label class="field">수량 <small class="muted">비우면 일보 완료 수량</small><input name="qty" inputmode="decimal"></label>
-    <label class="field">입고 위치<select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
-    <label class="field">입고일<input type="date" name="received_on"></label>
-    <label class="field">비고<input name="note"></label>
-    <button class="btn btn-primary">입고 등록</button>
+  <form method="post" action="{{ nav.path_of('MAT-030') }}">
+    <div class="form-grid">
+      <label class="field field--wide"><span>작업지시 번호 <b aria-hidden="true">*</b></span><select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
+      <label class="field"><span>수량 <small class="muted">비우면 일보 완료 수량</small></span><input name="qty" inputmode="decimal"></label>
+      <label class="field"><span>입고 위치 <b aria-hidden="true">*</b></span><select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
+      <label class="field"><span>입고일 (비우면 오늘)</span><input type="date" name="received_on"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
+    </div>
+    <div class="actions"><button class="btn btn-primary">입고 등록</button></div>
   </form>
   {% else %}
-  <form method="post" action="{{ nav.path_of('MAT-030') }}" class="search">
+  <form method="post" action="{{ nav.path_of('MAT-030') }}">
     <input type="hidden" name="work_order_id" value="{{ picked.id }}">
-    <label class="field">작업지시<input value="{{ picked.work_order_no }} · {{ picked.item_code }} {{ picked.item_name }}" readonly></label>
-    <label class="field">수량 <small class="muted">일보 완료 − 기존 입고 = {{ u.q(picked.default_qty) }}</small><input name="qty" inputmode="decimal" value="{{ u.q(picked.default_qty) if picked.default_qty > 0 else '' }}" required></label>
-    <label class="field">입고 위치<select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
-    <label class="field">입고일<input type="date" name="received_on"></label>
-    <label class="field">비고<input name="note"></label>
-    <button class="btn btn-primary">입고 등록</button>
+    <div class="form-grid">
+      <label class="field"><span>작업지시 번호</span><input value="{{ picked.work_order_no }} · {{ picked.item_code }} {{ picked.item_name }}" readonly></label>
+      <label class="field"><span>제품 수량 <small class="muted">일보 완료 − 기존 입고 = {{ u.q(picked.default_qty) }}</small></span><input name="qty" inputmode="decimal" value="{{ u.q(picked.default_qty) if picked.default_qty > 0 else '' }}" required></label>
+      <label class="field"><span>입고 위치 <b aria-hidden="true">*</b></span><select name="location_id" required>{% for l in locations %}<option value="{{ l.id }}">{{ l.warehouse_code }} / {{ l.location_code }}</option>{% endfor %}</select></label>
+      <label class="field"><span>입고일 (비우면 오늘)</span><input type="date" name="received_on"></label>
+      <label class="field"><span>비고</span><input name="note"></label>
+    </div>
+    <div class="actions"><a class="btn" href="{{ nav.path_of('MAT-030') }}">다른 지시</a><button class="btn btn-primary">입고 등록</button></div>
   </form>
   {% endif %}
-</section>
-{% endif %}
-{{ u.readonly_note(can_w) }}
+{% endcall %}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}" list="wo-list"></label>
+  <datalist id="wo-list">{% for w in work_orders %}<option value="{{ w.work_order_no }}">{% endfor %}</datalist>
+  <label class="field field--grow"><span>제품 LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.wo or f.lot %}<a class="btn btn-ghost" href="{{ nav.path_of('MAT-030') }}">초기화</a>{% endif %}</div>
+</form>
 
 <section class="panel panel--grid">
+  <h2>제품 입고 목록 <small class="muted">{{ rows | length }}건</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

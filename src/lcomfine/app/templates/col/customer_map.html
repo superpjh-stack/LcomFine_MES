@@ -1,21 +1,27 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "shp/_f.html" as f %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "ERP 거래처코드를 MES 거래처에 연결합니다. 이 연결이 MES 출하와 ERP 수금을 잇는 유일한 열쇠입니다.") }}
+{{ ui.help_rule("ERP 코드 하나에 MES 거래처 하나만 연결됩니다. ERP 코드는 바꿀 수 없습니다 — 잘못 넣었으면 삭제 후 다시 등록합니다.") }}
+{{ ui.help_rule("업로드에서 처음 보는 코드는 「미매핑 코드 목록」에 쌓이고, 매핑하면 반영 회차의 해당 오류 행이 다시 반영됩니다.") }}
+{{ ui.help_rule("업로드 행이 참조하는 매핑은 삭제하면 「사용 중지」로 바뀝니다.") }}
+{{ ui.help_next("BAS-020", "MES 거래처 관리") }}
+{{ ui.help_next("COL-010", "ERP 수금현황 업로드") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">ERP 거래처코드 ↔ MES 거래처(<a href="{{ nav.path_of('BAS-020') }}">거래처 관리</a>). ERP 코드 하나에 MES 거래처 하나 — 이 매핑이 출하(MES)와 수금(ERP)을 잇는 유일한 키다.
-    업로드에서 처음 보는 ERP 코드는 아래 미매핑 목록에 쌓이고, 매핑하면 반영 회차의 해당 오류 행이 다시 반영된다. 삭제는 업로드 행이 참조하면 사용 중지로 바뀐다.</p>
-  {{ f.notice(notice) }}
-  <form class="search" method="get" role="search">
-    {{ f.input("q", "검색 (ERP 코드 · 이름 · MES 거래처)", form.q) }}
-    {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use) }}
-    <div class="actions"><button type="submit" class="btn btn-primary">조회</button></div>
-  </form>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-COL-031") and not edit %}<a class="btn btn-primary" href="#map-form">＋ 매핑 등록</a>{% endif %}
+{% endcall %}
+{{ f.notice(notice) }}
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="ERP 코드 · 이름 · MES 거래처"></label>
+  {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use) }}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if form.q or form.use %}<a class="btn btn-ghost" href="{{ nav.path_of('COL-030') }}">초기화</a>{% endif %}</div>
+</form>
 
-<section class="panel">
-  <h2>미매핑 ERP 거래처코드 — 반영 회차에 올라왔지만 사용 중 매핑이 없는 코드</h2>
+<section class="panel panel--grid">
+  <h2>미매핑 코드 목록 <small class="muted">반영 회차에 올라왔지만 사용 중 매핑이 없는 ERP 거래처코드 · {{ unmapped | length }}개</small></h2>
   {% if unmapped %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>ERP 거래처코드</th><th class="num">행</th><th class="num">회차</th><th>처음 기간</th><th>마지막 기간</th><th></th></tr></thead>
@@ -24,7 +30,7 @@
     <tr data-unmapped="{{ u.erp_code }}">
       <td><code>{{ u.erp_code }}</code></td><td class="num">{{ u.rows | num }}</td><td class="num">{{ u.batches | num }}</td>
       <td>{{ u.first_seen | dt }}</td><td>{{ u.last_seen | dt }}</td>
-      <td>{% if fn_allowed.get("F-COL-031") %}<a class="btn btn-sm" href="?code={{ u.erp_code | urlencode }}">매핑하기</a>{% endif %}</td>
+      <td>{% if fn_allowed.get("F-COL-031") %}<a class="btn btn-sm btn-primary" href="?code={{ u.erp_code | urlencode }}#map-form">매핑하기</a>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -33,39 +39,42 @@
 </section>
 
 {% if edit %}
-<section class="panel">
-  <h2>매핑 수정 — <code>{{ edit.erp_code }}</code> {% if edit.use_yn == "Y" %}<span class="chip chip--ok">사용</span>{% else %}<span class="chip chip--muted">사용 중지</span>{% endif %}</h2>
-  {% if fn_allowed.get("F-COL-032") %}
-  <p class="muted">ERP 코드는 키라서 바꾸지 않는다(잘못 넣었으면 삭제 뒤 다시 등록). 사용 재개하면 그 코드의 반영 회차 행이 다시 해석된다. 참조 업로드 행 {{ edit.row_refs | num }}.</p>
-  <form class="search" method="post" action="{{ nav.path_of('COL-030') }}/{{ edit.id }}">
-    {{ f.input("erp_name", "ERP 거래처명", edit.erp_name) }}
-    <label class="field"><span>MES 거래처 <b aria-hidden="true">*</b></span>
-      <select name="customer_id" required>
-        {% for cu in customers %}<option value="{{ cu.id }}"{% if cu.id == edit.customer_id %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}{% if cu.use_yn != "Y" %} (사용 중지){% endif %}</option>{% endfor %}
-      </select></label>
-    {{ f.select("use_yn", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], edit.use_yn, blank=none) }}
-    <div class="actions"><a class="btn" href="{{ nav.path_of('COL-030') }}">취소</a><button type="submit" class="btn btn-primary">저장</button></div>
-  </form>
-  {% else %}{{ f.denied("F-COL-032") }}{% endif %}
-</section>
+{% if fn_allowed.get("F-COL-032") %}
+{% call ui.form_details("매핑 수정 — " ~ edit.erp_code ~ (" (사용 중지)" if edit.use_yn != "Y" else ""), open=true, icon="✎") %}
+<form method="post" action="{{ nav.path_of('COL-030') }}/{{ edit.id }}" id="map-form">
+  <p class="muted form-note">참조 업로드 행 {{ edit.row_refs | num }} · 사용을 다시 켜면 그 코드의 반영 회차 행이 다시 해석됩니다.</p>
+  <div class="form-grid">
+  {{ f.input("erp_name", "ERP 거래처명", edit.erp_name) }}
+  <label class="field"><span>MES 거래처 <b aria-hidden="true">*</b></span>
+    <select name="customer_id" required>
+      {% for cu in customers %}<option value="{{ cu.id }}"{% if cu.id == edit.customer_id %} selected{% endif %}>{{ cu.customer_code }} · {{ cu.customer_name }}{% if cu.use_yn != "Y" %} (사용 중지){% endif %}</option>{% endfor %}
+    </select></label>
+  {{ f.select("use_yn", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], edit.use_yn, blank=none) }}
+  </div>
+  <div class="actions"><a class="btn" href="{{ nav.path_of('COL-030') }}">취소</a><button type="submit" class="btn btn-primary">저장</button></div>
+</form>
+{% endcall %}
 {% else %}
-<section class="panel">
-  <h2>매핑 등록</h2>
-  {% if fn_allowed.get("F-COL-031") %}
-  <form class="search" method="post" action="{{ nav.path_of('COL-030') }}">
-    {{ f.input("erp_code", "ERP 거래처코드", prefill_code, required=true) }}
-    {{ f.input("erp_name", "ERP 거래처명 (참고)") }}
-    <label class="field"><span>MES 거래처 <b aria-hidden="true">*</b></span>
-      <select name="customer_id" required><option value="">선택</option>
-        {% for cu in customers if cu.use_yn == "Y" %}<option value="{{ cu.id }}">{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
-      </select></label>
-    <div class="actions"><button type="submit" class="btn btn-primary">매핑 등록</button></div>
-  </form>
-  {% else %}{{ f.denied("F-COL-031") }}{% endif %}
-</section>
+<section class="panel"><h2>매핑 수정 — <code>{{ edit.erp_code }}</code></h2>{{ f.denied() }}</section>
+{% endif %}
+{% else %}
+{% call ui.form_details("매핑 등록", open=(prefill_code or (flash and flash.kind == "warn")), allowed=fn_allowed.get("F-COL-031")) %}
+<form method="post" action="{{ nav.path_of('COL-030') }}" id="map-form">
+  <div class="form-grid">
+  {{ f.input("erp_code", "ERP 거래처코드", prefill_code, required=true) }}
+  {{ f.input("erp_name", "ERP 거래처명 (참고)") }}
+  <label class="field"><span>MES 거래처 <b aria-hidden="true">*</b></span>
+    <select name="customer_id" required><option value="">선택</option>
+      {% for cu in customers if cu.use_yn == "Y" %}<option value="{{ cu.id }}">{{ cu.customer_code }} · {{ cu.customer_name }}</option>{% endfor %}
+    </select></label>
+  </div>
+  <div class="actions"><button type="submit" class="btn btn-primary">매핑 등록</button></div>
+</form>
+{% endcall %}
 {% endif %}
 
 <section class="panel panel--grid">
+  <h2>ERP 거래처코드 ↔ MES 거래처 <small class="muted">{{ rows | length }}건</small></h2>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>ERP 거래처코드</th><th>ERP 거래처명</th><th>MES 거래처</th><th>사용</th><th class="num">참조 행</th><th>등록</th><th>수정</th><th></th></tr></thead>

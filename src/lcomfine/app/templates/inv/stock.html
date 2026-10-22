@@ -1,19 +1,29 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
 {% import "inv/_ui.html" as u %}
+{% block help %}
+{{ ui.help_item("이 화면에서 볼 것", "LOT 별 · 위치별 현재고와 출하 지시 할당량, 가용 수량을 봅니다.") }}
+{{ ui.help_item("가용 수량", "가용 = 현재고 − 출하 지시 할당량. 불출 · 이동 · 출하 지시는 가용 수량 안에서만 됩니다.") }}
+{{ ui.help_item("상태", "검사대기(입고검사 · 제품검사 전) · 가용(합격) · 보류(불합격) · 할당(출하 지시에 잡힌 수량이 있음)") }}
+{{ ui.help_next("INV-020", "재고 이동 · 분할") }}
+{{ ui.help_next("INV-030", "실사 수량으로 재고 조정") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  {{ u.head(screen, "가용 수량 = 현재고 − 출하 지시 할당량 · 상태 칩 4: 검사대기 · 가용 · 보류 · 할당 (D-510)") }}
-  <form class="search" method="get" role="search">
-    <label class="field">품목<input name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
-    <label class="field">창고<input name="warehouse" value="{{ f.warehouse }}"></label>
-    <label class="field">LOT<input name="lot" value="{{ f.lot }}"></label>
-    <label class="field">구분<select name="kind"><option value="">전체</option>{% for k in kinds %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
-    <label class="field">상태<select name="status"><option value="">전체</option>{% for s in statuses + ("할당",) %}<option{% if f.status == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
-    <button class="btn btn-primary">조회</button>
-  </form>
-</section>
+{{ ui.screen_head(screen.name) }}
+
+<form class="filters" method="get" role="search" aria-label="조회 조건">
+  <label class="field field--grow"><span>품목</span><input type="search" name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
+  <label class="field"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
+  <label class="field"><span>상태</span><select name="status"><option value="">전체</option>{% for s in statuses + ("할당",) %}<option{% if f.status == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  {% call ui.filters_more(open=(f.warehouse or f.kind)) %}
+    <label class="field"><span>창고</span><input name="warehouse" value="{{ f.warehouse }}"></label>
+    <label class="field"><span>구분</span><select name="kind"><option value="">전체</option>{% for k in kinds %}<option{% if f.kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+  {% endcall %}
+  <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button>{% if f.item or f.lot or f.status or f.warehouse or f.kind %}<a class="btn btn-ghost" href="{{ nav.path_of('INV-010') }}">초기화</a>{% endif %}</div>
+</form>
+
 <section class="panel panel--grid">
+  <h2>LOT별 재고 <small class="muted">{{ rows | length }}행</small></h2>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

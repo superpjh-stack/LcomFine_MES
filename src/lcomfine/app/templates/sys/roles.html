@@ -1,18 +1,23 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block help %}
+{{ ui.help_item("이 화면에서 할 일", "부서(역할)마다 화면별 권한을 정합니다. W = 처리(등록 · 수정), R = 조회만, · = 메뉴에 안 보임.") }}
+{{ ui.help_rule("저장하면 다음 요청부터 바로 반영됩니다. 기본값과 다른 칸에는 * 가 붙습니다.") }}
+{{ ui.help_rule("전산 관리자는 모든 화면이 R 이상이어야 하고, 이 화면은 W 여야 합니다. 그렇지 않으면 저장되지 않습니다.") }}
+{{ ui.help_rule("주의 — 시드를 다시 돌리면 매트릭스 기본값으로 되돌아갑니다.") }}
+{{ f.next("SYS-010", "사용자의 부서 바꾸기") }}
+{% endblock %}
 {% block body %}
-<section class="panel">
-  <h1>{{ screen.name }}</h1>
-  <p class="muted">메뉴 × 역할 처리(W)·조회(R) · 권한 매트릭스 보기의 W·R이 기본값이다 · 칸 값 W · R · 없음 · 저장하면 다음 요청부터 반영된다 ·
-    <strong>시드를 다시 돌리면 매트릭스(<code>contracts/permission-matrix.md</code>)로 되돌아간다.</strong>
-    전산 관리자는 전 화면 R 이상이고 이 화면은 W 다(잃으면 아무도 권한을 고칠 수 없다).</p>
-  <div class="kpis">
-    {{ ui.kpi("권한 칸", counts["전체"] | num) }}{{ ui.kpi("W 칸", counts.W | num) }}{{ ui.kpi("R 칸", counts.R | num) }}
-    {{ ui.kpi("기본값과 다른 칸", changed | num, "permission-matrix.md 대비") }}
-  </div>
-</section>
+{% call ui.screen_head(screen.name) %}
+  {% if fn_allowed.get("F-SYS-021") %}<button type="submit" form="roles-form" class="btn btn-primary" data-confirm="권한을 저장할까요? 다음 요청부터 반영됩니다.">저장</button>{% endif %}
+{% endcall %}
+<div class="kpis">
+  {{ ui.kpi("권한 칸", counts["전체"] | num) }}{{ ui.kpi("W 칸", counts.W | num) }}{{ ui.kpi("R 칸", counts.R | num) }}
+  {{ ui.kpi("기본값과 다른 칸", changed | num, "기본 매트릭스 대비") }}
+</div>
 
-<form method="post" action="/sys/roles">
+<form method="post" action="/sys/roles" id="roles-form" style="display:contents">
 <section class="panel">
   <h2>역할 목록</h2>
   <div class="grid-wrap"><table class="grid plain">
@@ -28,6 +33,7 @@
 </section>
 
 <section class="panel panel--grid">
+  <h2>화면 × 부서 권한</h2>
   <div class="grid-wrap grid-wrap--tall"><table class="grid grid--matrix plain">
     <thead><tr><th>화면</th>{% for r in roles %}<th class="c" title="{{ r.name }}">{{ r.code }}</th>{% endfor %}</tr></thead>
     <tbody>
