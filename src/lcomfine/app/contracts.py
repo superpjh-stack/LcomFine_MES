@@ -99,7 +99,9 @@ def _split(cell: str, sep: str) -> tuple[str, ...]:
 def _role_codes(cell: str) -> tuple[str, ...]:
     """`영업부·디자인·개발실·전산 관리자` → ('SL', 'DS', 'ADM'). 부서 이름 안에도 `·` 가 있어(디자인·개발실)
     단순히 나누지 않고 아는 이름을 긴 것부터 앞에서 떼어 낸다."""
-    rest, out = cell.strip(), []
+    # 계약 문서 작성자가 구분점 주위에 공백을 넣어도 같은 부서 목록으로 읽는다.
+    # 부서명 자체의 가운데점(디자인·개발실)은 아래의 긴 이름 우선 매칭으로 보존된다.
+    rest, out = re.sub(r"\s*·\s*", "·", cell.strip()), []
     names = sorted(ROLE_CODES, key=len, reverse=True)
     while rest:
         hit = next((n for n in names if rest == n or rest.startswith(n + "·")), None)

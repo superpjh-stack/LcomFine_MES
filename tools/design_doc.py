@@ -112,7 +112,7 @@ def overrides() -> dict:
 
 
 def effective(d: dict | None = None) -> dict:
-    """정본 위에 ia-overrides.json(화면 제거 · 대메뉴 이름 변경)을 얹은 것."""
+    """정본 위에 ia-overrides.json(화면 제거 · 대메뉴 이름 변경 · 승인된 신규 메뉴)을 얹은 것."""
     e = copy.deepcopy(d if d is not None else load())
     ov = overrides()
     codes = {m["code"] for m in e["menus"]}
@@ -123,6 +123,9 @@ def effective(d: dict | None = None) -> dict:
     for sid in ov.get("remove_screens", {}):
         if sid not in ids:
             raise SystemExit(f"ia-overrides: 없는 화면 {sid}")
+    added_codes = [m["code"] for m in ov.get("add_menus", [])]
+    if len(added_codes) != len(set(added_codes)) or set(added_codes) & codes:
+        raise SystemExit(f"ia-overrides: 신규 대메뉴 코드 중복 {added_codes}")
     removed = set(ov.get("remove_screens", {}))
     for m in e["menus"]:
         if m["code"] in ov.get("rename_menu", {}):
@@ -132,6 +135,17 @@ def effective(d: dict | None = None) -> dict:
             s["links"] = [x for x in s["links"] if x not in removed]
     e["flow"] = [f for f in e["flow"] if f["id"] not in removed]
     e["self_grants"] = [g for g in e["self_grants"] if g[0] not in removed]
+    for added in ov.get("add_menus", []):
+        menu = copy.deepcopy(added)
+        after = menu.pop("after", None)
+        if menu.get("bundle") not in {b["key"] for b in e["bundles"]}:
+            raise SystemExit(f"ia-overrides: 신규 대메뉴 {menu.get('code')} 의 묶음이 없다")
+        new_ids = [s["id"] for s in menu.get("screens", [])]
+        if not new_ids or len(new_ids) != len(set(new_ids)) or set(new_ids) & ids:
+            raise SystemExit(f"ia-overrides: 신규 화면 ID 중복 또는 없음 {new_ids}")
+        pos = next((i + 1 for i, m in enumerate(e["menus"]) if m["code"] == after), len(e["menus"]))
+        e["menus"].insert(pos, menu)
+        ids.update(new_ids)
     return e
 
 

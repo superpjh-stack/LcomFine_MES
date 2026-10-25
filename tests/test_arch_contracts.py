@@ -24,7 +24,7 @@ def _screens():
 
 def test_function_list_covers_every_screen_by_expansion_rule():
     screens = _screens()
-    assert len(screens) == 66
+    assert len(screens) == 70
     for s in screens:
         fns = contracts.functions_of(s["id"])
         assert fns, f"{s['id']}: 기능이 없다"
@@ -49,7 +49,7 @@ def test_function_list_covers_every_screen_by_expansion_rule():
     assert [(f.kind, f.api) for f in map(contracts.function, kind_exc)] == [
         ("처리", "POST /home/notifications/{id}/handle"), ("처리", "POST /shp/confirm/{id}/adjust")]
     total = sum(len(EXPANSION[s["type"]]) for s in screens) - len(exc) + len(kind_exc)
-    assert len(contracts.functions()) == total == 134
+    assert len(contracts.functions()) == total == 149
 
 
 def test_function_ids_unique_and_api_prefix_matches_nav_path():
@@ -77,8 +77,8 @@ def test_permission_matrix_equals_effective_ia():
     e = design_doc.effective()
     expected = {(s["id"], r, v) for m in e["menus"] for s in m["screens"] for r, v in s["roles"].items()}
     cells = contracts.permission_cells()
-    assert len(cells) == 257 and set(cells) == expected
-    assert sum(1 for c in cells if c[2] == "W") == 64 and sum(1 for c in cells if c[2] == "R") == 193
+    assert len(cells) == 276 and set(cells) == expected
+    assert sum(1 for c in cells if c[2] == "W") == 78 and sum(1 for c in cells if c[2] == "R") == 198
     assert set(contracts.ROLE_CODES.values()) == {r["id"] for r in e["roles"]}
     assert list(contracts.ROLE_CODES) == [r["name"] for r in e["roles"]]
 

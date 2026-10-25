@@ -4,7 +4,7 @@
 기대값은 **정본 추출(`contracts/ia.json` + `contracts/ia-overrides.json` = `design_doc.effective()`)에서** 읽는다.
 코드가 스스로 적은 숫자를 믿지 않는다.
 
-  G-01  묶음 8 · 대메뉴 17 · 화면 66(goal.md §2.0 의 67 − RPT-130 · D-529) · 흐름 7 — 순서 · 이름 · 화면 유형이 글자 단위로 nav 와 같다.
+  G-01  묶음 8 · 대메뉴 18 · 화면 70(D-531 MGT 4 포함) · 흐름 7 — 순서 · 이름 · 화면 유형이 글자 단위로 nav 와 같다.
         RPT 이름 「대시보드」 · RPT-090~120 없음(D-505) · RPT-130 없음(D-529). ia.json = 정본 HTML · permission-matrix.md = 정본 · screen-map.md §1 = nav.
   G-02  `contracts/function-list.md` 줄마다 API 열의 메서드 · 경로가 앱 라우트에 **글자 그대로** 있다(경로 매개변수 `{id}` 도 그대로).
         고아 3종 — 라우트 없는 계약 · 계약 없는 라우트 · 표식 없는 기능 — 을 각각 목록으로 찍는다. 셋 다 0 이어야 PASS.
@@ -33,7 +33,7 @@ from tools import design_doc  # noqa: E402
 
 TESTS_DIR = ROOT / "tests"
 #: goal.md §2.0 의 기대값 (정본에서 다시 센 수 — 이 수와 정본 추출이 다르면 정본 추출이 바뀐 것이다)
-EXPECT = {"묶음": 8, "대메뉴": 17, "화면": 66, "흐름": 7}   # 화면 = goal.md §2.0 의 67 − RPT-130 (D-529)
+EXPECT = {"묶음": 8, "대메뉴": 18, "화면": 70, "흐름": 7}
 REMOVED = ("RPT-090", "RPT-100", "RPT-110", "RPT-120", "RPT-130")   # D-505 · D-529
 #: 기능 계약 밖의 공통 라우트 (main.py — Task 8)
 COMMON_ROUTES = {"/login", "/login/quick", "/logout", "/error", "/ia", "/guide/usecases", "/health", "/openapi.json"}   # /guide/usecases = D-530
@@ -82,7 +82,7 @@ def check_nav(r: Report) -> None:
         return
     scr = [s for m in e["menus"] for s in m["screens"]]
     got = {"묶음": len(e["bundles"]), "대메뉴": len(e["menus"]), "화면": len(scr), "흐름": len(e["flow"])}
-    r.add(g, "정본 수 = goal.md §2.0 (묶음 8 · 대메뉴 17 · 화면 66 · 흐름 7 · D-529)", got == EXPECT,
+    r.add(g, "정본+승인 편차 수 = goal.md §2.0 (묶음 8 · 대메뉴 18 · 화면 70 · 흐름 7 · D-531)", got == EXPECT,
           " · ".join(f"{k} {v}" for k, v in got.items()))
 
     a, b = [x[1] for x in nav.BUNDLES], [x["name"] for x in e["bundles"]]

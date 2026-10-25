@@ -36,13 +36,13 @@
 
 **Steps**
 
-- [ ] 실패 테스트: MGT 메뉴 1, 화면 4, 경로 4, 권한 칸 17, 신규 기능의 화면·라우트 표식 기대값을 추가한다.
-- [ ] `uv run pytest tests/test_arch_design_doc.py tests/test_arch_contracts.py tests/test_arch_layout.py -q`로 실패를 확인한다.
-- [ ] 신규 확정 결정에 Cockpit, 목표, 위험·조치, ERP 재무연계, MGT 분리를 기록한다.
-- [ ] overrides에 신규 MGT 메뉴·화면을 추가하도록 추출기 지원을 보강하고, `nav.py`를 같은 순서·이름으로 갱신한다.
-- [ ] 기능 계약을 확정한다: 각 화면 GET 1개, 목표·임계치 생성/새 버전/중지, 조치 배정/변경/강제 종료, 재무 업로드/반영 기능.
-- [ ] 권한: MGT-010 ST·ADM W / EX·AC R, MGT-020 ST·ADM W / EX R, MGT-030 전 부서 W, MGT-040 AC·ADM W / ST·EX R.
-- [ ] `make check-trace`와 대상 테스트를 통과시킨다.
+- [x] 실패 테스트: MGT 메뉴 1, 화면 4, 경로 4, 권한 칸 19, 신규 기능의 화면·라우트 표식 기대값을 추가한다.
+- [x] `uv run pytest tests/test_arch_design_doc.py tests/test_arch_contracts.py tests/test_arch_layout.py -q`로 실패를 확인한다.
+- [x] 신규 확정 결정에 Cockpit, 목표, 위험·조치, ERP 재무연계, MGT 분리를 기록한다.
+- [x] overrides에 신규 MGT 메뉴·화면을 추가하도록 추출기 지원을 보강하고, `nav.py`를 같은 순서·이름으로 갱신한다.
+- [x] 기능 계약을 확정한다: 각 화면 GET 1개, 목표·임계치 생성/새 버전/중지, 조치 배정/변경/강제 종료, 재무 업로드/반영 기능.
+- [x] 권한: MGT-010 ST·ADM W / EX·AC R, MGT-020 ST·ADM W / EX R, MGT-030 전 부서 W, MGT-040 AC·ADM W / ST·EX R.
+- [x] `make check-trace`의 G-01과 계약·표식 검사를 통과시킨다. MGT 라우트 15개는 Task 3·4·9에서 실제 동작과 함께 등록하며 그 전까지 G-02의 계획된 FAIL로 남긴다.
 - [ ] Commit: `Cockpit 1: MGT 계약 · 화면 · 기능 · 권한`
 
 ## Task 2: 스키마와 무손실 이관
