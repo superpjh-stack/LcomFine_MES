@@ -6,7 +6,7 @@
 > 새 컬럼은 `schema.sql` 에서도 그 테이블의 맨 끝에 적는다(`ADD COLUMN` 이 맨 끝에 붙으므로 컬럼 순서가 같아야 한다).
 > 스키마를 고치는 사람은 아키텍트뿐이다. 개발자는 `progress-devN.md` §3 에 요청을 남긴다.
 
-DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **46** (업무 38 + SYS 8) · 뷰 **1**. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
+DB `lcomfine_db` (PostgreSQL 17 · unix socket `/tmp`) · 테이블 **54** (기존 46 + MGT 8) · 뷰 **1**. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
 G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수로 판정하지 않는다. 테이블을 더하거나 빼면 스펙 §4.1 표와 이 표를 함께 고친다.
 
 공통 규칙 — 모든 테이블 `id bigserial primary key`(자연키가 분명한 `sys_role` · `sys_permission` · `sys_number_rule` · `sys_number_seq` · `sso_token` 은 그 키,
@@ -53,6 +53,14 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | COL | `erp_upload_row` | 업로드 행 — 원문 · 매핑 값 · 오류 |
 | COL | `erp_customer_map` | ERP 거래처코드 ↔ MES 거래처 |
 | COL | `erp_column_map` | ERP 엑셀 열 이름 ↔ MES 항목(D-516) |
+| MGT | `management_metric` | 경영 지표 사전 — 단위·방향성·집계 키 |
+| MGT | `management_target` | 지표·기간·범위별 경영 목표 식별자 |
+| MGT | `management_target_version` | 목표값·범위·변경 사유 버전 이력 |
+| MGT | `management_threshold` | 지표별 주의·위험 기준 |
+| MGT | `management_issue` | 규칙으로 감지한 위험과 근거·업무 키 |
+| MGT | `management_action` | 위험별 담당 부서·담당자·기한·상태 |
+| MGT | `financial_import_batch` | ERP 재무자료 업로드 회차와 교체 이력 |
+| MGT | `financial_fact` | 거래처·품목·월별 수주·출하·원가 사실 |
 | DOC | `doc_account_map` | MES 사용자 ↔ 문서관리 계정 ID (1:1) |
 | DOC | `sso_token` | 일회용 SSO 토큰 — jti · 만료 · 사용 시각(D-514) |
 | HOME | `notification` | 알림 — 수신 부서마다 1행 · (dedupe_key, to_role) 유일(D-522) |
@@ -80,7 +88,7 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 2. 그 밖에 쓰는 것은 §2.2 의 예외 표에 있는 것뿐이다 — `make check-schema` 가 기능마다 대조한다.
 3. 모든 쓰기 뒤의 `sys_change_log`(`audit.log_change`)는 공통 규칙이라 「쓰는 테이블」에 적지 않는다.
 4. **TRK · LOT · PRP · RPT 대시보드는 어떤 업무 테이블에도 쓰지 않는다.** (데이터 질의는 D-529 로 없앴다.) 추적 · 집계 결과를 캐시 테이블에 쌓지 않는다.
-5. 수금 데이터는 업로드 회차 교체로만 바뀐다(MES 는 수금을 고치지 않는다). `stock_adjust` · `shipment_adjust` 는 불변(트리거가 UPDATE · DELETE 를 막는다).
+5. 수금 데이터는 업로드 회차 교체로만 바뀐다(MES 는 수금을 고치지 않는다). `stock_adjust` · `shipment_adjust` · `management_target_version` · `financial_fact` 는 불변(트리거가 UPDATE · DELETE 를 막는다).
 
 ### 2.2 예외 (영역 밖에 쓰는 것 — 이 표가 전부다)
 
@@ -134,6 +142,10 @@ G-04 의 기대값은 아래 §1 표의 **이름 집합**이다(D-521) — 수�
 | SHP-020 | 출하 확정 | SHP | F-SHP-021 F-SHP-023 | `shipment_order` `lot_stock` `stock_move` `notification` `shipment_adjust` |
 | COL-010 | ERP 수금현황 업로드 | COL | F-COL-011 | `erp_upload_batch` `erp_upload_row` `erp_column_map` `notification` |
 | COL-030 | 거래처 코드 매핑 | COL | F-COL-031 F-COL-032 F-COL-033 | `erp_customer_map` `erp_upload_row` |
+| MGT-010 | 경영목표 | MGT | F-MGT-011 F-MGT-012 F-MGT-013 | `management_target` `management_target_version` |
+| MGT-020 | 경보기준 | MGT | F-MGT-021 F-MGT-022 F-MGT-023 | `management_threshold` |
+| MGT-030 | 위험·조치 | MGT | F-MGT-031 F-MGT-032 F-MGT-033 | `management_action` `management_issue` |
+| MGT-040 | 재무자료 업로드 | MGT | F-MGT-041 F-MGT-042 | `financial_import_batch` `financial_fact` |
 | DOC-010 | 문서관리 바로가기 | DOC | F-DOC-011 | `sso_token` `sys_access_log` |
 | DOC-020 | 문서관리 계정 매핑 | DOC | F-DOC-021 F-DOC-022 F-DOC-023 | `doc_account_map` |
 | SYS-010 | 사용자 관리 | SYS | F-SYS-011 F-SYS-012 F-SYS-013 | `sys_user` |
@@ -744,6 +756,155 @@ production_request ──< work_order  ◄──────┘
 | updated_by | text | Y | 수정자 login_id |
 
 #### RPT 대시보드 — 테이블 0
+
+#### MGT 경영관리 — 테이블 8
+
+### `management_metric` — MGT · 경영 지표 사전 — 단위·방향성과 dashboard 집계 키를 한 곳에서 정한다
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| metric_key | text | N | 지표 키 (예 orders.qty · shipment.due_rate) |
+| metric_name | text | N | 표시 이름 |
+| unit | text | N | 단위 |
+| direction | text | N | 높을수록 좋음 | 낮을수록 좋음 | 범위 내 정상 |
+| source_key | text | N | dashboard 읽기 모델의 원천 키 |
+| use_yn | text | N | 사용 여부 Y | N |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
+
+### `management_target` — MGT · 경영 목표 식별자 — 같은 지표·기간·범위의 유효 목표는 하나
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| metric_key | text | N | 경영 지표 |
+| period_kind | text | N | 연간 | 월간 | 주간 |
+| period_from | date | N | 적용 시작일 |
+| period_to | date | N | 적용 종료일 |
+| scope_kind | text | N | company | department | customer | item | equipment | warehouse |
+| scope_key | text | Y | 범위 업무 키 (company 는 null) |
+| status | text | N | 사용 | 중지 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
+
+### `management_target_version` — MGT · 목표 버전 이력 — 변경은 새 행으로만 남긴다
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| target_id | bigint | N | 목표 식별자 |
+| version_no | integer | N | 버전 번호 |
+| target_value | numeric(18,4) | N | 목표값 |
+| range_min | numeric(18,4) | Y | 범위형 최솟값 |
+| range_max | numeric(18,4) | Y | 범위형 최댓값 |
+| change_reason | text | N | 변경 사유 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+
+### `management_threshold` — MGT · 지표별 주의·위험 경보기준 — 확정된 행만 위험 판정에 사용
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| metric_key | text | N | 경영 지표 |
+| level | text | N | 주의 | 위험 |
+| compare_op | text | N | gt | gte | lt | lte | outside |
+| value_min | numeric(18,4) | Y | 기준 최솟값 또는 단일값 |
+| value_max | numeric(18,4) | Y | 범위 최댓값 |
+| period_from | date | N | 적용 시작일 |
+| period_to | date | N | 적용 종료일 |
+| scope_kind | text | N | 적용 범위 종류 |
+| scope_key | text | Y | 적용 범위 업무 키 |
+| status | text | N | 사용 | 중지 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
+
+### `management_issue` — MGT · 규칙으로 감지한 경영 위험 — 근거와 업무 키를 보존한다
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| issue_key | text | N | 같은 원인·대상·기간 중복 방지 키 |
+| metric_key | text | Y | 근거 지표 |
+| severity | text | N | 주의 | 위험 |
+| title | text | N | 위험 제목 |
+| observed_value | numeric(18,4) | Y | 최근 관측값 |
+| evidence | jsonb | N | 근거 수치·업무 키 |
+| source_screen | text | N | 출처 화면 ID |
+| source_query | text | N | 드릴다운 필터 query string |
+| owner_role | text | Y | 담당 부서 |
+| status | text | N | 신규 | 진행 | 해결 |
+| first_seen_at | timestamp with time zone | N | 최초 감지 |
+| last_seen_at | timestamp with time zone | N | 최근 감지 |
+| resolved_at | timestamp with time zone | Y | 해결 시각 |
+| close_reason | text | Y | 강제 종료 사유 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
+
+### `management_action` — MGT · 위험별 담당 조치 — 담당·기한·상태와 완료자를 남긴다
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| issue_id | bigint | N | 경영 위험 |
+| owner_role | text | N | 담당 부서 |
+| owner_user_id | bigint | Y | 담당자 |
+| due_date | date | N | 조치 기한 |
+| action_text | text | N | 조치 내용 |
+| status | text | N | 대기 | 진행 | 완료 | 취소 |
+| completed_at | timestamp with time zone | Y | 완료 시각 |
+| completed_by | bigint | Y | 완료자 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 수정 일시 |
+| updated_by | text | Y | 수정자 login_id |
+
+### `financial_import_batch` — MGT · ERP 재무자료 업로드 회차 — 같은 기간은 새 회차가 반영되고 이전 회차는 보존한다
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| period_from | date | N | 기준 기간 시작 |
+| period_to | date | N | 기준 기간 끝 |
+| round_no | integer | N | 같은 기간 회차 |
+| status | text | N | 검증 | 반영 | 교체 | 오류 |
+| source_name | text | N | 원본 파일명(내용은 저장하지 않음) |
+| fields | jsonb | N | 업로드에서 확인된 금액 필드 |
+| row_count | integer | N | 전체 행 수 |
+| error_count | integer | N | 오류 행 수 |
+| replaced_by | bigint | Y | 교체한 새 회차 |
+| applied_at | timestamp with time zone | Y | 반영 시각 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
+| updated_at | timestamp with time zone | Y | 상태 변경 시각 |
+| updated_by | text | Y | 변경자 login_id |
+
+### `financial_fact` — MGT · 활성 재무회차의 거래처·품목·월별 수주·출하·원가 사실
+
+| 컬럼 | 타입 | NULL | 설명 |
+|---|---|---|---|
+| id | bigint | N | 내부 키 |
+| batch_id | bigint | N | 재무 업로드 회차 |
+| row_no | integer | N | 원본 행 번호 |
+| period_month | date | N | 기준 월의 1일 |
+| customer_id | bigint | N | MES 거래처 |
+| item_id | bigint | N | MES 품목 |
+| order_amount | numeric(16,2) | Y | 수주매출 |
+| shipment_amount | numeric(16,2) | Y | 출하매출 |
+| standard_cost | numeric(16,2) | Y | 표준원가 |
+| actual_cost | numeric(16,2) | Y | 실제원가 |
+| raw | jsonb | N | 원문 행(파일 자체는 저장하지 않음) |
+| error | text | Y | 오류 사유. 있으면 집계 제외 |
+| created_at | timestamp with time zone | N | 등록 일시 |
+| created_by | text | Y | 등록자 login_id |
 
 #### DOC 문서관리 — 테이블 2
 

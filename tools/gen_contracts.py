@@ -30,7 +30,7 @@ DB_SCHEMA_MD = ROOT / "contracts" / "db-schema.md"
 SCREEN_MAP_MD = ROOT / "contracts" / "screen-map.md"
 
 #: 영역 = 테이블을 쓰는 대메뉴 코드(nav.py) 또는 SYS — 스펙 §4.1 표의 순서. TRK · LOT · PRP 는 테이블이 없다(읽기만 한다)
-AREAS = ["BAS", "STD", "WO", "MAT", "PRD", "INS", "QC", "INV", "SHP", "COL", "RPT", "DOC", "HOME", "SYS"]
+AREAS = ["BAS", "STD", "WO", "MAT", "PRD", "INS", "QC", "INV", "SHP", "COL", "RPT", "MGT", "DOC", "HOME", "SYS"]
 TABLE_TAG_RE = re.compile(r"^-- @table (\w+) \| (" + "|".join(AREAS) + r") \| (.+)$")
 VIEW_TAG_RE = re.compile(r"^-- @view (\w+) \| (.+)$")
 COLUMN_RE = re.compile(r"^\s{4}(\w+)\s+.+?--\s*(.+)$")

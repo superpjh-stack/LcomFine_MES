@@ -1,4 +1,4 @@
-"""공통 시드 — 부서 8 · 권한 257칸 · 부서별 계정 8 · 채번 6 · 공통코드 3그룹. **두 번 돌려도 행 수가 같다**(G-21).
+"""공통 시드 — 부서 8 · 권한 276칸 · 부서별 계정 8 · 채번 6 · 공통코드 3그룹 · 경영지표. **두 번 돌려도 행 수가 같다**(G-21).
 
     uv run python -m lcomfine.db.seed                      # 공통 → 개발1 → 개발2 → 개발3 시드(파일이 있는 것만)
     uv run python -m lcomfine.db.seed --common-only        # 공통만
@@ -39,6 +39,26 @@ COMMON_CODES: list[tuple[str, str, str]] = [
     *[("설비", f"EQ{i:02d}", f"설비 {i}") for i in (1, 2)],
     *[("불량유형", f"DF{i:02d}", f"불량유형 {i}") for i in (1, 2, 3)],
     *[("수금수단", f"PM{i:02d}", f"수금수단 {i}") for i in (1, 2, 3)],
+]
+
+#: D-531 경영지표 사전 — 목표값·임계치는 시드하지 않는다. (키, 이름, 단위, 방향성, dashboard 원천 키)
+MANAGEMENT_METRICS: list[tuple[str, str, str, str, str]] = [
+    ("orders.qty", "수주 수량", "", "높을수록 좋음", "orders.qty"),
+    ("orders.amount", "수주 금액", "원", "높을수록 좋음", "orders.amount"),
+    ("production.attainment", "생산계획 달성률", "%", "높을수록 좋음", "production.attainment"),
+    ("production.utilization", "설비 가동률", "%", "높을수록 좋음", "production.utilization"),
+    ("quality.pass_rate", "품질 합격률", "%", "높을수록 좋음", "quality.pass_rate"),
+    ("quality.defect_qty", "불량 수량", "", "낮을수록 좋음", "quality.defect_qty"),
+    ("inventory.available_qty", "가용 재고", "", "범위 내 정상", "inventory.available_qty"),
+    ("inventory.long_stay", "장기 체류 재고", "", "낮을수록 좋음", "inventory.long_stay"),
+    ("inventory.amount", "재고 금액", "원", "범위 내 정상", "inventory.amount"),
+    ("shipment.qty", "출하 수량", "", "높을수록 좋음", "shipment.qty"),
+    ("shipment.amount", "출하 금액", "원", "높을수록 좋음", "shipment.amount"),
+    ("shipment.due_rate", "납기 준수율", "%", "높을수록 좋음", "shipment.due_rate"),
+    ("collection.amount", "수금액", "원", "높을수록 좋음", "collection.amount"),
+    ("collection.receivable", "미수금", "원", "낮을수록 좋음", "collection.receivable"),
+    ("collection.over_90", "90일 초과 미수", "원", "낮을수록 좋음", "collection.over_90"),
+    ("flow.lead_days", "주문 전체 리드타임", "일", "낮을수록 좋음", "flow.lead_days"),
 ]
 
 DEV_SEEDS = ("seed_dev1", "seed_dev2", "seed_dev3")
@@ -87,6 +107,18 @@ def seed_common_codes() -> None:
                   values (%s, %s, %s, %s, %s)
                   on conflict (group_code, code) do nothing""",
                (group, code, example(name), sort_no, SEEDED_BY))
+
+
+def seed_management_metrics() -> None:
+    """지표 정의만 맞춘다. 목표·임계치·위험·재무 사실은 회사 데이터이므로 만들지 않는다."""
+    for key, name, unit, direction, source_key in MANAGEMENT_METRICS:
+        conn.x("""insert into management_metric
+                     (metric_key, metric_name, unit, direction, source_key, created_by)
+                   values (%s, %s, %s, %s, %s, %s)
+                   on conflict (metric_key) do update
+                      set metric_name=excluded.metric_name, unit=excluded.unit, direction=excluded.direction,
+                          source_key=excluded.source_key, updated_at=now(), updated_by=excluded.created_by""",
+               (key, name, unit, direction, source_key, SEEDED_BY))
 
 
 def seed_users() -> None:
@@ -150,11 +182,13 @@ def main(argv: list[str] | None = None) -> int:
     seed_users()
     seed_number_rules()
     seed_common_codes()
+    seed_management_metrics()
     ran = [] if "--common-only" in argv else run_dev_seeds()
     c = table_counts()
     levels = {r["level"]: r["n"] for r in conn.q("select level, count(*) as n from sys_permission group by level")}
     print(f"공통 시드 — 부서 {c['sys_role']} · 권한 {c['sys_permission']}칸(W {levels.get('W', 0)} · R {levels.get('R', 0)})"
-          f" · 계정 {c['sys_user']} · 채번 {c['sys_number_rule']} · 공통코드 {c['sys_common_code']}")
+          f" · 계정 {c['sys_user']} · 채번 {c['sys_number_rule']} · 공통코드 {c['sys_common_code']}"
+          f" · 경영지표 {c['management_metric']}")
     print(f"개발 시드 — {', '.join(ran) if ran else '없음'}")
     print("행 수 — " + " · ".join(f"{k} {v}" for k, v in c.items() if v))
     return 0

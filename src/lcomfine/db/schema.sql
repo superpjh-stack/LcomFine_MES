@@ -27,6 +27,8 @@
 --   SHP  출하        shipment_order · shipment_line · shipment_adjust
 --   COL  수금리포트  erp_upload_batch · erp_upload_row · erp_customer_map · erp_column_map
 --   RPT  대시보드    (테이블 없음 — 화면을 열 때 집계 · D-505 · 데이터 질의는 D-529 로 없앴다)
+--   MGT  경영관리    management_metric · management_target · management_target_version · management_threshold
+--                    management_issue · management_action · financial_import_batch · financial_fact
 --   DOC  문서관리    doc_account_map · sso_token
 --   HOME 내 업무     notification · notification_setting
 --   SYS  시스템      sys_role · sys_user · sys_permission · sys_common_code · sys_access_log · sys_change_log
@@ -731,6 +733,194 @@ create table erp_column_map (
 );
 
 -- ════════════════════════════════════════════════════════════════════
+-- MGT 경영관리 — 목표 · 경보 · 위험/조치 · ERP 재무회차 (D-531)
+-- ════════════════════════════════════════════════════════════════════
+
+-- @table management_metric | MGT | 경영 지표 사전 — 단위·방향성과 dashboard 집계 키를 한 곳에서 정한다
+create table management_metric (
+    metric_key   text primary key,                                   -- 지표 키 (예 orders.qty · shipment.due_rate)
+    metric_name  text not null,                                      -- 표시 이름
+    unit         text not null default '',                           -- 단위
+    direction    text not null,                                      -- 높을수록 좋음 | 낮을수록 좋음 | 범위 내 정상
+    source_key   text not null,                                      -- dashboard 읽기 모델의 원천 키
+    use_yn       text not null default 'Y',                          -- 사용 여부 Y | N
+    created_at   timestamptz not null default now(),                 -- 등록 일시
+    created_by   text,                                               -- 등록자 login_id
+    updated_at   timestamptz,                                        -- 수정 일시
+    updated_by   text,                                               -- 수정자 login_id
+    constraint management_metric_name_uq unique (metric_name),
+    constraint management_metric_direction_chk check (direction in ('높을수록 좋음', '낮을수록 좋음', '범위 내 정상')),
+    constraint management_metric_use_chk check (use_yn in ('Y', 'N'))
+);
+
+-- @table management_target | MGT | 경영 목표 식별자 — 같은 지표·기간·범위의 유효 목표는 하나
+create table management_target (
+    id           bigserial primary key,                              -- 내부 키
+    metric_key   text not null references management_metric (metric_key), -- 경영 지표
+    period_kind  text not null,                                      -- 연간 | 월간 | 주간
+    period_from  date not null,                                      -- 적용 시작일
+    period_to    date not null,                                      -- 적용 종료일
+    scope_kind   text not null default 'company',                    -- company | department | customer | item | equipment | warehouse
+    scope_key    text,                                               -- 범위 업무 키 (company 는 null)
+    status       text not null default '사용',                       -- 사용 | 중지
+    created_at   timestamptz not null default now(),                 -- 등록 일시
+    created_by   text,                                               -- 등록자 login_id
+    updated_at   timestamptz,                                        -- 수정 일시
+    updated_by   text,                                               -- 수정자 login_id
+    constraint management_target_period_chk check (period_kind in ('연간', '월간', '주간')),
+    constraint management_target_dates_chk check (period_from <= period_to),
+    constraint management_target_scope_chk check (
+        (scope_kind = 'company' and scope_key is null) or
+        (scope_kind in ('department', 'customer', 'item', 'equipment', 'warehouse') and scope_key is not null)),
+    constraint management_target_status_chk check (status in ('사용', '중지'))
+);
+create unique index management_target_active_uq
+    on management_target (metric_key, period_kind, period_from, period_to, scope_kind, coalesce(scope_key, ''))
+    where status = '사용';
+
+-- @table management_target_version | MGT | 목표 버전 이력 — 변경은 새 행으로만 남긴다
+create table management_target_version (
+    id             bigserial primary key,                            -- 내부 키
+    target_id      bigint not null references management_target (id), -- 목표 식별자
+    version_no     integer not null,                                 -- 버전 번호
+    target_value   numeric(18,4) not null,                           -- 목표값
+    range_min      numeric(18,4),                                    -- 범위형 최솟값
+    range_max      numeric(18,4),                                    -- 범위형 최댓값
+    change_reason  text not null,                                    -- 변경 사유
+    created_at     timestamptz not null default now(),               -- 등록 일시
+    created_by     text,                                             -- 등록자 login_id
+    constraint management_target_version_uq unique (target_id, version_no),
+    constraint management_target_version_range_chk check (
+        (range_min is null and range_max is null) or
+        (range_min is not null and range_max is not null and range_min <= range_max))
+);
+
+-- @table management_threshold | MGT | 지표별 주의·위험 경보기준 — 확정된 행만 위험 판정에 사용
+create table management_threshold (
+    id           bigserial primary key,                              -- 내부 키
+    metric_key   text not null references management_metric (metric_key), -- 경영 지표
+    level        text not null,                                      -- 주의 | 위험
+    compare_op   text not null,                                      -- gt | gte | lt | lte | outside
+    value_min    numeric(18,4),                                      -- 기준 최솟값 또는 단일값
+    value_max    numeric(18,4),                                      -- 범위 최댓값
+    period_from  date not null,                                      -- 적용 시작일
+    period_to    date not null,                                      -- 적용 종료일
+    scope_kind   text not null default 'company',                    -- 적용 범위 종류
+    scope_key    text,                                               -- 적용 범위 업무 키
+    status       text not null default '사용',                       -- 사용 | 중지
+    created_at   timestamptz not null default now(),                 -- 등록 일시
+    created_by   text,                                               -- 등록자 login_id
+    updated_at   timestamptz,                                        -- 수정 일시
+    updated_by   text,                                               -- 수정자 login_id
+    constraint management_threshold_level_chk check (level in ('주의', '위험')),
+    constraint management_threshold_op_chk check (compare_op in ('gt', 'gte', 'lt', 'lte', 'outside')),
+    constraint management_threshold_value_chk check (value_min is not null and (compare_op <> 'outside' or value_max is not null)),
+    constraint management_threshold_dates_chk check (period_from <= period_to),
+    constraint management_threshold_scope_chk check (
+        (scope_kind = 'company' and scope_key is null) or
+        (scope_kind in ('department', 'customer', 'item', 'equipment', 'warehouse') and scope_key is not null)),
+    constraint management_threshold_status_chk check (status in ('사용', '중지'))
+);
+create index management_threshold_lookup_idx
+    on management_threshold (metric_key, period_from, period_to, scope_kind, scope_key) where status = '사용';
+
+-- @table management_issue | MGT | 규칙으로 감지한 경영 위험 — 근거와 업무 키를 보존한다
+create table management_issue (
+    id             bigserial primary key,                            -- 내부 키
+    issue_key      text not null,                                    -- 같은 원인·대상·기간 중복 방지 키
+    metric_key     text references management_metric (metric_key),   -- 근거 지표
+    severity       text not null,                                    -- 주의 | 위험
+    title          text not null,                                    -- 위험 제목
+    observed_value numeric(18,4),                                    -- 최근 관측값
+    evidence       jsonb not null default '{}'::jsonb,               -- 근거 수치·업무 키
+    source_screen  text not null,                                    -- 출처 화면 ID
+    source_query   text not null default '',                         -- 드릴다운 필터 query string
+    owner_role     text references sys_role (role_code),             -- 담당 부서
+    status         text not null default '신규',                     -- 신규 | 진행 | 해결
+    first_seen_at  timestamptz not null default now(),               -- 최초 감지
+    last_seen_at   timestamptz not null default now(),               -- 최근 감지
+    resolved_at    timestamptz,                                      -- 해결 시각
+    close_reason   text,                                             -- 강제 종료 사유
+    created_at     timestamptz not null default now(),               -- 등록 일시
+    created_by     text,                                             -- 등록자 login_id
+    updated_at     timestamptz,                                      -- 수정 일시
+    updated_by     text,                                             -- 수정자 login_id
+    constraint management_issue_key_uq unique (issue_key),
+    constraint management_issue_severity_chk check (severity in ('주의', '위험')),
+    constraint management_issue_status_chk check (status in ('신규', '진행', '해결')),
+    constraint management_issue_resolved_chk check ((status = '해결') = (resolved_at is not null))
+);
+create index management_issue_open_idx on management_issue (severity, last_seen_at desc) where status <> '해결';
+
+-- @table management_action | MGT | 위험별 담당 조치 — 담당·기한·상태와 완료자를 남긴다
+create table management_action (
+    id             bigserial primary key,                            -- 내부 키
+    issue_id       bigint not null references management_issue (id), -- 경영 위험
+    owner_role     text not null references sys_role (role_code),    -- 담당 부서
+    owner_user_id  bigint references sys_user (user_id),             -- 담당자
+    due_date       date not null,                                    -- 조치 기한
+    action_text    text not null,                                    -- 조치 내용
+    status         text not null default '대기',                     -- 대기 | 진행 | 완료 | 취소
+    completed_at   timestamptz,                                      -- 완료 시각
+    completed_by   bigint references sys_user (user_id),             -- 완료자
+    created_at     timestamptz not null default now(),               -- 등록 일시
+    created_by     text,                                             -- 등록자 login_id
+    updated_at     timestamptz,                                      -- 수정 일시
+    updated_by     text,                                             -- 수정자 login_id
+    constraint management_action_status_chk check (status in ('대기', '진행', '완료', '취소')),
+    constraint management_action_completed_chk check ((status = '완료') = (completed_at is not null))
+);
+create index management_action_owner_idx on management_action (owner_role, status, due_date);
+
+-- @table financial_import_batch | MGT | ERP 재무자료 업로드 회차 — 같은 기간은 새 회차가 반영되고 이전 회차는 보존한다
+create table financial_import_batch (
+    id             bigserial primary key,                            -- 내부 키
+    period_from    date not null,                                    -- 기준 기간 시작
+    period_to      date not null,                                    -- 기준 기간 끝
+    round_no       integer not null,                                 -- 같은 기간 회차
+    status         text not null default '검증',                     -- 검증 | 반영 | 교체 | 오류
+    source_name    text not null,                                    -- 원본 파일명(내용은 저장하지 않음)
+    fields         jsonb not null default '[]'::jsonb,               -- 업로드에서 확인된 금액 필드
+    row_count      integer not null default 0,                       -- 전체 행 수
+    error_count    integer not null default 0,                       -- 오류 행 수
+    replaced_by    bigint references financial_import_batch (id),    -- 교체한 새 회차
+    applied_at     timestamptz,                                      -- 반영 시각
+    created_at     timestamptz not null default now(),               -- 등록 일시
+    created_by     text,                                             -- 등록자 login_id
+    updated_at     timestamptz,                                      -- 상태 변경 시각
+    updated_by     text,                                             -- 변경자 login_id
+    constraint financial_import_batch_period_uq unique (period_from, period_to, round_no),
+    constraint financial_import_batch_dates_chk check (period_from <= period_to),
+    constraint financial_import_batch_status_chk check (status in ('검증', '반영', '교체', '오류')),
+    constraint financial_import_batch_counts_chk check (row_count >= 0 and error_count >= 0 and error_count <= row_count)
+);
+create unique index financial_import_batch_active_uq
+    on financial_import_batch (period_from, period_to) where status = '반영';
+
+-- @table financial_fact | MGT | 활성 재무회차의 거래처·품목·월별 수주·출하·원가 사실
+create table financial_fact (
+    id                bigserial primary key,                         -- 내부 키
+    batch_id          bigint not null references financial_import_batch (id), -- 재무 업로드 회차
+    row_no            integer not null,                              -- 원본 행 번호
+    period_month      date not null,                                 -- 기준 월의 1일
+    customer_id       bigint not null references customer (id),      -- MES 거래처
+    item_id           bigint not null references item (id),          -- MES 품목
+    order_amount      numeric(16,2),                                 -- 수주매출
+    shipment_amount   numeric(16,2),                                 -- 출하매출
+    standard_cost     numeric(16,2),                                 -- 표준원가
+    actual_cost       numeric(16,2),                                 -- 실제원가
+    raw               jsonb not null default '{}'::jsonb,            -- 원문 행(파일 자체는 저장하지 않음)
+    error             text,                                          -- 오류 사유. 있으면 집계 제외
+    created_at        timestamptz not null default now(),             -- 등록 일시
+    created_by        text,                                           -- 등록자 login_id
+    constraint financial_fact_row_uq unique (batch_id, row_no),
+    constraint financial_fact_month_chk check (period_month = date_trunc('month', period_month)::date),
+    constraint financial_fact_amount_chk check (
+        order_amount is not null or shipment_amount is not null or standard_cost is not null or actual_cost is not null)
+);
+create index financial_fact_lookup_idx on financial_fact (period_month, customer_id, item_id) where error is null;
+
+-- ════════════════════════════════════════════════════════════════════
 -- SYS 시스템 — 권한 · 공통코드 · 로그 · 채번 · AI 호출
 -- ════════════════════════════════════════════════════════════════════
 
@@ -922,6 +1112,22 @@ create trigger stock_adjust_no_truncate_trg
 
 create trigger shipment_adjust_no_truncate_trg
     before truncate on shipment_adjust
+    for each statement execute function append_only_guard();
+
+create trigger management_target_version_append_only_trg
+    before update or delete on management_target_version
+    for each row execute function append_only_guard();
+
+create trigger management_target_version_no_truncate_trg
+    before truncate on management_target_version
+    for each statement execute function append_only_guard();
+
+create trigger financial_fact_append_only_trg
+    before update or delete on financial_fact
+    for each row execute function append_only_guard();
+
+create trigger financial_fact_no_truncate_trg
+    before truncate on financial_fact
     for each statement execute function append_only_guard();
 
 -- ════════════════════════════════════════════════════════════════════

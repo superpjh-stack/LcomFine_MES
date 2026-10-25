@@ -21,6 +21,7 @@ from psycopg import sql
 #: UPDATE · DELETE 를 주지 않는 표 — 이력은 새 행으로만 쌓인다 (db-schema §2 규칙 5 · G-22)
 APPEND_ONLY: tuple[str, ...] = (
     "stock_adjust", "shipment_adjust",
+    "management_target_version", "financial_fact",
     "sys_change_log", "sys_access_log",
 )
 

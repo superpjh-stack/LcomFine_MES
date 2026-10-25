@@ -11,7 +11,7 @@ from lcomfine.db import conn
 
 SCHEMA_SQL = Path(__file__).resolve().parents[1] / "src" / "lcomfine" / "db" / "schema.sql"
 
-# 스펙 §4.1 · task-6 addendum §A — 이름 집합이 기대값이다 (D-521). 수(46)로 판정하지 않는다. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
+# 스펙 §4.1 · D-531 — 이름 집합이 기대값이다. 데이터 질의의 로그 표 2 · 허용 뷰 8 은 D-529 로 없앴다.
 EXPECTED_TABLES = {
     "BAS": "item customer warehouse location",
     "STD": "spec_sheet standard plate plate_usage artwork sample_sheet exception_item",
@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "INV": "lot_stock stock_move stock_adjust",
     "SHP": "shipment_order shipment_line shipment_adjust",
     "COL": "erp_upload_batch erp_upload_row erp_customer_map erp_column_map",
+    "MGT": "management_metric management_target management_target_version management_threshold management_issue "
+           "management_action financial_import_batch financial_fact",
     "DOC": "doc_account_map sso_token",
     "HOME": "notification notification_setting",
     "SYS": "sys_role sys_user sys_permission sys_common_code sys_access_log sys_change_log sys_number_rule "
@@ -38,7 +40,7 @@ def _names(kind: str) -> set[str]:
 
 def test_schema_has_expected_tables():
     want = {t for ts in EXPECTED_TABLES.values() for t in ts.split()}
-    assert len(want) == 46
+    assert len(want) == 54
     tables = _names("BASE TABLE")
     assert want <= tables, f"DB 에 없는 테이블 {sorted(want - tables)}"
     assert tables == want, f"계약 밖 테이블 {sorted(tables - want)}"

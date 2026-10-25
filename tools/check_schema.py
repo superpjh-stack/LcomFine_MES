@@ -52,7 +52,7 @@ SPINE_FKS = {
     ("shipment_line", "shipment_order_id"): "shipment_order",
     ("shipment_adjust", "shipment_order_id"): "shipment_order",
 }
-APPEND_ONLY = ("stock_adjust", "shipment_adjust")
+APPEND_ONLY = ("stock_adjust", "shipment_adjust", "management_target_version", "financial_fact")
 
 
 def _section(text: str, head: str, nxt: str) -> str:
@@ -262,7 +262,7 @@ def main() -> int:
                      where not tgisinternal and tgrelid::regclass::text = any(%s)""", (list(APPEND_ONLY),))
     guarded = sorted({r["t"] for r in trg if r["tgtype"] & 2 and r["tgtype"] & 8 and r["tgtype"] & 16})
     no_trunc = sorted({r["t"] for r in trg if r["tgtype"] & 2 and r["tgtype"] & 32})
-    add("불변 이력 — stock_adjust · shipment_adjust 에 before update or delete · before truncate 트리거",
+    add("불변 이력 — 조정·정정·목표버전·재무사실에 before update or delete · before truncate 트리거",
         guarded == sorted(APPEND_ONLY) and no_trunc == sorted(APPEND_ONLY),
         f"update·delete {guarded} · truncate {no_trunc}")
 

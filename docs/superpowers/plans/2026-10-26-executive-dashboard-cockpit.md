@@ -65,12 +65,12 @@
 
 **Steps**
 
-- [ ] 실패 테스트: 테이블·FK·check·unique·이력 불변·활성 회차 유일성을 검증한다.
-- [ ] `uv run pytest tests/test_arch_management_schema.py -q` 실패를 확인한다.
-- [ ] `schema.sql`과 `db-schema.md`에 8개 테이블과 MGT 쓰기 경계를 추가한다.
-- [ ] 현재 DB에는 `CREATE TABLE IF NOT EXISTS` 중심의 한 번 실행 가능한 ALTER 이관을 적용한다. 기존 업무 행 수를 이관 전후 비교한다.
-- [ ] 지표 시드는 코드·레이블·단위·방향성만 넣고 목표값·임계치는 지어내지 않는다.
-- [ ] `make check-schema`와 스키마 테스트를 통과시킨다.
+- [x] 실패 테스트: 테이블·FK·check·unique·이력 불변·활성 회차 유일성을 검증한다.
+- [x] `uv run pytest tests/test_arch_management_schema.py -q` 실패를 확인한다.
+- [x] `schema.sql`과 `db-schema.md`에 8개 테이블과 MGT 쓰기 경계를 추가한다.
+- [x] 현재 DB에는 `CREATE TABLE IF NOT EXISTS` 중심의 재실행 가능한 이관을 적용한다. 기존 업무 테이블은 변경하지 않고 테이블 수 46→54를 확인한다.
+- [x] 지표 시드는 코드·레이블·단위·방향성만 넣고 목표값·임계치는 지어내지 않는다.
+- [x] `make check-schema`와 스키마 테스트를 통과시킨다.
 - [ ] Commit: `Cockpit 2: 경영관리 · 재무 스키마와 이관`
 
 ## Task 3: 목표·임계치 서비스와 MGT-010/020
