@@ -2547,7 +2547,7 @@ class _RoleRollback(Exception):
 
 def check_db_role() -> list[Result]:
     """`roles.apply` 로 역할을 만들고 `set local role` 로 그 역할이 되어 잰다 — 끝에 트랜잭션을 되돌려 클러스터에 역할 0.
-    불변 이력 · 감사 로그 4 표 UPDATE/DELETE/TRUNCATE 거부 · session_replication_role 거부 · DDL 거부 · 카탈로그 비밀 · 서버 파일 거부 ·
+    불변 이력 · 감사 로그 표 UPDATE/DELETE/TRUNCATE 거부 · session_replication_role 거부 · DDL 거부 · 카탈로그 비밀 · 서버 파일 거부 ·
     업무 쓰기(bigserial 시퀀스) · 뷰 읽기 · 읽기 전용 트랜잭션이 그 역할로 돈다."""
     import psycopg
 
@@ -2598,7 +2598,7 @@ def check_db_role() -> list[Result]:
             cur.execute(f'set local role "{role}"')
             cur.execute("select current_user as u, (select rolsuper from pg_roles where rolname = current_user) as su")
             meas["whoami"] = dict(cur.fetchone())
-            # 불변 이력 · 감사 로그 4 표
+            # 불변 이력 · 감사 로그 표(roles.APPEND_ONLY 정본)
             cols = {}
             for t in roles.APPEND_ONLY:
                 cur.execute("select column_name from information_schema.columns where table_schema = 'public' and table_name = %s "
@@ -2675,7 +2675,7 @@ def check_db_role() -> list[Result]:
                         f"roles.apply 표 {meas.get('tables')} · 속성 {a} · 소속 역할 {meas.get('member_of')} · 소유 표 {meas.get('owns')} · set local role 뒤 superuser {meas.get('whoami', {}).get('su')}"))
     ap = meas.get("append_only", {})
     ap_bad = [f"{t} {v}" for t, v in ap.items() if not all(v)]
-    out_rows.append(res("X-11", "D-524 불변 이력 · 감사 로그 4 표 UPDATE/DELETE/TRUNCATE/FOR UPDATE 거부 · INSERT 만", len(ap) == len(roles.APPEND_ONLY) == 4 and not ap_bad
+    out_rows.append(res("X-11", f"D-524 불변 이력 · 감사 로그 {len(roles.APPEND_ONLY)} 표 UPDATE/DELETE/TRUNCATE/FOR UPDATE 거부 · INSERT 만", len(ap) == len(roles.APPEND_ONLY) and not ap_bad
                         and meas.get("log_insert") and meas.get("log_delete_own"),
                         f"표 {len(ap)} × (update · delete · truncate · for update) 전부 InsufficientPrivilege {not ap_bad} · sys_access_log insert {meas.get('log_insert')} · "
                         f"자기가 넣은 행 delete 거부 {meas.get('log_delete_own')}", ap_bad))

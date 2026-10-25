@@ -92,11 +92,11 @@
 
 **Steps**
 
-- [ ] 실패 테스트: 목표 생성, 겹치는 유효 목표 422, 새 버전 이력, 중지, 목표 없음, 실제 0, 세 방향성 판정을 작성한다.
-- [ ] 권한 테스트: R은 GET만, W만 쓰기, 감사로그는 성공당 1행·실패 0행을 검증한다.
-- [ ] 최소 서비스와 MGT-010/020 화면을 구현한다.
-- [ ] `uv run pytest tests/test_dev_mgt_targets.py -q`와 `make check-security`를 실행한다.
-- [ ] Commit: `Cockpit 3: 목표 · 임계치 관리`
+- [x] 실패 테스트: 목표 생성, 겹치는 유효 목표 422, 새 버전 이력, 중지, 목표 없음, 실제 0, 세 방향성 판정을 작성한다.
+- [x] 권한 테스트: R은 GET만, W만 쓰기, 감사로그는 성공당 1행·실패 0행을 검증한다.
+- [x] 최소 서비스와 MGT-010/020 화면을 구현한다.
+- [x] `uv run pytest tests/test_dev_mgt_targets.py -q`와 `make check-security`를 실행한다.
+- [x] Commit: `Cockpit 3: 목표 · 임계치 관리`
 
 ## Task 4: 위험·조치 서비스와 MGT-030
 

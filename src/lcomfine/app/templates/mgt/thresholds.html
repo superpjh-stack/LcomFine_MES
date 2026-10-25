@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "home/_forms.html" as f with context %}
+{% block body %}
+{% call ui.screen_head(screen.name) %}<span class="tag">확정 기준만 판정</span>{% endcall %}
+{% call f.form_box("경보기준 등록", "/mgt/thresholds", "F-MGT-021", id="threshold-form") %}
+  {% set metric_opts=[] %}{% for m in metrics %}{% set _=metric_opts.append((m.metric_key,m.metric_name)) %}{% endfor %}
+  {{ f.select("metric_key","지표",metric_opts,required=true) }}{{ f.select("level","단계",[("주의","주의"),("위험","위험")],required=true) }}
+  {{ f.select("compare_op","비교",[("lt","미만"),("lte","이하"),("gt","초과"),("gte","이상"),("outside","범위 밖")],required=true) }}
+  {{ f.input("value_min","기준값/하한",type="number",step="0.0001",required=true) }}{{ f.input("value_max","상한",type="number",step="0.0001") }}
+  {{ f.input("period_from","시작일",type="date",required=true) }}{{ f.input("period_to","종료일",type="date",required=true) }}
+  {{ f.select("scope_kind","적용 범위",[("company","전사"),("department","부서"),("customer","거래처"),("item","품목"),("equipment","설비"),("warehouse","창고")],"company",required=true,blank=none) }}{{ f.input("scope_key","범위 값",placeholder="전사는 비워 둠") }}
+{% endcall %}
+<section class="panel panel--grid"><h2>경보기준 <small class="muted">{{ rows|length }}건</small></h2>{% if rows %}<div class="grid-wrap"><table class="grid"><thead><tr><th>지표</th><th>단계</th><th>조건</th><th>기간</th><th>범위</th><th>상태</th><th>관리</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.metric_name }}</td><td><span class="chip chip--{{ 'danger' if r.level == '위험' else 'warn' }}">{{ r.level }}</span></td><td>{{ r.compare_op }} {{ r.value_min }}{% if r.value_max is not none %}~{{ r.value_max }}{% endif %} {{ r.unit }}</td><td>{{ r.period_from }}~{{ r.period_to }}</td><td>{{ r.scope_kind }} {{ r.scope_key|txt }}</td><td>{{ r.status }}</td><td>{% if r.status=='사용' %}{{ f.del_btn('/mgt/thresholds/' ~ r.id ~ '/delete','F-MGT-023',label='중지',confirm='이 경보기준을 중지할까요?') }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}{{ ui.empty("등록된 경보기준이 없습니다") }}{% endif %}</section>
+{% endblock %}
