@@ -16,6 +16,8 @@ PERIODS = ("연간", "월간", "주간")
 SCOPES = ("company", "department", "customer", "item", "equipment", "warehouse")
 LEVELS = ("주의", "위험")
 OPS = ("gt", "gte", "lt", "lte", "outside")
+ACTION_STATES = ("대기", "진행", "완료", "취소")
+GLOBAL_ISSUE_ROLES = ("ST", "EX", "ADM")
 
 
 def number(v: str | None, label: str, *, required: bool = True) -> Decimal | None:
@@ -202,4 +204,73 @@ def threshold_stop(request: Request,id: str,user: rbac.User=rbac.require_fn("F-M
         cur.execute("update management_threshold set status='중지',updated_at=now(),updated_by=%s where id=%s",(user.login_id,row_id))
     resp=http.saved(request,"경보기준을 중지했습니다",back="/mgt/thresholds",data={"id":row_id})
     audit.log_change(request,user,"F-MGT-023",f"management_threshold:{row['scope_key'] or 'company'}:{row_id}","경보기준 중지")
+    return resp
+
+
+@router.get("/mgt/issues", response_class=HTMLResponse)
+def issue_list(request: Request, user: rbac.User=rbac.require_fn("F-MGT-034")):
+    args = () if user.role_code in GLOBAL_ISSUE_ROLES else (user.role_code,user.role_code)
+    where = "" if not args else "where i.owner_role=%s or exists(select 1 from management_action a where a.issue_id=i.id and a.owner_role=%s)"
+    rows=conn.q(f"""select i.*,m.metric_name from management_issue i left join management_metric m using(metric_key)
+                   {where} order by case i.status when '신규' then 1 when '진행' then 2 else 3 end,i.last_seen_at desc""",args)
+    ids=[r["id"] for r in rows]
+    actions=conn.q("select a.*,u.user_name from management_action a left join sys_user u on u.user_id=a.owner_user_id where a.issue_id=any(%s) order by a.due_date,a.id",(ids or [0],))
+    by_issue={i:[] for i in ids}
+    for a in actions: by_issue[a["issue_id"]].append(a)
+    return templating.render(request,"mgt/issues.html",{"rows":rows,"actions":by_issue,"roles":rbac.roles()},screen_id="MGT-030")
+
+
+def _can_assign(user, owner_role):
+    if user.role_code not in ("ST","ADM") and owner_role != user.role_code:
+        raise http.forbidden("담당 범위 밖 부서에 조치를 배정할 수 없습니다")
+
+
+@router.post("/mgt/issues/{id}/actions")
+def action_create(request: Request,id: str,owner_role: str|None=Form(None),owner_user_id: str|None=Form(None),
+                  due_date: str|None=Form(None),action_text: str|None=Form(None),
+                  user: rbac.User=rbac.require_fn("F-MGT-031")):
+    issue_id=pk(id); role=need(owner_role,"담당 부서"); _can_assign(user,role)
+    due=day(due_date,"기한"); text=need(action_text,"조치 내용")
+    uid=None
+    if s(owner_user_id,"담당자"):
+        if not str(owner_user_id).isdigit(): raise bad("담당자","목록에서 고른 값이 아닙니다")
+        uid=int(owner_user_id)
+    with conn.tx() as cur:
+        cur.execute("select role_code from sys_role where role_code=%s and use_yn='Y'",(role,))
+        if cur.fetchone() is None: raise bad("담당 부서","없는 부서입니다")
+        if uid is not None:
+            cur.execute("select 1 from sys_user where user_id=%s and role_code=%s and status='정상'",(uid,role))
+            if cur.fetchone() is None: raise bad("담당자","담당 부서의 정상 사용자가 아닙니다")
+        try: action_id=management.assign_action(cur,issue_id,{"owner_role":role,"owner_user_id":uid,"due_date":due,"action_text":text},user)
+        except LookupError: raise http.not_found() from None
+        cur.execute("update management_issue set status='진행',updated_at=now(),updated_by=%s where id=%s and status='신규'",(user.login_id,issue_id))
+    resp=http.saved(request,"조치를 배정했습니다",back="/mgt/issues",data={"id":action_id})
+    audit.log_change(request,user,"F-MGT-031",f"management_action:{action_id}",f"조치 배정 · {role}")
+    return resp
+
+
+@router.post("/mgt/issues/actions/{id}")
+def action_update(request: Request,id: str,status: str|None=Form(None),user: rbac.User=rbac.require_fn("F-MGT-032")):
+    action_id=pk(id); state=choice(status,"상태",ACTION_STATES)
+    with conn.tx() as cur:
+        cur.execute("select owner_role from management_action where id=%s",(action_id,)); row=cur.fetchone()
+        if row is None: raise http.not_found()
+        if user.role_code not in ("ST","ADM") and row["owner_role"] != user.role_code:
+            raise http.forbidden("담당 부서는 자기 조치만 변경할 수 있습니다")
+        management.transition_action(cur,action_id,state,user)
+    resp=http.saved(request,"조치 상태를 변경했습니다",back="/mgt/issues",data={"id":action_id})
+    audit.log_change(request,user,"F-MGT-032",f"management_action:{action_id}",f"조치 상태 · {state}")
+    return resp
+
+
+@router.post("/mgt/issues/{id}/delete")
+def issue_close(request: Request,id: str,close_reason: str|None=Form(None),user: rbac.User=rbac.require_fn("F-MGT-033")):
+    issue_id=pk(id); reason=need(close_reason,"강제 종료 사유")
+    with conn.tx() as cur:
+        row=exists_or_404(cur,"management_issue",issue_id,"id,owner_role")
+        if user.role_code not in ("ST","ADM") and row["owner_role"] not in (None,user.role_code):
+            raise http.forbidden("담당 범위 밖 위험을 종료할 수 없습니다")
+        cur.execute("update management_issue set status='해결',resolved_at=now(),close_reason=%s,updated_at=now(),updated_by=%s where id=%s",(reason,user.login_id,issue_id))
+    resp=http.saved(request,"위험을 해결 처리했습니다",back="/mgt/issues",data={"id":issue_id})
+    audit.log_change(request,user,"F-MGT-033",f"management_issue:{issue_id}",f"강제 종료 · {reason}")
     return resp

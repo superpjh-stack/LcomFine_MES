@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import hashlib
+import json
 from typing import Any
 
 
@@ -73,3 +75,66 @@ def compare(metric: dict, actual: Decimal | None, target: dict | None) -> dict:
     else:
         raise ValueError(f"지원하지 않는 지표 방향: {direction}")
     return {"actual": actual, "status": status, "attainment": attainment, "variance": variance}
+
+
+def _triggered(rule: dict, observed: Decimal) -> bool:
+    op, low, high = rule["compare_op"], rule["value_min"], rule.get("value_max")
+    return {"gt": observed > low, "gte": observed >= low, "lt": observed < low,
+            "lte": observed <= low, "outside": high is not None and not low <= observed <= high}[op]
+
+
+def evaluate(cur, metric_key: str, observed: Decimal | None, context: dict, asof) -> dict | None:
+    """확정 임계치에 걸린 가장 높은 단계 하나를 반환한다. 규칙이나 값이 없으면 만들지 않는다."""
+    if observed is None:
+        return None
+    rules = thresholds(cur, metric_key, asof, asof, context.get("scope_kind", "company"), context.get("scope_key"))
+    rule = next((r for r in rules if _triggered(r, observed)), None)
+    if rule is None:
+        return None
+    identity = {"metric": metric_key, "scope_kind": rule["scope_kind"], "scope_key": rule["scope_key"],
+                "source_screen": context["source_screen"]}
+    issue_key = "rule:" + hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
+    return {"issue_key": issue_key, "metric_key": metric_key, "severity": rule["level"],
+            "title": context.get("title") or f"{metric_key} {rule['level']} 기준 이탈",
+            "observed_value": observed, "evidence": {**context, "threshold_id": rule["id"], "asof": str(asof)},
+            "source_screen": context["source_screen"], "source_query": context.get("source_query", ""),
+            "owner_role": context.get("owner_role")}
+
+
+def upsert_issue(cur, finding: dict, created_by: str) -> int:
+    cur.execute("select id,status from management_issue where issue_key=%s for update", (finding["issue_key"],))
+    old = cur.fetchone()
+    evidence = json.dumps(finding["evidence"], ensure_ascii=False)
+    if old:
+        cur.execute("""update management_issue set severity=%s,title=%s,observed_value=%s,evidence=%s::jsonb,
+                       source_query=%s,owner_role=%s,last_seen_at=now(),updated_at=now(),updated_by=%s,
+                       status=case when status='해결' then '신규' else status end,resolved_at=null,close_reason=null where id=%s""",
+                    (finding["severity"],finding["title"],finding["observed_value"],evidence,finding["source_query"],
+                     finding.get("owner_role"),created_by,old["id"]))
+        return old["id"]
+    cur.execute("""insert into management_issue(issue_key,metric_key,severity,title,observed_value,evidence,source_screen,
+                   source_query,owner_role,created_by) values (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s) returning id""",
+                (finding["issue_key"],finding["metric_key"],finding["severity"],finding["title"],finding["observed_value"],
+                 evidence,finding["source_screen"],finding["source_query"],finding.get("owner_role"),created_by))
+    return cur.fetchone()["id"]
+
+
+def assign_action(cur, issue_id: int, payload: dict, user) -> int:
+    cur.execute("select id from management_issue where id=%s and status<>'해결' for update", (issue_id,))
+    if cur.fetchone() is None:
+        raise LookupError(issue_id)
+    cur.execute("""insert into management_action(issue_id,owner_role,owner_user_id,due_date,action_text,created_by)
+                   values (%s,%s,%s,%s,%s,%s) returning id""",
+                (issue_id,payload["owner_role"],payload.get("owner_user_id"),payload["due_date"],payload["action_text"],user.login_id))
+    return cur.fetchone()["id"]
+
+
+def transition_action(cur, action_id: int, status: str, user) -> None:
+    cur.execute("select * from management_action where id=%s for update", (action_id,))
+    row = cur.fetchone()
+    if row is None:
+        raise LookupError(action_id)
+    completed = status == "완료"
+    cur.execute("""update management_action set status=%s,completed_at=case when %s then now() else null end,
+                   completed_by=case when %s then %s else null end,updated_at=now(),updated_by=%s where id=%s""",
+                (status,completed,completed,user.id,user.login_id,action_id))
