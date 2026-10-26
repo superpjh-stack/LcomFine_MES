@@ -56,17 +56,17 @@ def _cell(screen_id: str, role_code: str) -> str | None:
     return dict(((s, r), lv) for s, r, lv in contracts.permission_cells()).get((screen_id, role_code))
 
 
-def test_permission_cells_seeded_257():
+def test_permission_cells_seeded_276():
     rows = conn.q("select role_code, screen_id, level from sys_permission")
-    assert len(rows) == 257
-    assert Counter(r["level"] for r in rows) == {"W": 64, "R": 193}
+    assert len(rows) == 276
+    assert Counter(r["level"] for r in rows) == {"W": 78, "R": 198}
     assert not [r for r in rows if r["screen_id"] == "RPT-130"]   # D-529
     assert {(r["screen_id"], r["role_code"], r["level"]) for r in rows} == set(contracts.permission_cells())
     assert [r["role_code"] for r in conn.q("select role_code from sys_role order by sort_no")] == list(contracts.ROLE_CODES.values())
     assert {r["role_name"] for r in conn.q("select role_name from sys_role")} == set(contracts.ROLE_CODES)
     assert conn.q1("select count(*) as n from sys_user where created_by = 'seed'")["n"] == 8
     rbac.invalidate()
-    assert rbac.counts() == {"W": 64, "R": 193, "전체": 257}
+    assert rbac.counts() == {"W": 78, "R": 198, "전체": 276}
 
 
 def test_seed_number_rules_and_codes():
@@ -141,7 +141,7 @@ def test_seed_idempotent():
     seed.main(["--common-only"])
     after = seed.table_counts()
     assert before == after
-    assert after["sys_permission"] == 257 and after["sys_role"] == 8 and after["sys_number_rule"] == 6
+    assert after["sys_permission"] == 276 and after["sys_role"] == 8 and after["sys_number_rule"] == 6
 
 
 class _Rollback(Exception):

@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
 from ...db import conn
-from .. import management, nav, rbac, templating
+from .. import financial, management, nav, rbac, templating
 from ..util import audit, http
 from .bas import bad, choice, day, exists_or_404, need, pk, s
 
@@ -79,7 +79,7 @@ def overlap(cur, table: str, metric_key, start, end, scope_kind, scope_key, *, l
 
 
 @router.get("/mgt/targets", response_class=HTMLResponse)
-def target_list(request: Request, user: rbac.User = rbac.require_fn("F-MGT-014")):
+def target_list(request: Request, user: rbac.User = rbac.require_screen("MGT-010")):
     rows = conn.q("""select t.*,m.metric_name,m.unit,m.direction,v.version_no,v.target_value,v.range_min,v.range_max,v.change_reason
                      from management_target t join management_metric m using(metric_key)
                      join lateral (select * from management_target_version where target_id=t.id order by version_no desc limit 1) v on true
@@ -143,7 +143,7 @@ def target_stop(request: Request, id: str, user: rbac.User = rbac.require_fn("F-
 
 
 @router.get("/mgt/thresholds", response_class=HTMLResponse)
-def threshold_list(request: Request, user: rbac.User = rbac.require_fn("F-MGT-024")):
+def threshold_list(request: Request, user: rbac.User = rbac.require_screen("MGT-020")):
     rows = conn.q("select t.*,m.metric_name,m.unit from management_threshold t join management_metric m using(metric_key) order by period_from desc,t.id desc")
     return templating.render(request, "mgt/thresholds.html", {"rows": rows, "metrics": conn.q("select * from management_metric where use_yn='Y' order by metric_name")}, screen_id="MGT-020")
 
@@ -208,7 +208,7 @@ def threshold_stop(request: Request,id: str,user: rbac.User=rbac.require_fn("F-M
 
 
 @router.get("/mgt/issues", response_class=HTMLResponse)
-def issue_list(request: Request, user: rbac.User=rbac.require_fn("F-MGT-034")):
+def issue_list(request: Request, user: rbac.User=rbac.require_screen("MGT-030")):
     args = () if user.role_code in GLOBAL_ISSUE_ROLES else (user.role_code,user.role_code)
     where = "" if not args else "where i.owner_role=%s or exists(select 1 from management_action a where a.issue_id=i.id and a.owner_role=%s)"
     rows=conn.q(f"""select i.*,m.metric_name from management_issue i left join management_metric m using(metric_key)
@@ -273,4 +273,38 @@ def issue_close(request: Request,id: str,close_reason: str|None=Form(None),user:
         cur.execute("update management_issue set status='해결',resolved_at=now(),close_reason=%s,updated_at=now(),updated_by=%s where id=%s",(reason,user.login_id,issue_id))
     resp=http.saved(request,"위험을 해결 처리했습니다",back="/mgt/issues",data={"id":issue_id})
     audit.log_change(request,user,"F-MGT-033",f"management_issue:{issue_id}",f"강제 종료 · {reason}")
+    return resp
+
+
+@router.get("/mgt/financial-imports",response_class=HTMLResponse)
+def financial_list(request:Request,user:rbac.User=rbac.require_screen("MGT-040")):
+    rows=conn.q("select * from financial_import_batch order by created_at desc,id desc limit 100")
+    return templating.render(request,"mgt/financial_imports.html",{"rows":rows},screen_id="MGT-040")
+
+
+@router.post("/mgt/financial-imports")
+async def financial_upload(request:Request,period_from:str|None=Form(None),period_to:str|None=Form(None),
+                           file:UploadFile=File(...),user:rbac.User=rbac.require_fn("F-MGT-041")):
+    start,end=dates(period_from,period_to)
+    content=await file.read()
+    try:
+        with conn.tx() as cur:
+            parsed=financial.parse(content,cur)
+            batch_id=financial.stage(cur,start,end,parsed,user,s(file.filename,"파일명") or "upload.xlsx")
+    except financial.UploadError as exc:
+        raise bad(exc.field,exc.reason,exc.message) from None
+    resp=http.saved(request,"재무자료를 검증했습니다",back="/mgt/financial-imports",data={"id":batch_id,"rows":len(parsed["rows"]),"errors":sum(1 for r in parsed["rows"] if r["error"])})
+    audit.log_change(request,user,"F-MGT-041",f"financial_import_batch:{batch_id}","재무자료 검증 업로드")
+    return resp
+
+
+@router.post("/mgt/financial-imports/{id}")
+def financial_apply(request:Request,id:str,user:rbac.User=rbac.require_fn("F-MGT-042")):
+    batch_id=pk(id)
+    with conn.tx() as cur:
+        try: old=financial.apply(cur,batch_id,user)
+        except LookupError: raise http.not_found() from None
+        except ValueError as exc: raise bad("회차",str(exc)) from None
+    resp=http.saved(request,"재무자료 회차를 반영했습니다",back="/mgt/financial-imports",data={"id":batch_id,"replaced":old})
+    audit.log_change(request,user,"F-MGT-042",f"financial_import_batch:{batch_id}",f"재무자료 반영 · 이전 {old or '없음'}")
     return resp

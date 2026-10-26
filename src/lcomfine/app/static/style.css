@@ -283,6 +283,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .kpi__value .chip { font-size: 13px; }
 .kpi__none { font-size: 15px; font-weight: 500; color: var(--muted); }
 .kpi__note { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.kpi__meta { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.kpi-compare { display: inline-flex; margin: -2px 0 8px 4px; font-size: 10px; }
 .kpi--hero .kpi__value { font-size: 34px; }
 .kpi__spark { display: block; width: 100%; height: 26px; }
 .kpi__spark polyline { fill: none; stroke: var(--viz-1); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; opacity: .8; }

@@ -37,7 +37,7 @@ def test_health_200_and_keys():
     assert r.status_code == 200
     body = r.json()
     assert {"ok", "menus", "screens", "placeholders", "db", "router_include_errors"} <= set(body)
-    assert body["ok"] is True and body["screens"] == len(nav.SCREENS) == 66 and body["menus"] == len(nav.MENUS)
+    assert body["ok"] is True and body["screens"] == len(nav.SCREENS) == 70 and body["menus"] == len(nav.MENUS)
     assert body["placeholders"] == len(app.state.placeholder_paths)
 
 
@@ -73,7 +73,7 @@ def test_screen_without_cell_403(clients):
             r = clients[role].get(s.path)
             if r.status_code != 403:
                 bad.append(f"{role} {s.screen_id} {s.path} → {r.status_code}")
-    assert checked == 66 * 8 - 257
+    assert checked == 70 * 8 - 276
     assert not bad, bad[:5]
 
 

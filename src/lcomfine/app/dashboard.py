@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from ..db import conn
-from . import stats
+from . import financial, stats
 
 #: 산식이 정해지지 않은 것 (decisions.md)
 LOSS_RATE_DECISION = stats.LOSS_RATE_DECISION          # D-519 — 생산 · 검사 로스율
@@ -101,6 +101,34 @@ def _avg_days(vals: list[int]) -> Decimal | None:
 def _base(f: date, t: date, bucket: str, customer_id: int | None) -> dict:
     return {"kpis": [], "series": {}, "tables": {}, "asof": None, "period": (f, t), "bucket": bucket,
             "customer_id": customer_id, "notes": []}
+
+
+def enrich(data: dict, metric_keys: dict[str, str], previous: dict | None = None) -> dict:
+    """KPI에 목표·달성·전기·증감·상태·가용성을 붙이는 공통 읽기 모델."""
+    f,t=data["period"]
+    prev={k["key"]:k for k in (previous or {}).get("kpis",[])}
+    for kpi in data["kpis"]:
+        metric_key=metric_keys.get(kpi["key"])
+        actual=kpi["value"]
+        old=prev.get(kpi["key"],{}).get("value")
+        target=None; direction=None
+        if metric_key:
+            row=conn.q1("""select t.*,v.target_value,v.range_min,v.range_max,m.direction
+                             from management_target t join management_metric m using(metric_key)
+                             join lateral(select * from management_target_version where target_id=t.id order by version_no desc limit 1)v on true
+                            where t.metric_key=%s and t.status='사용' and t.period_from<=%s and t.period_to>=%s
+                              and t.scope_kind='company' order by t.period_from desc,t.id desc limit 1""",(metric_key,t,f))
+            if row: target={x:row[x] for x in ("target_value","range_min","range_max")}; direction=row["direction"]
+        status="미수집" if actual is None else ("목표 없음" if target is None else None)
+        attainment=None
+        if status is None:
+            from . import management
+            judged=management.compare({"direction":direction},actual,target)
+            status,attainment=judged["status"],judged["attainment"]
+        kpi.update(target=(target or {}).get("target_value"),attainment=attainment,previous=old,
+                   delta=(actual-old if actual is not None and old is not None else None),status=status,
+                   availability="미수집" if actual is None else "수집")
+    return data
 
 
 def _customer_code(customer_id: int | None) -> str | None:
@@ -564,17 +592,18 @@ def summary(period, customer_id: int | None = None) -> dict:
     f, t = period_bounds(period)
     kind = summary_kind(f, t)
     out = _base(f, t, _bucket(f, t)[0], customer_id)
+    all_data={"RPT-010":orders((f,t),customer_id),"RPT-020":production((f,t)),"RPT-030":quality((f,t)),
+              "RPT-040":inventory((f,t)),"RPT-050":shipment((f,t),customer_id),"RPT-060":collection((f,t),customer_id),
+              "RPT-070":order_flow((f,t),customer_id)}
     parts: list[tuple[str, str, dict, tuple[str, ...]]] = [
         ("재고·창고", "RPT-040", inventory((f, t)), ("material_receipts", "material_receipt_qty", "issues", "issue_qty", "product_receipts",
                                                    "product_receipt_qty", "adjusts")),
         ("출하", "RPT-050", shipment((f, t), customer_id), ("shipments", "qty", "customers", "due_rate", "late_open")),
     ]
     if kind != "일일":
-        parts += [
-            ("수주", "RPT-010", orders((f, t), customer_id), ("requests", "qty", "not_started")),
-            ("생산", "RPT-020", production((f, t)), ("work_orders", "good_qty", "loss_qty", "loss_rate", "utilization")),
-            ("수금", "RPT-060", collection((f, t), customer_id), ("asof", "collected", "sales", "over90")),
-        ]
+        parts += [("수주","RPT-010",all_data["RPT-010"],("requests","qty","not_started")),
+                  ("생산","RPT-020",all_data["RPT-020"],("work_orders","good_qty","loss_qty","loss_rate","utilization")),
+                  ("수금","RPT-060",all_data["RPT-060"],("asof","collected","sales","over90"))]
     sections = []
     for title, screen_id, data, keys in parts:
         picked = [dict(k, group=title) for k in data["kpis"] if k["key"] in keys]
@@ -582,9 +611,18 @@ def summary(period, customer_id: int | None = None) -> dict:
         out["kpis"].extend(picked)
         if screen_id == "RPT-060":
             out["asof"] = data["asof"]
-    ship = parts[1][2]
-    out["series"] = {"shipment_qty": ship["series"]["qty"], "issue_qty": parts[0][2]["series"]["issue_qty"]}
-    out["tables"] = {"sections": sections}
+    by_screen=all_data; ship=by_screen["RPT-050"]
+    flow=[]
+    for title,screen,key in (("수주","RPT-010","requests"),("생산대기","RPT-010","not_started"),("생산","RPT-020","work_orders"),("검사","RPT-030","judgements"),("제품재고","RPT-040","product_receipts"),("출하","RPT-050","shipments"),("수금","RPT-060","collected")):
+        value=next((k["value"] for k in by_screen[screen]["kpis"] if k["key"]==key),None); flow.append({"label":title,"value":value})
+    money=financial.totals(f,t,customer_id)
+    finance_kpis=[dict(_kpi("order_amount","수주 매출",money.get("order_amount"),digits=0,unit="원",text="연계 전" if money.get("order_amount") is None else None),group="재무"),
+                  dict(_kpi("shipment_amount","출하 매출",money.get("shipment_amount"),digits=0,unit="원",text="연계 전" if money.get("shipment_amount") is None else None),group="재무"),
+                  dict(_kpi("actual_cost","실제 원가",money.get("actual_cost"),digits=0,unit="원",text="연계 전" if money.get("actual_cost") is None else None),group="재무")]
+    out["financial_kpis"]=finance_kpis; out["kpis"].extend(finance_kpis)
+    risks=conn.q("select id,issue_key,severity,title,observed_value,source_screen,status,last_seen_at from management_issue where status<>'해결' order by case severity when '위험' then 1 else 2 end,last_seen_at desc limit 5")
+    out["series"]={"shipment_qty":ship["series"]["qty"],"issue_qty":by_screen["RPT-040"]["series"]["issue_qty"],"flow":flow}
+    out["tables"]={"sections":sections,"risks":risks}
     out["kind"] = kind
     out["notes"] = [f"{kind} 요약 — 해설 문장은 없다(D-505)"]
     return out

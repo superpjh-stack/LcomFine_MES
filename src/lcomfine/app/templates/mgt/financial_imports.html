@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% import "_macros.html" as ui %}{% import "home/_forms.html" as f with context %}
+{% block body %}{% call ui.screen_head(screen.name) %}<span class="tag">파일 비저장 · 회차 보존</span>{% endcall %}
+{% call f.form_box('ERP 재무자료 검증','/mgt/financial-imports','F-MGT-041',enctype='multipart/form-data') %}
+{{ f.input('period_from','시작일',type='date',required=true) }}{{ f.input('period_to','종료일',type='date',required=true) }}{{ f.input('file','엑셀 파일',type='file',required=true) }}
+{% endcall %}
+<section class="panel panel--grid"><h2>업로드 회차 <small class="muted">{{ rows|length }}건</small></h2>{% if rows %}<div class="grid-wrap"><table class="grid"><thead><tr><th>기간</th><th>회차</th><th>파일</th><th>활성 필드</th><th>행/오류</th><th>상태</th><th>관리</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.period_from }}~{{ r.period_to }}</td><td>{{ r.round_no }}</td><td>{{ r.source_name }}</td><td>{{ r.fields|join(', ') }}</td><td>{{ r.row_count }}/{{ r.error_count }}</td><td><span class="chip chip--{{ 'ok' if r.status=='반영' else 'muted' }}">{{ r.status }}</span></td><td>{% if r.status=='검증' and fn_allowed.get('F-MGT-042') %}<form method="post" action="/mgt/financial-imports/{{ r.id }}"><button class="btn btn-sm btn-primary" data-confirm="이 회차를 활성 반영할까요?">반영</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}{{ ui.empty('업로드 회차가 없습니다. 금액 지표는 연계 전입니다') }}{% endif %}</section>{% endblock %}

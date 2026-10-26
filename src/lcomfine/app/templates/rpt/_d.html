@@ -30,9 +30,11 @@
     <span class="kpi__label">{{ k.label }}</span>
     <strong class="kpi__value num">{% if k.text == "미수집" %}<span class="kpi__none">미수집</span>{% else %}{{ k.text }}{% endif %}</strong>
     {% if k.note %}<span class="kpi__note">{{ k.note }}</span>{% endif %}
+  {% if k.previous is defined %}<span class="kpi__meta">전기 {{ k.previous|num(k.digits,"미수집") }}{% if k.delta is not none %} · 증감 {{ '+' if k.delta > 0 else '' }}{{ k.delta|num(k.digits) }}{% endif %}{% if k.target is not none %} · 목표 {{ k.target|num(k.digits) }}{% endif %}</span>{% endif %}
   </div>
   {% else %}
   {{ ch.kpi_tile(k.key, k.label, k.value, unit=k.unit, digits=k.digits, text=k.text, note=k.note, spark=sparks.get(k.key), meter_max=(100 if k.unit == "%" else none)) }}
+  {% if k.previous is defined %}<span class="kpi-compare chip chip--{{ 'ok' if k.status == '정상' else ('warn' if k.status == '주의' else 'muted') }}">{{ k.status }} · 전기 {{ k.previous|num(k.digits,"미수집") }}{% if k.delta is not none %} · {{ '+' if k.delta > 0 else '' }}{{ k.delta|num(k.digits) }}{% endif %}{% if k.target is not none %} · 목표 {{ k.target|num(k.digits) }}{% endif %}</span>{% endif %}
   {% endif %}
   {% endfor %}
 </div>

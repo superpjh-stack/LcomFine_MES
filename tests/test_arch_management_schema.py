@@ -59,8 +59,8 @@ def test_management_foreign_keys_and_state_checks():
 
 def test_management_metric_seed_defines_metadata_not_targets():
     assert {r["metric_key"] for r in conn.q("select metric_key from management_metric")} == EXPECTED_METRICS
-    assert conn.q1("select count(*) n from management_target")["n"] == 0
-    assert conn.q1("select count(*) n from management_threshold")["n"] == 0
+    assert conn.q1("select count(*) n from management_target where created_by='seed'")["n"] == 0
+    assert conn.q1("select count(*) n from management_threshold where created_by='seed'")["n"] == 0
 
 
 def test_one_active_target_and_financial_batch_per_scope():

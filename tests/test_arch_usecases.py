@@ -71,7 +71,7 @@ def test_common_page_outside_screen_contract():
     assert nav.by_path(usecases.PATH) is None
     assert all(usecases.PATH not in f.api for f in contracts.functions())
     assert usecases.PATH in COMMON_ROUTES
-    assert len(nav.SCREENS) == 66
+    assert len(nav.SCREENS) == 70
 
 
 def test_ten_usecases_in_order(pages):

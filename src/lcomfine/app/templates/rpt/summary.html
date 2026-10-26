@@ -38,9 +38,12 @@
   {{ d.kpis(s.kpis, sparks=(sparks if s.screen_id in ("RPT-040", "RPT-050") else {})) }}
 </section>
 {% endfor %}
+<section class="panel"><h2><a href="/mgt/financial-imports">재무 연계 <span aria-hidden="true">→</span></a></h2>{{ d.kpis(data.financial_kpis) }}</section>
 {% call ch.grid() %}
+{{ d.chart_table("flow", "전사 7단계 경영 흐름", data.series.flow, "단계", "수량·건수", 0, "hbar", wide=true) }}
 {{ d.chart_table("shipment_qty", "구간별 확정 출하 수량", data.series.shipment_qty, "구간", "출하 수량", 3) }}
 {{ d.chart_table("issue_qty", "구간별 불출 수량", data.series.issue_qty, "구간", "불출 수량", 3) }}
 {% endcall %}
+{{ d.table("risks", "현재 위험 Top 5", [("severity","단계",none),("title","위험",none),("observed_value","관측값",4),("source_screen","근거 화면",none),("last_seen_at","최근 감지",none)], data.tables.risks, "현재 열린 위험 없음") }}
 {% endif %}
 {% endblock %}

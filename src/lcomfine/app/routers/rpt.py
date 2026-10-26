@@ -29,6 +29,13 @@ SUMMARY_TABS = ("daily", "weekly", "monthly")
 SUMMARY_LABEL = {"daily": "일일", "weekly": "주간", "monthly": "월간"}
 #: 기간 상한(일) — 일 · 월 구간 수가 화면에서 읽히는 범위
 PERIOD_MAX_DAYS = 3 * 366
+METRICS = {
+    "RPT-010":{"qty":"orders.qty"}, "RPT-020":{"good_qty":"production.attainment","utilization":"production.utilization"},
+    "RPT-030":{"rejected_lots":"quality.reject_rate"}, "RPT-040":{"issue_qty":"inventory.available"},
+    "RPT-050":{"qty":"shipment.qty","due_rate":"shipment.on_time"},
+    "RPT-060":{"collected":"collection.amount","over90":"collection.overdue"},
+    "RPT-070":{"shipped":"flow.completed"},
+}
 
 
 def _bad(label: str, reason: str, message: str | None = None) -> HTTPException:
@@ -97,7 +104,10 @@ def _dashboard(request: Request, screen_id: str, tpl: str, fn, *, date_from: str
             raise
         return _render(request, tpl, ctx, screen_id, exc)
     form.update(date_from=f.isoformat(), date_to=t.isoformat())
-    ctx["data"] = fn((f, t), cid) if with_customer else fn((f, t))
+    data = fn((f, t), cid) if with_customer else fn((f, t))
+    span=(t-f).days+1; pf=f-timedelta(days=span); pt=f-timedelta(days=1)
+    previous=fn((pf,pt),cid) if with_customer else fn((pf,pt))
+    ctx["data"] = dashboard.enrich(data,METRICS.get(screen_id,{}),previous)
     return _render(request, tpl, ctx, screen_id)
 
 
@@ -176,6 +186,7 @@ def summary(request: Request, tab: str | None = None, asof: str | None = None, c
         return _render(request, "rpt/summary.html", ctx, "RPT-080", exc)
     f = {"daily": t, "weekly": t - timedelta(days=6), "monthly": t.replace(day=1)}[tab_v]
     form.update(asof=t.isoformat())
-    ctx["data"] = dashboard.summary((f, t), cid)
+    current=dashboard.summary((f,t),cid); span=(t-f).days+1
+    ctx["data"] = dashboard.enrich(current,{},dashboard.summary((f-timedelta(days=span),f-timedelta(days=1)),cid))
     return _render(request, "rpt/summary.html", ctx, "RPT-080")
 
