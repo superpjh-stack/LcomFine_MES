@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .env
 .DS_Store
+.superpowers/
 *.log
 # 백업 덤프는 저장소에 넣지 않는다 (G-20)
 backups/
