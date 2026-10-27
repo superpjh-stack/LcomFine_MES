@@ -23,8 +23,9 @@
 {# KPI 줄 — kpis: [{key, label, value, digits, unit, text, note}] · sparks: {key: series}(선택 · 스파크라인) · 단위 % 는 진행 막대를 단다 #}
 {#   text 가 「미확정 (D-nn)」 이 아닌 글자(기준일 날짜 · 미수집)면 칩 대신 글자 그대로 — 값 글자(.kpi__value)는 같다 #}
 {% macro kpis(items, sparks={}) -%}
-<div class="kpis">
+<div class="kpis rpt-kpis">
   {% for k in items %}
+  <div class="rpt-kpi-unit" data-kpi-unit="{{ k.key }}">
   {% if k.text and "미확정" not in k.text %}
   <div class="kpi" data-kpi="{{ k.key }}">
     <span class="kpi__label">{{ k.label }}</span>
@@ -36,6 +37,7 @@
   {{ ch.kpi_tile(k.key, k.label, k.value, unit=k.unit, digits=k.digits, text=k.text, note=k.note, spark=sparks.get(k.key), meter_max=(100 if k.unit == "%" else none)) }}
   {% if k.previous is defined %}<span class="kpi-compare chip chip--{{ 'ok' if k.status == '정상' else ('warn' if k.status == '주의' else 'muted') }}">{{ k.status }} · 전기 {{ k.previous|num(k.digits,"미수집") }}{% if k.delta is not none %} · {{ '+' if k.delta > 0 else '' }}{{ k.delta|num(k.digits) }}{% endif %}{% if k.target is not none %} · 목표 {{ k.target|num(k.digits) }}{% endif %}</span>{% endif %}
   {% endif %}
+  </div>
   {% endfor %}
 </div>
 {%- endmacro %}

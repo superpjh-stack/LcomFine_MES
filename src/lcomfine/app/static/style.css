@@ -290,6 +290,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .kpi__spark polyline { fill: none; stroke: var(--viz-1); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; opacity: .8; }
 .kpi .meter__svg { margin-top: 2px; }
 
+/* RPT 공통 KPI: 값과 전기 비교를 한 셀로 묶어 빈 그리드 칸이 생기지 않게 한다. */
+.rpt-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--line); }
+.rpt-kpi-unit { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 148px; background: var(--surface); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rpt-kpi-unit .kpi { min-height: 0; padding: 18px 20px 8px; border: 0; border-radius: 0; box-shadow: none; }
+.rpt-kpi-unit .kpi__label { font-size: 13px; font-weight: 600; }
+.rpt-kpi-unit .kpi__value { margin-top: 5px; font-size: clamp(25px, 2vw, 34px); letter-spacing: -.03em; }
+.rpt-kpi-unit .kpi__spark { height: 30px; margin-top: 4px; }
+.rpt-kpi-unit .kpi-compare { display: block; overflow: hidden; margin: 0 14px 12px; padding: 4px 8px; border-radius: 3px; text-overflow: ellipsis; white-space: nowrap; }
+.rpt-kpi-unit .kpi__meta { display: block; margin-top: auto; padding-top: 8px; }
+@media (max-width: 1280px) { .rpt-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.rpt-kpi-unit { min-height: 132px; } }
+@media (max-width: 460px) { .rpt-kpis { grid-template-columns: 1fr; }.rpt-kpi-unit { min-height: 116px; } }
+
 /* 차트 — 인라인 SVG(마크) + HTML(축 · 값 글자). 마크는 viewBox 0 0 100 100 · preserveAspectRatio none 위 백분율 */
 .viz { margin: 0; min-width: 0; }
 .viz__plot { display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 16px 0 0; }

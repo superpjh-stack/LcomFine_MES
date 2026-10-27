@@ -54,3 +54,13 @@ def test_cockpit_distinguishes_linked_and_unavailable_financial_values():
     assert money["shipment_amount"]["availability"] == "연계 전"
     assert money["profit"]["value"] is None
     assert money["profit"]["availability"] == "연계 전"
+
+
+@pytest.mark.fn("F-RPT-041")
+def test_report_kpis_are_grouped_as_dense_units_without_orphan_compare_cells():
+    response = client("ex").get("/rpt/inventory", params={"date_from": "2026-10-01", "date_to": "2026-10-27"})
+    assert response.status_code == 200
+    html = response.text
+    assert 'class="kpis rpt-kpis"' in html
+    assert html.count("data-kpi-unit=") == html.count("data-kpi=")
+    assert 'class="kpi-compare' in html
