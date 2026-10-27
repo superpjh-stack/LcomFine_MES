@@ -187,6 +187,7 @@ def summary(request: Request, tab: str | None = None, asof: str | None = None, c
     f = {"daily": t, "weekly": t - timedelta(days=6), "monthly": t.replace(day=1)}[tab_v]
     form.update(asof=t.isoformat())
     current=dashboard.summary((f,t),cid); span=(t-f).days+1
-    ctx["data"] = dashboard.enrich(current,{},dashboard.summary((f-timedelta(days=span),f-timedelta(days=1)),cid))
+    previous = dashboard.summary((f-timedelta(days=span),f-timedelta(days=1)),cid)
+    ctx["data"] = dashboard.enrich_executive(dashboard.enrich(current,{},previous), previous)
     return _render(request, "rpt/summary.html", ctx, "RPT-080")
 

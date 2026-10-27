@@ -632,3 +632,64 @@ svg.swim { display: block; width: 100%; height: auto; font-family: var(--f); }  
   .uc-steps td.num::before { display: inline; margin-right: 6px; }
   .uc-matrix td:first-child { min-width: 180px; }
 }
+
+/* ── RPT-080 경영진 Control Tower ── */
+.executive-cockpit { display: grid; gap: 12px; max-width: 2400px; width: 100%; margin: 0 auto; }
+.eyebrow { display: block; margin-bottom: 3px; color: var(--brand); font: 700 10px/1.2 var(--mono); letter-spacing: .11em; }
+.cockpit-context { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 2px 2px 6px; }
+.cockpit-context h2 { margin: 0; font-size: clamp(20px, 1.4vw, 28px); letter-spacing: -.025em; }
+.cockpit-context p { margin: 0; color: var(--muted); font-size: 12px; }
+.cockpit-scoreboard { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(220px, .72fr) minmax(300px, 1fr); gap: 10px; }
+.cockpit-hero__kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--line); }
+.exec-kpi { display: grid; align-content: space-between; min-height: 122px; padding: 16px 18px; background: var(--surface); box-shadow: inset 3px 0 0 transparent; }
+.exec-kpi--alert { box-shadow: inset 3px 0 0 var(--bad); }
+.exec-kpi__head, .exec-kpi__delta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
+.availability { padding: 1px 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 10px; }
+.exec-kpi__value { text-align: left; font-size: clamp(26px, 2vw, 38px); line-height: 1; letter-spacing: -.04em; }
+.exec-kpi__value small { margin-left: 5px; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.cockpit-card { min-width: 0; padding: 15px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow); }
+.cockpit-card > header, .cockpit-risks > header, .cockpit-flow > header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.cockpit-card h2, .cockpit-flow h2 { font-size: 14px; }
+.cockpit-attainment { display: grid; grid-template-columns: 116px minmax(0, 1fr); align-content: start; gap: 4px 8px; }
+.cockpit-attainment > header { grid-column: 1 / -1; }
+.attainment-ring { position: relative; align-self: center; width: 112px; height: 112px; }
+.attainment-ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.attainment-ring circle { fill: none; stroke-width: 9; }
+.attainment-ring__track { stroke: var(--hover); }
+.attainment-ring__value { stroke: var(--brand); stroke-linecap: butt; }
+.attainment-ring > div { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.attainment-ring strong { font-size: 23px; line-height: 1; }
+.attainment-ring small { color: var(--muted); }
+.attainment-list { display: grid; align-content: center; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.attainment-list li { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--line); font-size: 10px; }
+.cockpit-risks ol { display: grid; gap: 0; margin: 7px 0 0; padding: 0; list-style: none; }
+.cockpit-risks li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 7px; align-items: center; min-height: 36px; border-top: 1px solid var(--line); }
+.risk-rank { color: var(--muted); font: 600 11px var(--mono); }
+.risk-copy { display: grid; min-width: 0; }
+.risk-copy strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.risk-copy small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.risk-empty { grid-template-columns: 1fr !important; color: var(--muted); }
+.cockpit-flow { padding: 15px 16px 16px; border: 1px solid var(--line); border-radius: var(--r); background: color-mix(in srgb, var(--surface) 94%, var(--ink)); }
+.cockpit-flow ol { display: grid; grid-template-columns: repeat(7, minmax(126px, 1fr)); gap: 7px; margin: 12px 0 0; padding: 0; list-style: none; overflow-x: auto; }
+.flow-stage { position: relative; min-width: 126px; border-top: 3px solid var(--line); background: var(--surface); }
+.flow-stage:not(:last-child)::after { content: ""; position: absolute; z-index: 2; right: -8px; top: 42px; width: 8px; border-top: 1px solid var(--muted); }
+.flow-stage--ok { border-top-color: var(--ok); } .flow-stage--warn { border-top-color: var(--warn); } .flow-stage--bad { border-top-color: var(--bad); }
+.flow-stage a { display: grid; gap: 7px; min-height: 144px; padding: 10px 11px; color: var(--ink); border: 1px solid var(--line); border-top: 0; }
+.flow-stage a:hover { background: var(--hover); text-decoration: none; }
+.flow-stage__top, .flow-stage__foot { display: flex; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 9px; }
+.flow-stage__index { font-family: var(--mono); }.flow-stage__status { font-weight: 700; }
+.flow-stage__value { text-align: left; font-size: 25px; font-weight: 700; line-height: 1; }
+.flow-stage__meta { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.flow-stage__foot b { color: var(--ink); font-size: inherit; }
+.cockpit-causes { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(260px, 1fr)); gap: 10px; }
+.cockpit-causes .viz { margin-top: 8px; }.cockpit-causes .data-table { margin-top: 7px; }
+.cockpit-details { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.cockpit-details > summary { padding: 12px 16px; cursor: pointer; color: var(--muted); font-weight: 600; }
+.cockpit-details__body { display: grid; gap: 10px; padding: 0 12px 12px; }
+@media (min-width: 1900px) {
+  .cockpit-scoreboard { grid-template-columns: minmax(760px, 2.3fr) minmax(280px, .8fr) minmax(390px, 1fr); }
+  .exec-kpi { min-height: 138px; }.cockpit-flow ol { gap: 10px; }.flow-stage a { min-height: 158px; }
+}
+@media (max-width: 1500px) { .cockpit-scoreboard { grid-template-columns: 2fr 1fr; }.cockpit-risks { grid-column: 1 / -1; }.cockpit-risks ol { grid-template-columns: repeat(5, 1fr); gap: 8px; }.cockpit-risks li { grid-template-columns: 20px minmax(0, 1fr); padding: 5px; border: 1px solid var(--line); }.cockpit-risks .chip { display: none; }.cockpit-causes { grid-template-columns: repeat(2, 1fr); }.cockpit-card--wide { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .cockpit-scoreboard, .cockpit-causes { grid-template-columns: 1fr; }.cockpit-risks { grid-column: auto; }.cockpit-risks ol { grid-template-columns: 1fr; }.cockpit-card--wide { grid-column: auto; }.cockpit-flow ol { grid-template-columns: repeat(7, 154px); }.cockpit-context { align-items: start; flex-direction: column; gap: 4px; } }
+@media (max-width: 480px) { .cockpit-hero__kpis { grid-template-columns: 1fr; }.cockpit-attainment { grid-template-columns: 100px minmax(0, 1fr); }.attainment-ring { width: 94px; height: 94px; }.exec-kpi { min-height: 108px; }.exec-kpi__value { font-size: 27px; } }

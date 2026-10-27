@@ -76,3 +76,63 @@
 {% import "col/_c.html" as c %}
 {% call ui.screen_head(screen.name) %}{% if data %}<span class="chip chip--muted" data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }} · {{ "일" if data.bucket == "day" else "월" }} 단위</span>{% if show_asof %} {{ c.asof_chip(data.asof) }}{% endif %}{% endif %}{% endcall %}
 {%- endmacro %}
+
+{# RPT-080 경영진 Cockpit 전용 표현. 모든 도형은 같은 수치의 텍스트/표와 함께 둔다. #}
+{% macro executive_hero(items) -%}
+<div class="cockpit-hero__kpis" data-cockpit-hero>
+  {% for k in items %}
+  <article class="exec-kpi exec-kpi--{{ 'alert' if k.status == '위험' else ('muted' if k.availability != '수집' else 'normal') }}" data-kpi="{{ k.key }}">
+    <div class="exec-kpi__head"><span>{{ k.label }}</span><span class="availability">{{ k.availability }}</span></div>
+    <strong class="exec-kpi__value num">{% if k.value is none %}연계 전{% else %}{{ k.value | num(k.digits) }}{% if k.unit %}<small>{{ k.unit }}</small>{% endif %}{% endif %}</strong>
+    <span class="exec-kpi__delta">{% if k.delta is not none %}전기 대비 {{ '+' if k.delta > 0 else '' }}{{ k.delta | num(k.digits) }}{% else %}전기 비교 없음{% endif %}</span>
+  </article>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro attainment_ring(model) -%}
+<section class="cockpit-card cockpit-attainment" data-attainment-ring>
+  <header><span class="eyebrow">TARGET PULSE</span><h2>전사 목표 달성</h2></header>
+  {% set pct = [[model.value or 0, 0] | max, 100] | min %}
+  <div class="attainment-ring">
+    <svg viewBox="0 0 120 120" role="img" aria-label="전사 목표 달성률 {{ model.value | num(1, '목표 없음') }} 퍼센트">
+      <circle class="attainment-ring__track" cx="60" cy="60" r="48"/>
+      <circle class="attainment-ring__value" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="{{ pct }} 100"/>
+    </svg>
+    <div><strong class="num">{{ model.value | num(1, '목표 없음') }}</strong>{% if model.value is not none %}<small>%</small>{% endif %}</div>
+  </div>
+  <ul class="attainment-list">
+    {% for c in model.contributors[:4] %}<li><span>{{ c.label }}</span><strong class="num">{{ c.attainment | num(1) }}%</strong></li>{% else %}<li class="muted">기간 내 사용 목표가 없습니다.</li>{% endfor %}
+  </ul>
+</section>
+{%- endmacro %}
+
+{% macro executive_risks(rows) -%}
+<section class="cockpit-card cockpit-risks" data-executive-risks>
+  <header><div><span class="eyebrow">ACTION QUEUE</span><h2>경영 위험 Top 5</h2></div><a href="/mgt/issues">전체 보기</a></header>
+  <ol>
+    {% for r in rows %}<li>
+      <span class="risk-rank num">{{ loop.index }}</span>
+      <span class="risk-copy"><strong>{{ r.title }}</strong><small>{{ r.source_screen }} · {{ r.owner_role | txt }}{% if r.due_date %} · {{ r.due_date | dt }}까지{% endif %}</small></span>
+      <span class="chip chip--{{ 'bad' if r.severity == '위험' else 'warn' }}">{{ r.severity }}</span>
+    </li>{% else %}<li class="risk-empty">현재 열린 경영 위험이 없습니다.</li>{% endfor %}
+  </ol>
+</section>
+{%- endmacro %}
+
+{% macro process_flow(stages) -%}
+<section class="cockpit-flow" data-process-flow>
+  <header><div><span class="eyebrow">VALUE STREAM</span><h2>수주에서 수금까지</h2></div><span class="muted">단계를 누르면 근거 화면으로 이동합니다</span></header>
+  <ol>
+    {% for s in stages %}<li data-flow-stage="{{ s.key }}" class="flow-stage flow-stage--{{ 'bad' if s.status == '위험' else ('warn' if s.status == '주의' else ('muted' if s.status == '미수집' else 'ok')) }}">
+      <a href="{{ s.href }}">
+        <span class="flow-stage__top"><span class="flow-stage__index num">{{ '%02d' | format(loop.index) }}</span><span class="flow-stage__status">{{ s.status }}</span></span>
+        <strong>{{ s.label }}</strong>
+        <span class="flow-stage__value num">{{ s.value | num(0, '미수집') }}</span>
+        <span class="flow-stage__meta">{% if s.secondary is not none %}보조 {{ s.secondary | num }}{% elif s.dwell is not none %}체류 {{ s.dwell | num(1) }}일{% else %}연결 데이터 없음{% endif %}</span>
+        <span class="flow-stage__foot">{% if s.conversion is not none %}전환 {{ s.conversion | num(1) }}%{% else %}전환율 없음{% endif %}<b class="num">위험 {{ s.risk_count }}</b></span>
+      </a>
+    </li>{% endfor %}
+  </ol>
+</section>
+{%- endmacro %}
