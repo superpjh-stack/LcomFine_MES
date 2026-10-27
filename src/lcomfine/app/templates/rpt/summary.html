@@ -33,8 +33,7 @@
 <main class="executive-cockpit" data-cockpit="executive">
   <div class="cockpit-context"><div><span class="eyebrow">EXECUTIVE CONTROL TOWER</span><h2><strong>{{ data.kind }}</strong> 경영 스코어보드</h2></div><p><span data-period>{{ data.period[0] | dt }} ~ {{ data.period[1] | dt }}</span>{% if data.asof %} · {{ c.asof_chip(data.asof) }}{% endif %}</p></div>
   <section class="cockpit-scoreboard">
-    {{ d.executive_hero(data.executive.hero_kpis) }}
-    {{ d.attainment_ring(data.executive.attainment) }}
+    {{ d.executive_strip(data.executive.hero_kpis, data.executive.attainment) }}
     {{ d.executive_risks(data.executive.risks) }}
   </section>
   {{ d.process_flow(data.executive.flow) }}

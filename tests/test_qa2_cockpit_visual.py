@@ -33,6 +33,10 @@ def test_summary_renders_graph_first_cockpit_landmarks():
     html = response.text
     assert 'data-cockpit="executive"' in html
     assert 'data-cockpit-hero' in html
+    assert 'data-executive-kpi-strip' in html
+    strip = html.split('data-executive-kpi-strip', 1)[1].split('data-executive-risks', 1)[0]
+    assert strip.count('data-executive-metric=') == 4
+    assert 'data-attainment-ring' in strip
     assert 'data-attainment-ring' in html
     assert 'data-executive-risks' in html
     assert 'data-process-flow' in html

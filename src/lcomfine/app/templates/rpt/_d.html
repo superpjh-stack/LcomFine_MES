@@ -90,6 +90,39 @@
 </div>
 {%- endmacro %}
 
+{% macro executive_strip(items, attainment) -%}
+{% set lead = items[0] %}
+<section class="executive-strip" data-cockpit-hero data-executive-kpi-strip>
+  <article class="executive-strip__lead" data-executive-metric="{{ lead.key }}">
+    <div class="executive-strip__lead-copy">
+      <span class="executive-strip__label">{{ lead.label }}</span>
+      <strong class="executive-strip__lead-value num">{% if lead.value is none %}목표 없음{% else %}{{ lead.value | num(lead.digits) }}<small>{{ lead.unit }}</small>{% endif %}</strong>
+      <span class="executive-strip__delta">{% if lead.delta is not none %}전기 대비 {{ '+' if lead.delta > 0 else '' }}{{ lead.delta | num(lead.digits) }}{{ lead.unit }}{% else %}기간 비교 데이터 없음{% endif %}</span>
+    </div>
+    {% set pct = [[attainment.value or 0, 0] | max, 100] | min %}
+    <div class="executive-strip__ring" data-attainment-ring>
+      <svg viewBox="0 0 120 120" role="img" aria-label="목표 종합 달성률 {{ attainment.value | num(1, '목표 없음') }} 퍼센트">
+        <circle class="attainment-ring__track" cx="60" cy="60" r="48"/>
+        <circle class="attainment-ring__value" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="{{ pct }} 100"/>
+      </svg>
+      <span>{{ lead.status }}</span>
+    </div>
+    <ul class="executive-strip__contributors">
+      {% for c in attainment.contributors[:3] %}<li><span>{{ c.label }}</span><strong class="num">{{ c.attainment | num(1) }}%</strong></li>{% else %}<li><span>등록된 전사 목표</span><strong>없음</strong></li>{% endfor %}
+    </ul>
+  </article>
+  <div class="executive-strip__metrics">
+    {% for k in items[1:] %}
+    <article class="executive-metric executive-metric--{{ 'alert' if k.status == '위험' else ('muted' if k.availability != '수집' else 'normal') }}" data-executive-metric="{{ k.key }}">
+      <div class="executive-metric__top"><span>{{ k.label }}</span><span class="executive-metric__state">{{ k.availability }}</span></div>
+      <strong class="executive-metric__value num">{% if k.value is none %}연계 전{% else %}{{ k.value | num(k.digits) }}<small>{{ k.unit }}</small>{% endif %}</strong>
+      <span class="executive-metric__delta">{% if k.delta is not none %}전기 대비 {{ '+' if k.delta > 0 else '' }}{{ k.delta | num(k.digits) }}{% else %}전기 비교 없음{% endif %}</span>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{%- endmacro %}
+
 {% macro attainment_ring(model) -%}
 <section class="cockpit-card cockpit-attainment" data-attainment-ring>
   <header><span class="eyebrow">TARGET PULSE</span><h2>전사 목표 달성</h2></header>
