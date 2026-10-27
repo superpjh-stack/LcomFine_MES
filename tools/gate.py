@@ -10,7 +10,7 @@
   · G-21 의 비밀 스캔은 이 파일이 바로 잰다(추적 파일의 비밀 값 · 키 패턴 · `.env` gitignore · 시드 `(예시)`).
     시드 멱등(2회 실행 행 수 diff 0)은 `--run-seeds`(`make gate-full`)에서만 잰다. check_security(QA3)가 생기면 그 행도 합친다.
   · G-23 백업 · 복구는 `--run-seeds`(`make gate-full`)에서만 돈다(덤프 파일 · 임시 DB 를 만든다 — 운영 DB 는 그대로).
-  · G-24 는 `docker compose config` 가 성립하는지와 환경변수 전달까지만 잰다 — 실제 기동 · `/health` 는 아직 재지 않았으므로 `미검증`.
+  · G-24 는 `docker compose config`와 실행 중인 앱의 `/health`를 함께 잰다. 앱이 떠 있지 않으면 `미검증`이다.
   · `decisions.md` 에 `상태: 차단` 으로 올라온 D-번호가 본문에서 언급한 게이트는, 판정이 미검증 · WARN 일 때 `BLOCKED` 로 나온다.
   · `EXCLUDED` 의 게이트(사람이 범위에서 뺀 기능의 게이트 — G-16 · G-17 = D-529)는 `제외` 로 나온다. 조건 둘:
     ① `decisions.md` 에 그 D-번호가 `상태: 확정` 으로 있다 — 없거나 확정이 아니면 FAIL.
@@ -270,6 +270,10 @@ def seed_idempotence() -> tuple[str, str]:
 
 
 def docker_compose() -> tuple[str, str]:
+    import json
+    import urllib.error
+    import urllib.request
+
     code, out = run(["docker", "compose", "config", "-q"], timeout=120)
     if code == 127:
         return UNVERIFIED, "docker 명령 없음 — compose 검증 불가"
@@ -277,8 +281,19 @@ def docker_compose() -> tuple[str, str]:
     missing = [k for k in COMPOSE_KEYS if f"{k}:" not in text]
     if code != 0 or missing:
         return FAIL, f"docker compose config rc={code} {'' if code == 0 else last_line(out)} · 환경변수 빠짐 {missing or 0}"
-    return UNVERIFIED, (f"docker compose config 성립 · 환경변수 {len(COMPOSE_KEYS)} 전달 — 컨테이너 기동 · /health 200 은 아직 재지 않음"
-                        " (`docker compose up -d --build` → `curl localhost:8020/health`)")
+    port = os.getenv("LCOMFINE_HOST_PORT", "8020")
+    url = f"http://127.0.0.1:{port}/health"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            body = json.loads(response.read().decode("utf-8"))
+            status = response.status
+    except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
+        return UNVERIFIED, (f"docker compose config 성립 · 환경변수 {len(COMPOSE_KEYS)} 전달 · {url} 미응답 "
+                            f"[{type(exc).__name__}] — `docker compose up -d --build`")
+    ok = status == 200 and body.get("ok") is True and body.get("db") == "ok" and body.get("placeholders") == 0
+    measured = (f"docker compose config 성립 · {url} {status} · ok {body.get('ok')} · DB {body.get('db')} · "
+                f"메뉴 {body.get('menus')} · 화면 {body.get('screens')} · placeholder {body.get('placeholders')}")
+    return (PASS if ok else FAIL), measured
 
 
 def backup_restore() -> tuple[str, str]:

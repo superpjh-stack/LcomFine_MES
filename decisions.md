@@ -216,10 +216,10 @@
 
 ---
 
-## D-525 G-24 실기동 — Docker 데몬이 꺼져 있어 잴 수 없다 · 상태: 차단
+## D-525 G-24 실기동 — 로컬 Docker 앱·DB health 확인 · 상태: 확정 (2026-10-27 실측)
+- **2026-10-27 로컬 실측**: Docker Server 29.8.0. `docker compose up -d --build` 성공, `lcomfinemes-db-1`·`lcomfinemes-app-1` 모두 healthy, `http://127.0.0.1:8020/health` 200(`ok true · menus 18 · screens 70 · placeholders 0 · db ok`). `tools/gate.py`도 실행 중 `/health`를 직접 확인해 G-24를 판정한다.
 - **2026-10-22 VPS 실측**: Hostinger VPS Docker Manager 에 새 앱 `lcomfine-mes-v2`(이미지 `ghcr.io/superpjh-stack/lcomfine_mes:sha-6c7aae6…` · 포트 8041 · 새 DB 볼륨 · `deploy/hostinger/docker-compose.yml`)로 올려 `/health` 200(`screens 66 · placeholders 0 · db ok`) · `admin` 로그인 303 · 주요 화면 200 · `/rpt/query` 404. 로컬 Docker 실기동은 여전히 못 쟀다 — 게이트 도구가 VPS 를 재지 않으므로 판정표는 BLOCKED 그대로 둔다(사람이 보면 해소로 바꿔도 된다).
 - 2026-10-21 실측: `docker info` → `failed to connect to the docker API at unix:///Users/gerardo92/.docker/run/docker.sock`. `docker compose config -q` 는 rc 0, Dockerfile COPY 원본 결함(DEF-QA3-001)은 고쳤다(정적 PASS).
-- 사람이 할 것: Docker Desktop 을 켠 뒤 `docker compose up -d --build` → `curl -s localhost:8020/health`(로컬 앱이 8020 을 쓰고 있으면 먼저 내리거나 `LCOMFINE_HOST_PORT` 를 바꾼다). 200 이 나오면 `progress.md` G-24 를 실측으로 바꾼다. 그때까지 G-24 는 `미검증`(FAIL 로 센다).
 
 ## D-526 HOME-030 「개인 추가 알림」이 무엇인가 · 상태: 차단
 - 정본 HOME-030 logic: 「부서 기본 알림은 끌 수 없고, 개인 추가 알림만 켜고 끈다」. 그런데 알림은 부서 단위(D-511 · 9종 · 수신 부서 고정)이고 Ruling 24 는 다른 부서 이벤트 구독을 범위 밖으로 정했다. 그러면 켜고 끌 「개인 추가 알림」이 남지 않는다 — 정본 문장과 D-511 이 서로 맞지 않는다(정본 결함 기록 · 고치지 않는다).

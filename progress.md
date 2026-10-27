@@ -13,10 +13,11 @@
 | 계약 규모 | 대메뉴 18 · 화면 70 · 기능 149 · 권한 276(W 78 · R 198) · 테이블 54 | G-01~G-04 |
 | 대시보드 | KPI 목표/전기/증감/상태 · 7단계 흐름 · 위험 Top 5 · 재무 미연계 `연계 전` | G-15 · RPT 회귀 테스트 |
 | 전체 테스트 | **436 passed · 0 failed** · `/health` 200 | `UV_CACHE_DIR=/tmp/lcomfine-uv-cache uv run pytest -q` |
-| 완료 게이트 | **PASS 21 · FAIL 0 · 미검증 0 · BLOCKED 1 · 제외 2** | `UV_CACHE_DIR=/tmp/lcomfine-uv-cache make gate-full` |
-| 시드·백업 | 시드 재실행 diff 0(테이블 52 · 행 3,923) · 복구 테이블 54 · 행 268,223 일치 | G-21 · G-23 |
+| 완료 게이트 | **PASS 22 · FAIL 0 · 미검증 0 · BLOCKED 0 · 제외 2** | `UV_CACHE_DIR=/tmp/lcomfine-uv-cache make gate-full` |
+| 시드·백업 | 시드 재실행 diff 0(테이블 52 · 행 4,005) · 복구 테이블 54 · 행 281,781 일치 | G-21 · G-23 |
+| Docker 실기동 | Server 29.8.0 · 앱/DB healthy · `/health` 200 · 메뉴 18 · 화면 70 · placeholder 0 | G-24 · D-525 해소 |
 
-남은 차단은 기존 D-525 하나다. Docker 데몬이 꺼져 있어 G-24 실기동만 재지 못했으며, compose 정적 검증은 통과했다. G-16·G-17은 D-529에 따라 확정 제외다.
+2026-10-27 Docker Server 29.8.0에서 앱·DB 컨테이너를 빌드·기동했고 둘 다 healthy, `/health` 200(`menus 18 · screens 70 · placeholders 0 · db ok`)을 확인해 D-525를 해소했다. G-16·G-17은 D-529에 따라 확정 제외다.
 
 ## 최종 보고 (2026-10-22) — 루프 종료: goal.md §4.4 충족
 
