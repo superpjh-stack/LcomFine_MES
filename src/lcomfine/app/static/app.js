@@ -1,5 +1,5 @@
 /* 공통 UI 동작 — 템플릿에는 스크립트가 없다. 이 파일 하나가 한다(외부 라이브러리 0).
-   테마(라이트/다크 · localStorage) · 좌측 메뉴 접기(좁은 화면) · 확인 대화(`data-confirm`) · 첫 입력 포커스 ·
+   테마(라이트/다크 · localStorage) · 좌측 메뉴 슬라이드·하위 메뉴 접기 · 확인 대화(`data-confirm`) · 첫 입력 포커스 ·
    목록 정렬 · 쪽 넘김 · 스캔칸 포커스 · 알림 팝업(`#popup-layer[data-flash]`).
    실패를 조용히 삼키지 않는다(콘솔에 남긴다). <head> 에서 읽힌다 — 테마는 곧바로, 나머지는 문서가 다 읽힌 뒤. */
 (function () {
@@ -28,28 +28,51 @@
     });
   });
 
-  /* 좌측 메뉴 접기 — 900px 아래에서만 단추가 보인다 */
+  /* 슬라이드 메뉴: 데스크톱은 본문 폭을 확장하고 모바일은 오버레이로 연다. */
   var menuBtn = document.querySelector("[data-menu-toggle]");
-  if (menuBtn) {
-    menuBtn.addEventListener("click", function () {
-      var open = !document.body.classList.contains("menu-open");
+  var side = document.getElementById("side-menu");
+  var narrow = window.matchMedia("(max-width: 900px)");
+  if (menuBtn && side) {
+    function setMenu(open, restoreFocus) {
       document.body.classList.toggle("menu-open", open);
-      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      document.body.classList.toggle("menu-collapsed", !open);
+      menuBtn.setAttribute("aria-expanded", String(open));
+      side.inert = !open;
+      if (restoreFocus) menuBtn.focus();
+    }
+    setMenu(!narrow.matches);
+    narrow.addEventListener("change", function () { setMenu(!narrow.matches); });
+    menuBtn.addEventListener("click", function () {
+      var open = menuBtn.getAttribute("aria-expanded") !== "true";
+      setMenu(open);
+      if (open && narrow.matches) side.querySelector("[data-menu-close]").focus();
     });
-    document.addEventListener("click", function (e) {   /* 메뉴 밖을 누르면 닫는다 */
-      if (!document.body.classList.contains("menu-open")) return;
-      if (e.target.closest("#side-menu") || e.target.closest("[data-menu-toggle]")) return;
-      document.body.classList.remove("menu-open");
-      menuBtn.setAttribute("aria-expanded", "false");
+    side.querySelector("[data-menu-close]").addEventListener("click", function () { setMenu(false, true); });
+    document.addEventListener("click", function (e) {
+      if (narrow.matches && document.body.classList.contains("menu-open") &&
+          !side.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && document.body.classList.contains("menu-open")) {
-        document.body.classList.remove("menu-open");
-        menuBtn.setAttribute("aria-expanded", "false");
-        menuBtn.focus();
+      if (!document.body.classList.contains("menu-open")) return;
+      if (e.key === "Escape") { setMenu(false, true); return; }
+      if (e.key === "Tab" && narrow.matches) {
+        var items = Array.from(side.querySelectorAll('button, a[href]')).filter(function (el) {
+          return !el.closest('[inert]') && el.getClientRects().length;
+        });
+        var first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     });
   }
+  document.querySelectorAll("[data-submenu-toggle]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var open = button.getAttribute("aria-expanded") !== "true";
+      button.setAttribute("aria-expanded", String(open));
+      button.closest(".side__menu").classList.toggle("is-open", open);
+      document.getElementById(button.getAttribute("aria-controls")).inert = !open;
+    });
+  });
 
   /* 접힌 폼 열기 — 「＋ 등록」 처럼 `#id` 로 가는 링크가 접힌 <details> 안을 가리키면 그 <details> 를 연다(주소의 #id 로 열린 화면도) */
   function openTarget(hash) {
@@ -145,8 +168,10 @@
      템플릿이 따로 할 일은 없다. 스캔칸이 없는 화면의 알림은 「확인」 버튼이 포커스를 가진다(Enter 로 닫힌다). */
   var scan = document.querySelector("[data-scan]");
   var layer = document.getElementById("popup-layer");
-  function popupOpen() { return !!layer && !layer.hidden; }
+  var cmdLayer = document.getElementById("cmd-palette");
+  function popupOpen() { return (!!layer && !layer.hidden) || (!!cmdLayer && !cmdLayer.hidden); }
   function idle(a) {   /* 포커스가 아무 데도 없거나(본문) 알림 안(「확인」)에 있다 = 사용자가 다른 칸을 쓰고 있지 않다 */
+    if (cmdLayer && !cmdLayer.hidden) return false;
     return !a || a === document.body || a === scan || (!!layer && layer.contains(a)) || !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(a.tagName);
   }
   function focusScan() {
@@ -209,6 +234,133 @@
       }
       if (body) popup(f.title || "알림", body, f.kind);
     } catch (e) { console.warn("알림 파싱 실패", e); }
+  }
+
+  /* 빠른 화면 이동 (Command Palette · Ctrl+K / ⌘K) — 현재 사용자의 좌측 메뉴(#side-menu)와 상단 주 메뉴에서 항목을 읽어 즉시 검색·이동 */
+  if (cmdLayer) {
+    var cmdInput = document.getElementById("cmd-input");
+    var cmdList = document.getElementById("cmd-list");
+    var cmdItems = [];
+    var cmdIdx = 0;
+
+    function collectCmdItems() {
+      var list = [];
+      var seenHref = {};
+      document.querySelectorAll(".topnav a[href]").forEach(function (a) {
+        var href = a.getAttribute("href");
+        if (!href || seenHref[href]) return;
+        seenHref[href] = true;
+        list.push({ title: a.textContent.trim(), group: "주요 바로가기", code: "TOP", href: href, external: false });
+      });
+      document.querySelectorAll("#side-menu .side__menu").forEach(function (m) {
+        var mTitle = m.querySelector(".side__menu-title button");
+        var gName = mTitle ? mTitle.textContent.replace("›", "").trim() : "메뉴";
+        m.querySelectorAll("a[data-screen]").forEach(function (a) {
+          var href = a.getAttribute("href");
+          var code = a.getAttribute("data-screen") || "";
+          var name = a.textContent.replace("(새 창)", "").trim();
+          list.push({ title: name, group: gName, code: code, href: href, external: a.hasAttribute("data-external") });
+        });
+      });
+      return list;
+    }
+
+    function renderCmdList(q) {
+      if (!cmdItems.length) cmdItems = collectCmdItems();
+      var term = (q || "").trim().toLowerCase();
+      var filtered = cmdItems.filter(function (it) {
+        if (!term) return true;
+        return it.title.toLowerCase().indexOf(term) !== -1 ||
+               it.group.toLowerCase().indexOf(term) !== -1 ||
+               it.code.toLowerCase().indexOf(term) !== -1;
+      });
+      cmdList.innerHTML = "";
+      if (!filtered.length) {
+        var emptyLi = document.createElement("li");
+        emptyLi.className = "cmd-empty";
+        emptyLi.textContent = "일치하는 화면이 없습니다.";
+        cmdList.appendChild(emptyLi);
+        return;
+      }
+      cmdIdx = Math.min(cmdIdx, filtered.length - 1);
+      filtered.forEach(function (it, idx) {
+        var li = document.createElement("li");
+        li.className = "cmd-item" + (idx === cmdIdx ? " is-active" : "");
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", idx === cmdIdx ? "true" : "false");
+        li.innerHTML = '<span class="cmd-item__group">' + it.group + '</span>' +
+          '<strong class="cmd-item__title">' + it.title + '</strong>' +
+          (it.code ? '<code class="cmd-item__code">' + it.code + '</code>' : "");
+        li.addEventListener("mouseenter", function () {
+          cmdIdx = idx;
+          updateCmdActive();
+        });
+        li.addEventListener("click", function () {
+          if (it.external) window.open(it.href, "_blank", "noopener");
+          else window.location.href = it.href;
+          closeCmd();
+        });
+        cmdList.appendChild(li);
+      });
+    }
+
+    function updateCmdActive() {
+      var rows = cmdList.querySelectorAll(".cmd-item");
+      rows.forEach(function (r, i) {
+        var active = i === cmdIdx;
+        r.classList.toggle("is-active", active);
+        r.setAttribute("aria-selected", active ? "true" : "false");
+        if (active && r.scrollIntoView) r.scrollIntoView({ block: "nearest" });
+      });
+    }
+
+    function openCmd() {
+      cmdLayer.hidden = false;
+      cmdIdx = 0;
+      if (cmdInput) {
+        cmdInput.value = "";
+        renderCmdList("");
+        cmdInput.focus();
+      }
+    }
+
+    function closeCmd() {
+      cmdLayer.hidden = true;
+      focusScan();
+    }
+
+    document.querySelectorAll("[data-cmd-open]").forEach(function (b) { b.addEventListener("click", openCmd); });
+    cmdLayer.querySelectorAll("[data-cmd-close]").forEach(function (b) { b.addEventListener("click", closeCmd); });
+    cmdLayer.addEventListener("click", function (e) { if (e.target === cmdLayer) closeCmd(); });
+    if (cmdInput) {
+      cmdInput.addEventListener("input", function () {
+        cmdIdx = 0;
+        renderCmdList(cmdInput.value);
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (cmdLayer.hidden) openCmd(); else closeCmd();
+        return;
+      }
+      if (cmdLayer.hidden) return;
+      if (e.key === "Escape") { e.preventDefault(); closeCmd(); return; }
+      var rows = cmdList.querySelectorAll(".cmd-item");
+      if (!rows.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cmdIdx = (cmdIdx + 1) % rows.length;
+        updateCmdActive();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cmdIdx = (cmdIdx - 1 + rows.length) % rows.length;
+        updateCmdActive();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (rows[cmdIdx]) rows[cmdIdx].click();
+      }
+    });
   }
 
   /* 첫 입력 포커스 — 스캔칸이 없고 다른 것이 포커스를 갖지 않았을 때 본문의 첫 입력칸 */

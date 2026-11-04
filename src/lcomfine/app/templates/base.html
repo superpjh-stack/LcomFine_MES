@@ -19,7 +19,7 @@
 <body data-grid-page-size="{{ grid_page_size }}">
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <header class="hdr">
-  <button type="button" class="btn btn-ghost hdr__menu" data-menu-toggle aria-controls="side-menu" aria-expanded="false">메뉴</button>
+  <button type="button" class="btn btn-ghost hdr__menu" data-menu-toggle aria-controls="side-menu" aria-expanded="true">메뉴</button>
   <a class="brand" href="/">{{ system_name }}</a>
   {% if user %}
   <nav class="topnav" aria-label="주 메뉴">
@@ -35,6 +35,11 @@
   {% endif %}
   <div class="hdr__r">
     {% if user %}
+    <button type="button" class="btn btn-ghost cmd-trigger" data-cmd-open aria-label="빠른 화면 이동 (단축키 Ctrl+K 또는 ⌘K)">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="cmd-trigger__label">빠른 이동</span>
+      <kbd class="cmd-trigger__kbd" aria-hidden="true">⌘K</kbd>
+    </button>
     <a class="bell" href="{{ nav.path_of('HOME-020') }}" aria-label="알림함 — 미처리 {{ unread }}건">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zm-2 15a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       {% if unread %}<span class="bell__n num">{{ unread }}</span>{% endif %}
@@ -68,18 +73,19 @@
 
 <div class="shell">
   <nav class="side" id="side-menu" aria-label="메뉴">
+    <button type="button" class="btn btn-ghost side__close" data-menu-close>메뉴 닫기</button>
     {% for node in bundles %}
     {% set b = node.bundle %}
     <section class="side__bundle" data-bundle="{{ b[0] }}">
-      <h2 class="side__bundle-title" title="{{ b[2] }}">{{ b[1] }}</h2>
+      <h2 class="side__bundle-title" title="{{ b[2] }}">{{ b[1].lstrip("⓪①②③④⑤⑥⑦ ") }}</h2>
       {% for m in node.menus %}
       <div class="side__menu{% if screen and screen.menu_code == m.code %} is-open{% endif %}" data-menu="{{ m.code }}">
-        <h3 class="side__menu-title">{{ m.name }}</h3>
-        <ul>
+        <h3 class="side__menu-title"><button type="button" data-submenu-toggle aria-controls="submenu-{{ m.code }}" aria-expanded="{{ 'true' if screen and screen.menu_code == m.code else 'false' }}">{{ m.name }}<span class="side__chevron" aria-hidden="true">›</span></button></h3>
+        <div class="side__submenu" id="submenu-{{ m.code }}"{% if not (screen and screen.menu_code == m.code) %} inert{% endif %}><div class="side__submenu-inner"><ul>
           {% for s in m.screens %}
           <li><a href="{{ s.path }}" data-screen="{{ s.screen_id }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}{% if "SSO" in s.kind %} target="_blank" rel="noopener" data-external{% endif %}>{{ s.name }}{% if "SSO" in s.kind %}<span class="sr-only"> (새 창)</span>{% endif %}</a></li>
           {% endfor %}
-        </ul>
+        </ul></div></div>
       </div>
       {% endfor %}
     </section>
@@ -146,6 +152,24 @@
     <div class="popup__actions"><button type="button" class="btn" data-popup-close>확인</button></div>
   </div>
 </div>
+{% if user %}
+<div class="cmd-layer" id="cmd-palette" hidden>
+  <div class="cmd-dialog" role="dialog" aria-modal="true" aria-labelledby="cmd-title">
+    <header class="cmd-head">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" class="cmd-head__icon"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="search" id="cmd-input" class="cmd-input" placeholder="화면 이름 · 메뉴 · 화면 코드(예: WO-010, 생산의뢰, LOT) 검색…" autocomplete="off" aria-label="빠른 화면 검색">
+      <span id="cmd-title" class="sr-only">빠른 화면 이동</span>
+      <button type="button" class="btn btn-sm btn-ghost" data-cmd-close>ESC</button>
+    </header>
+    <ul class="cmd-list" id="cmd-list" role="listbox" aria-label="이동 가능한 화면"></ul>
+    <footer class="cmd-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> 선택</span>
+      <span><kbd>Enter</kbd> 바로 이동</span>
+      <span><kbd>ESC</kbd> 닫기</span>
+    </footer>
+  </div>
+</div>
+{% endif %}
 <footer class="ftr">{{ system_name }} · {{ now }} · 자동 로그아웃 {{ settings.session_idle_label }}</footer>
 </body>
 </html>

@@ -187,6 +187,7 @@ def test_layout_shell_for_logged_in_user(app):
     assert "출하실 (예시)" in html                      # 사용자 이름(부서)
     assert f'href="{nav.path_of("HOME-020")}"' in html   # 알림 종
     assert "data-theme-toggle" in html
+    assert "data-cmd-open" in html and 'id="cmd-palette"' in html
     assert "fonts.googleapis.com" in html
 
 

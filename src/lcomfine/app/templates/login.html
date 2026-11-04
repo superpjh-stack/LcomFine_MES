@@ -16,29 +16,38 @@
 <form method="post" action="/login" id="login-form" class="solo__grid">
   <input type="hidden" name="next" value="{{ next or '' }}">
   <section class="card login">
+    <div class="login__badge"><span class="login__dot" aria-hidden="true"></span>MES v2 · END-TO-END LOT LINEAGE</div>
     <h1>{{ system_name }}</h1>
-    <p class="muted">Job · Lot · Roll 계보</p>
+    <p class="muted login__sub">수주 · 생산지시 · 자재 불출 · 생산·검사 · 출하 · 수금 통합 제조 실행 플랫폼 · Job · Lot · Roll 계보</p>
     {% if message %}<p class="alert alert--bad" role="alert">{{ message }}</p>{% endif %}
-    <label class="field">아이디<input type="text" name="login_id" autocomplete="username" required autofocus value="{{ login_id or '' }}"></label>
-    <label class="field">비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
-    <button class="btn btn-primary btn-block" type="submit">로그인</button>
+    <label class="field"><span>아이디</span><input type="text" name="login_id" autocomplete="username" placeholder="사번 또는 계정 ID 입력" required autofocus value="{{ login_id or '' }}"></label>
+    <label class="field"><span>비밀번호</span><input type="password" name="password" autocomplete="current-password" placeholder="비밀번호 입력" required></label>
+    <button class="btn btn-primary btn-block login__submit" type="submit">시스템 접속하기 <span aria-hidden="true">→</span></button>
     <ul class="notes">
-      <li>자동 로그아웃 {{ settings.session_idle_label }}</li>
-      <li>로그인 성공 · 실패는 접근 로그에 남습니다.</li>
+      <li>세션 보안 정책 · 자동 로그아웃 <strong>{{ settings.session_idle_label }}</strong></li>
+      <li>모든 로그인 성공 · 실패 및 화면 접근 이력은 감사 로그에 자동 기록됩니다.</li>
     </ul>
   </section>
 
   {% if quick %}
   <section class="card quick" aria-labelledby="quick-title">
-    <h2 id="quick-title">퀵 로그인 <span class="chip chip--warn">개발 · 테스트</span></h2>
-    <p class="muted">부서 계정을 누르면 비밀번호 없이 들어갑니다. 운영 환경에는 이 단추도 주소도 없습니다.</p>
+    <div class="quick__head">
+      <div>
+        <span class="eyebrow">INSTANT ROLE SWITCHER</span>
+        <h2 id="quick-title">부서별 원클릭 퀵 로그인 <span class="chip chip--warn">개발 · 테스트</span></h2>
+      </div>
+    </div>
+    <p class="muted">부서 페르소나 카드를 선택하면 해당 부서의 맞춤 워크스페이스와 권한 매트릭스로 즉시 접속합니다. 운영 환경에는 노출되지 않습니다.</p>
     <div class="quick__grid">
       {% for g in quick %}
       {% set a = g.primary %}
       <button class="quick__btn" type="submit" formaction="/login/quick" formnovalidate data-role="{{ g.role.code }}"
               name="quick_id" value="{{ a.login_id }}"{% if a.status != '정상' %} disabled title="{{ a.status }} 계정"{% endif %}>
-        <span class="quick__role">{{ g.role.name }}</span>
-        <span class="quick__id"><code>{{ a.login_id }}</code> · W {{ g.summary['W'] }} · R {{ g.summary['R'] }}</span>
+        <span class="quick__top">
+          <span class="quick__role">{{ g.role.name }}</span>
+          <span class="quick__code">{{ g.role.code }}</span>
+        </span>
+        <span class="quick__id"><code>{{ a.login_id }}</code> · <b class="quick__w">W {{ g.summary['W'] }}</b> · R {{ g.summary['R'] }}</span>
         {% if a.status != '정상' %}<span class="chip chip--bad">{{ a.status }}</span>{% endif %}
       </button>
       {% endfor %}
