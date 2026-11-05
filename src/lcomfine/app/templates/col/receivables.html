@@ -14,6 +14,12 @@
 {% block body %}
 {% call ui.screen_head(screen.name) %}{{ c.asof_chip(erp_asof) }} {{ ui.undecided(decision, "매출액 · 잔액 열이 매핑되지 않으면 미수를 계산하지 않음") }}{% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("기준일 및 보기 조건 선택", "기본값은 미수 잔액이 있는 거래처만 표시합니다"),
+  ("거래처별 매출 · 수금 · 미수 잔액 비교", "수금 내역은 거래처별 수금 현황(COL-040)에서 상세 조회"),
+  ("장기 미수 연령 분석", "30 · 60 · 90일 초과 여부는 미수 연령 분석(COL-060)에서 확인")
+], next_screen_id="COL-060", next_label="미수 연령 분석(COL-060) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.input("asof", "기준일", form.asof, type="date") }}
   <label class="field"><span>미수 0 거래처</span><select name="show_zero"><option value="">숨김</option><option value="1"{% if form.show_zero %} selected{% endif %}>보임</option></select></label>
@@ -37,6 +43,11 @@
 {% if series %}{{ ch.chart_panel("receivable_by_customer", "거래처별 미수 잔액", series, "거래처", "미수 잔액", kind="hbar", sort=true, sub="원 · 상위 30 · 거래처 코드", wide=true) }}{% endif %}
 <section class="panel panel--grid">
   <h2>거래처별 매출·수금·미수 잔액 <small class="muted">{{ data.rows | length }}곳</small></h2>
+  <div class="status-pills" role="navigation" aria-label="미수 잔액 표시 조건">
+    <span class="status-pills__label">표시 범위</span>
+    <a class="status-pill{% if not form.show_zero %} is-active{% endif %}" href="{{ nav.path_of('COL-050') }}{% if form.asof %}?asof={{ form.asof | urlencode }}{% endif %}">미수 잔액 있는 거래처만</a>
+    <a class="status-pill{% if form.show_zero %} is-active{% endif %}" href="{{ nav.path_of('COL-050') }}?show_zero=1{% if form.asof %}&amp;asof={{ form.asof | urlencode }}{% endif %}">미수 0 포함 전체 거래처</a>
+  </div>
   {% if data.rows %}
   <div class="grid-wrap grid-wrap--tall"><table class="grid">
     <thead><tr><th>거래처</th><th>ERP 코드</th><th class="num">행</th><th class="num">매출</th><th class="num">수금</th><th class="num">미수 잔액</th><th class="num">ERP 잔액 (마지막 행)</th><th>마지막 일자</th></tr></thead>

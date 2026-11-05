@@ -17,6 +17,12 @@
   {% if data %}<a class="btn" href="?date_from={{ form.date_from }}&amp;date_to={{ form.date_to }}&amp;customer={{ form.customer }}&amp;method={{ form.method | urlencode }}&amp;format=xlsx">엑셀</a>{% endif %}
 {% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("조회 기간 · 거래처 · 수단 선택", "「오늘 · 이번 달 · 최근 3개월」 버튼으로 기간 1클릭 지정"),
+  ("수단별 · 일자별 수금 내역 확인", "어음 만기 도래 · 예정 상태 확인 및 「엑셀」 다운로드"),
+  ("거래처별 미수금 잔액 점검", "미수금·어음 관리(COL-050)에서 거래처별 미수 잔액 확인")
+], next_screen_id="COL-050", next_label="미수금·어음 관리(COL-050) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처·수단 조건">
   {{ f.input("date_from", "시작일", form.date_from, type="date") }}
   {{ f.input("date_to", "종료일", form.date_to, type="date") }}

@@ -17,6 +17,12 @@
 {% call ui.screen_head(screen.name) %}{{ c.asof_chip(asof) }} {{ ui.undecided(decision, "ERP 엑셀 열 구성 미정 — 열 매핑으로 맞춤") }}{% endcall %}
 {{ f.notice(notice) }}
 
+{{ ui.step_guide([
+  ("기준 기간 및 엑셀(.xlsx) 선택", "ERP 수금현황 엑셀 파일을 양식 그대로 업로드"),
+  ("검증 결과 미리보기", "오류 · 거래처 미매핑 행이 없는지 미리 확인"),
+  ("반영 및 수금 현황 조회", "이상 없을 시 「반영」 클릭 (미매핑 코드는 COL-030에서 연결)")
+], next_screen_id="COL-040", next_label="거래처별 수금 현황(COL-040) 보기") }}
+
 <section class="panel">
   <h2>ERP 엑셀 파일 올리기</h2>
   {% if can_up %}

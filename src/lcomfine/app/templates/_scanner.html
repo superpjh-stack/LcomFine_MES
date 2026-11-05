@@ -1,0 +1,11 @@
+<form class="scanner-bar" method="get" action="{{ scanner_action }}" role="search" aria-label="{{ scanner_label }} 바코드 검색" data-barcode-form>
+  <div class="scanner-bar__icon" aria-hidden="true">▦</div>
+  <label class="field field--grow"><span>{{ scanner_label }} 스캔</span><input name="{{ scanner_param }}" value="" placeholder="바코드를 스캔하거나 직접 입력" autocomplete="off" inputmode="text" autofocus data-barcode-input></label>
+  <button type="submit" class="btn btn-primary">조회</button>
+  <button type="button" class="btn scanner-bar__camera" data-camera-open>카메라</button>
+  <small>스캐너는 키보드처럼 입력 후 Enter를 전송합니다.</small>
+  <div class="scanner-camera" data-camera-panel hidden>
+    <video playsinline muted data-camera-video></video>
+    <div><p data-camera-status>카메라를 준비하고 있습니다.</p><button type="button" class="btn btn-sm" data-camera-close>닫기</button></div>
+  </div>
+</form>

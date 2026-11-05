@@ -23,8 +23,8 @@
   <a class="brand" href="/">{{ system_name }}</a>
   {% if user %}
   <nav class="topnav" aria-label="주 메뉴">
-    <a href="/"{% if screen_id == 'HOME-010' %} aria-current="page"{% endif %}>내 할 일</a>
     {% if dash_home %}<a href="{{ dash_home.path }}"{% if screen and screen.menu_code == 'RPT' %} aria-current="page"{% endif %}>대시보드</a>{% endif %}
+    <a href="/"{% if screen_id == 'HOME-010' %} aria-current="page"{% endif %}>내 할 일</a>
     <a href="{{ usecases_path }}"{% if top_current == 'usecases' %} aria-current="page"{% endif %}>업무별 유스케이스</a>
   </nav>
   {% endif %}
@@ -98,7 +98,12 @@
   <main class="main" id="main">
     {% if screen and screen.menu_code == 'RPT' and dash_screens | length > 1 %}
     <nav class="dash-tabs" aria-label="대시보드">
-      {% for s in dash_screens %}<a href="{{ s.path }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}>{{ s.name | replace(" 리포트", "") }}</a>{% endfor %}
+      {% for s in dash_screens if s.screen_id == 'RPT-080' %}<a href="{{ s.path }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}>{{ s.name | replace(" 리포트", "") }}</a>{% endfor %}
+      {% for s in dash_screens if s.screen_id != 'RPT-080' %}<a href="{{ s.path }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}>{{ s.name | replace(" 리포트", "") }}</a>{% endfor %}
+    </nav>
+    {% elif screen and not screen.common and menu_screens and menu_screens | length > 1 %}
+    <nav class="dash-tabs" aria-label="{{ screen.menu }} 하위 화면 바로가기">
+      {% for s in menu_screens %}<a href="{{ s.path }}"{% if s.screen_id == screen_id %} aria-current="page"{% endif %}{% if "SSO" in s.kind %} target="_blank" rel="noopener"{% endif %}>{{ s.name }}</a>{% endfor %}
     </nav>
     {% endif %}
     {% block body %}

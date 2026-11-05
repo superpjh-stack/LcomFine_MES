@@ -31,6 +31,28 @@
 </header>
 {%- endmacro %}
 
+{# ── 화면 상단 단계별 업무 가이드 바 — 초보자도 1초 만에 "지금 무엇을 해야 하는지"와 "다음 단계 화면"을 알 수 있게 한다.
+   steps: [(title, desc)] 또는 [(title, desc, "active")] · next_screen_id: 권한 있을 때 오른쪽 바로가기 단추 표시 #}
+{% macro step_guide(steps, next_screen_id="", next_label="") -%}
+<section class="step-guide" aria-label="업무 진행 안내">
+  <ol class="step-guide__list">
+    {% for s in steps %}
+    <li class="step-guide__item{% if s | length > 2 and s[2] %} is-active{% endif %}">
+      <span class="step-guide__num" aria-hidden="true">{{ loop.index }}</span>
+      <div class="step-guide__text">
+        <strong>{{ s[0] }}</strong>
+        {% if s | length > 1 and s[1] %}<span>{{ s[1] }}</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% if next_screen_id and screen_visible(next_screen_id) %}
+  {% set nsc = nav.by_id(next_screen_id) %}
+  <a class="btn btn-sm step-guide__next" href="{{ nsc.path }}">{{ next_label or ("다음 단계: " ~ nsc.name) }} <span aria-hidden="true">→</span></a>
+  {% endif %}
+</section>
+{%- endmacro %}
+
 {# ── 필터 바의 접히는 고급 조건 — `<form class="filters">` 안 맨 끝에. open: 고급 조건에 값이 있으면 true ── #}
 {% macro filters_more(open=false, label="상세 조건") -%}
 <details class="filters__more"{% if open %} open{% endif %}>

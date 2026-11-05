@@ -11,6 +11,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("공급사 · 품목 · 수량 입력", "원자재 입고 등록 시 LOT 번호 자동 부여 (상태: 검사대기)"),
+  ("LOT 라벨 출력", "목록의 「라벨」 버튼으로 입고 라벨 확인 · 인쇄"),
+  ("입고검사 합격 판정", "합격 판정 후 「가용」 상태로 전환되어 자재 불출 가능")
+], next_screen_id="QC-010", next_label="입고검사(QC-010) 판정하러 가기") }}
+
 {% call ui.form_details("원자재 입고 등록", open=true, allowed=can_w) %}
   {% if not items or not locations %}
   {{ ui.empty("사용 중인 원자재 품목 · 위치가 없습니다 — 기준정보에서 품목 · 창고·위치를 먼저 등록합니다") }}
@@ -57,6 +63,7 @@
 </section>
 {% endif %}
 
+{% set scanner_action = nav.path_of('MAT-010') %}{% set scanner_param = 'lot' %}{% set scanner_label = '원자재 LOT' %}{% include "_scanner.html" %}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>공급사</span><input type="search" name="supplier" value="{{ f.supplier }}"></label>
   <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
@@ -76,11 +83,12 @@
         <td>{{ r.id }}</td><td>{{ r.received_on | dt }}</td><td>{{ r.supplier_name }}</td><td><code>{{ r.lot_no }}</code></td>
         <td>{{ r.item_code }} {{ r.item_name }}</td><td class="num">{{ u.q(r.qty) }}</td><td>{{ r.supplier_lot_no | txt }}</td>
         <td>{% if r.canceled_at %}{{ ui.chip("취소") }}{% else %}{{ u.stock_chips(r.stock_status) }}{% endif %}</td>
-        <td><a class="btn btn-sm" href="?label={{ r.id }}">라벨</a></td>
+        <td><a class="btn btn-sm" href="?label={{ r.id }}">라벨</a>
+          {% if not r.canceled_at and r.stock_status == "검사대기" and screen_visible("QC-010") %}<a class="btn btn-sm" href="{{ nav.path_of('QC-010') }}?lot={{ r.lot_no }}">입고검사 →</a>{% endif %}</td>
         {% if can_w %}<td>{% if not r.canceled_at %}
           <form method="post" action="{{ nav.path_of('MAT-010') }}/{{ r.id }}" class="inline">
             <input type="hidden" name="lot_id" value="{{ r.lot_id }}">
-            <input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량">
+            <span class="inline-field"><span>수량</span><input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량"></span>
             <input type="hidden" name="supplier_lot_no" value="">
             <button class="btn btn-sm">수량 수정</button>
           </form>

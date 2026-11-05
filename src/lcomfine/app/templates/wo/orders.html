@@ -18,6 +18,12 @@
   {% if fn_allowed.get("F-WO-021") and not edit and not picked %}<a class="btn btn-primary" href="#order-form">＋ 지시서 작성</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("생산의뢰 선택", "확인대기 · 확정 상태 의뢰 선택 후 「사양·시안 불러오기」"),
+  ("설비 · 예정일 입력", "제조사양기준서 · 시안 확인 후 저장"),
+  ("현장 배포 및 자재 불출", "지시서 출력 또는 「자재 불출」로 이동")
+], next_screen_id="MAT-020", next_label="자재 불출(MAT-020)로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="지시번호 · 의뢰번호 · 제품"></label>
   {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
@@ -58,6 +64,13 @@
 
 <section class="panel panel--grid">
   <h2>지시 목록 <small class="muted">{{ rows | length }}건</small></h2>
+  <div class="status-pills" role="navigation" aria-label="상태별 빠른 필터">
+    <span class="status-pills__label">상태 필터</span>
+    <a class="status-pill{% if not form.status %} is-active{% endif %}" href="{{ nav.path_of('WO-020') }}{% if form.q %}?q={{ form.q | urlencode }}{% endif %}">전체</a>
+    {% for s in statuses %}
+    <a class="status-pill{% if form.status == s %} is-active{% endif %}" href="{{ nav.path_of('WO-020') }}?status={{ s | urlencode }}{% if form.q %}&amp;q={{ form.q | urlencode }}{% endif %}">{{ s }}</a>
+    {% endfor %}
+  </div>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>지시번호</th><th>의뢰번호</th><th>거래처</th><th>제품</th><th class="num">지시 수량</th><th>설비</th><th>예정일</th>
@@ -71,6 +84,7 @@
       <td>{{ ("개정 " ~ r.spec_revision) if r.spec_revision else "-" }}</td><td>{{ ("차수 " ~ r.artwork_version) if r.artwork_version else "-" }}</td>
       <td>{{ ui.chip(r.status) }}</td>
       <td><a class="btn btn-sm" href="/wo/orders/{{ r.id }}/print" target="_blank" rel="noopener">출력</a>
+          {% if screen_visible("MAT-020") and r.status != "취소" %}<a class="btn btn-sm" href="{{ nav.path_of('MAT-020') }}?wo={{ r.work_order_no }}">자재 불출</a>{% endif %}
           {{ f.edit_link("F-WO-022", "edit=" ~ r.id) }}</td>
     </tr>
     {% endfor %}

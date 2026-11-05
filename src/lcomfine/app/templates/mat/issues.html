@@ -11,6 +11,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("작업지시 번호 선택", "불출할 생산지시(WO) 선택"),
+  ("가용 LOT 수량 입력", "「전량」 버튼을 누르면 가용 수량이 1클릭으로 자동 입력됩니다"),
+  ("불출 등록 및 생산 진행", "생산일보(PRD-010)에서 실적 입력")
+], next_screen_id="PRD-010", next_label="생산일보(PRD-010) 입력하러 가기") }}
+
 {% call ui.form_details("불출 등록", open=true, allowed=can_w) %}
   {% if not work_orders %}{{ ui.empty("불출할 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}
   {% elif not stock %}{{ ui.empty("원자재 재고가 없습니다 — 원자재 입고 · 입고검사를 먼저 합니다") }}
@@ -33,7 +39,10 @@
           <td>
             <input type="hidden" name="lot_no" value="{{ s.lot_no }}">
             <input type="hidden" name="location_id" value="{{ s.location_id }}">
-            <input name="qty" inputmode="decimal" size="8" aria-label="{{ s.lot_no }} 불출 수량"{% if s.status != "가용" %} disabled title="{{ s.status }} LOT 은 불출할 수 없습니다"{% endif %}>
+            <div class="inline-fields">
+              <input name="qty" inputmode="decimal" size="8" aria-label="{{ s.lot_no }} 불출 수량"{% if s.status != "가용" %} disabled title="{{ s.status }} LOT 은 불출할 수 없습니다"{% endif %}>
+              {% if s.status == "가용" %}<button type="button" class="btn btn-sm" data-fill-qty="{{ u.q(s.available_qty) }}" title="가용 수량 전량 채우기">전량</button>{% endif %}
+            </div>
             {% if s.status != "가용" %}<input type="hidden" name="qty" value="">{% endif %}
           </td>
         </tr>
@@ -46,6 +55,7 @@
   {% endif %}
 {% endcall %}
 
+{% set scanner_action = nav.path_of('MAT-020') %}{% set scanner_param = 'lot' %}{% set scanner_label = '불출 LOT' %}{% include "_scanner.html" %}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>지시번호</span><input type="search" name="wo" value="{{ f.wo }}"></label>
   <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>

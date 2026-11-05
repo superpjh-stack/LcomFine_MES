@@ -1,6 +1,6 @@
 /* 공통 UI 동작 — 템플릿에는 스크립트가 없다. 이 파일 하나가 한다(외부 라이브러리 0).
    테마(라이트/다크 · localStorage) · 좌측 메뉴 슬라이드·하위 메뉴 접기 · 확인 대화(`data-confirm`) · 첫 입력 포커스 ·
-   목록 정렬 · 쪽 넘김 · 스캔칸 포커스 · 알림 팝업(`#popup-layer[data-flash]`).
+   목록 정렬 · 쪽 넘김 · 수주 진행보드 자동 갱신 · 스캔칸 포커스 · 알림 팝업(`#popup-layer[data-flash]`).
    실패를 조용히 삼키지 않는다(콘솔에 남긴다). <head> 에서 읽힌다 — 테마는 곧바로, 나머지는 문서가 다 읽힌 뒤. */
 (function () {
   "use strict";
@@ -159,6 +159,62 @@
   /* 대시보드의 접힌 데이터 표(`details.data-table`)는 쪽 넘김 없이 표 전체 — 차트와 같은 숫자를 한눈에 */
   document.querySelectorAll("table.grid:not(.plain)").forEach(function (t) { if (!t.closest(".data-table")) applyPage(t); });
 
+  /* 홈 수주 진행보드 — 전체 페이지를 흔들지 않고 보드 조각만 30초마다 갱신한다.
+     탭이 백그라운드일 때는 요청을 멈추고, 다시 돌아오면 즉시 한 번 확인한다. */
+  (function initOrderProgressRefresh() {
+    var board = document.querySelector("[data-order-progress]");
+    if (!board || !window.fetch || !window.DOMParser) return;
+    var seconds = Math.max(10, parseInt(board.getAttribute("data-progress-refresh") || "30", 10) || 30);
+    var timer = null, busy = false, live = board.querySelector("[data-progress-live]");
+    function clock() {
+      try { return new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+      catch (e) { return "방금"; }
+    }
+    function setLive(text, state) {
+      if (!live) return;
+      live.textContent = text;
+      live.classList.toggle("is-refreshing", state === "refreshing");
+      live.classList.toggle("is-error", state === "error");
+    }
+    function schedule() {
+      window.clearTimeout(timer);
+      if (document.hidden) return;
+      timer = window.setTimeout(function () {
+        refresh().then(schedule);
+      }, seconds * 1000);
+    }
+    function refresh() {
+      if (busy || document.hidden) return Promise.resolve();
+      busy = true;
+      setLive("갱신 중…", "refreshing");
+      return fetch(window.location.href, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Accept": "text/html", "X-Requested-With": "progress-refresh" }
+      }).then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.text();
+      }).then(function (html) {
+        var parsed = new DOMParser().parseFromString(html, "text/html");
+        var next = parsed.querySelector("[data-order-progress]");
+        if (!next) throw new Error("진행보드 응답이 없습니다");
+        board.replaceWith(next);
+        board = next;
+        live = board.querySelector("[data-progress-live]");
+        setLive("자동 갱신 " + seconds + "초 · " + clock(), "ok");
+      }).catch(function (error) {
+        console.warn("수주 진행보드 자동 갱신 실패", error);
+        setLive("갱신 실패 · " + seconds + "초 후 재시도", "error");
+      }).then(function () { busy = false; });
+    }
+    setLive("자동 갱신 " + seconds + "초 · " + clock(), "ok");
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) { refresh().then(schedule); }
+      else window.clearTimeout(timer);
+    });
+    schedule();
+  }());
+
   /* 스캔칸 · 알림 팝업 (G-13 · D-04: 스캐너 = 키보드 입력 + Enter)
      스캔칸(`[data-scan]`)이 있는 화면에서는 **스캔칸이 포커스의 주인**이다:
        · 화면이 열리면 포커스를 잡고, 빈 곳을 눌렀다 놓아도 다시 잡는다. 다른 입력칸·선택칸·버튼을 쓰는 동안에는 빼앗지 않는다.
@@ -182,6 +238,62 @@
     document.addEventListener("click", function () { setTimeout(focusScan, 0); });
     window.addEventListener("focus", focusScan);
   }
+
+  /* 현장 스캔 파일럿 — BarcodeDetector가 있는 브라우저에서만 카메라를 연다.
+     인식 결과는 기존 검색 폼으로만 넘기며, 저장·재고 변경은 하지 않는다. */
+  document.querySelectorAll("[data-camera-open]").forEach(function (open) {
+    var form = open.closest("[data-barcode-form]");
+    if (!form) return;
+    var panel = form.querySelector("[data-camera-panel]");
+    var video = form.querySelector("[data-camera-video]");
+    var status = form.querySelector("[data-camera-status]");
+    var input = form.querySelector("[data-barcode-input]");
+    var stream = null;
+    var running = false;
+    function message(text) { if (status) status.textContent = text; }
+    function stop() {
+      running = false;
+      if (stream) stream.getTracks().forEach(function (track) { track.stop(); });
+      stream = null;
+      if (video) video.srcObject = null;
+      if (panel) panel.hidden = true;
+    }
+    form.querySelectorAll("[data-camera-close]").forEach(function (close) { close.addEventListener("click", stop); });
+    open.addEventListener("click", function () {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.BarcodeDetector) {
+        if (panel) panel.hidden = false;
+        message("이 브라우저는 카메라 스캔을 지원하지 않습니다. 상단 입력창에 직접 입력해 주세요.");
+        return;
+      }
+      if (panel) panel.hidden = false;
+      message("카메라 권한을 확인하고 있습니다.");
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+        .then(function (got) {
+          stream = got;
+          video.srcObject = stream;
+          return video.play();
+        })
+        .then(function () {
+          var detector = new BarcodeDetector({ formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8"] });
+          running = true;
+          message("코드를 화면 안에 맞춰 주세요.");
+          function scanFrame() {
+            if (!running) return;
+            detector.detect(video).then(function (codes) {
+              if (codes && codes.length && codes[0].rawValue) {
+                input.value = codes[0].rawValue;
+                stop();
+                if (form.requestSubmit) form.requestSubmit(); else form.submit();
+                return;
+              }
+              window.requestAnimationFrame(scanFrame);
+            }).catch(function () { window.requestAnimationFrame(scanFrame); });
+          }
+          scanFrame();
+        })
+        .catch(function () { message("카메라를 열 수 없습니다. 권한을 허용하거나 상단 입력창을 사용해 주세요."); stop(); });
+    });
+  });
 
   /* 알림 팝업 — 쓰기 결과·입력 검증 실패(422). 다음 스캔을 막지 않는다 */
   function popup(title, body, kind) {
@@ -362,6 +474,109 @@
       }
     });
   }
+
+  /* 현장·실무 사용성 도우미 (Usability Helpers)
+     1. 1클릭 전량 입력 (`button[data-fill-qty="120.000"]`) — 자재 불출(MAT-020) 등에서 가용 수량을 한 번에 채운다.
+     2. 출하 지시(SHP-010) 제품 LOT 선택 시 수량 칸이 비어 있으면 선택한 LOT의 가용 수량을 자동으로 채운다.
+     3. 생산일보(PRD-010) 생산·양품 수량 입력 시 로스 수량(`생산 - 양품`, 0 이상)을 자동 계산한다.
+     4. 검사일보(INS-010) 불량유형별 수량 입력 시 불량 합계를 자동으로 채운다.
+     5. 검색 필터(`form.filters`)에 시작일·종료일(`date_from`/`date_to` 또는 `due_from`/`due_to`)이 있으면
+        「오늘 · 이번 달 · 최근 3개월」 1클릭 기간 선택 단추를 붙여 날짜 입력 수고를 줄인다. */
+  document.addEventListener("click", function (e) {
+    var fillBtn = e.target.closest ? e.target.closest("[data-fill-qty]") : null;
+    if (!fillBtn) return;
+    var val = fillBtn.getAttribute("data-fill-qty");
+    var form = fillBtn.closest("form") || fillBtn.closest("tr");
+    if (!form) return;
+    var input = form.querySelector('input[name="qty"]');
+    if (input) {
+      input.value = val;
+      input.focus();
+    }
+  });
+
+  document.querySelectorAll('select[name="stock_id"]').forEach(function (sel) {
+    sel.addEventListener("change", function () {
+      var row = sel.closest(".form-grid") || sel.closest("form");
+      if (!row) return;
+      var qtyInput = row.querySelector('input[name="qty"]');
+      if (!qtyInput || qtyInput.value.trim() !== "") return;
+      var opt = sel.options[sel.selectedIndex];
+      if (!opt) return;
+      var m = opt.text.match(/가용\s*([0-9.,]+)/);
+      if (m && m[1]) qtyInput.value = m[1].replace(/,/g, "");
+    });
+  });
+
+  document.querySelectorAll("form").forEach(function (form) {
+    var prod = form.querySelector('input[name="produced_qty"]');
+    var good = form.querySelector('input[name="good_qty"]');
+    var loss = form.querySelector('input[name="loss_qty"]');
+    if (prod && good && loss) {
+      function syncLoss() {
+        var p = parseFloat(prod.value);
+        var g = parseFloat(good.value);
+        if (!isNaN(p) && !isNaN(g) && p >= g) {
+          var diff = Math.round((p - g) * 1000) / 1000;
+          loss.value = String(diff);
+        }
+      }
+      prod.addEventListener("input", syncLoss);
+      good.addEventListener("input", syncLoss);
+    }
+    var defectTotal = form.querySelector('input[name="defect_qty"]');
+    var defectCodes = form.querySelectorAll('input[name="defect_code_qty"]');
+    if (defectTotal && defectCodes.length) {
+      defectCodes.forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var sum = 0;
+          var any = false;
+          defectCodes.forEach(function (c) {
+            var v = parseFloat(c.value);
+            if (!isNaN(v) && v > 0) { sum += v; any = true; }
+          });
+          if (any) defectTotal.value = String(Math.round(sum * 1000) / 1000);
+        });
+      });
+    }
+  });
+
+  function fmtDate(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  document.querySelectorAll("form.filters").forEach(function (f) {
+    var fromEl = f.querySelector('input[type="date"][name="date_from"], input[type="date"][name="due_from"]');
+    var toEl = f.querySelector('input[type="date"][name="date_to"], input[type="date"][name="due_to"]');
+    if (!fromEl || !toEl) return;
+    var box = document.createElement("div");
+    box.className = "date-presets";
+    box.setAttribute("aria-label", "기간 빠른 선택");
+    var presets = [
+      { label: "오늘", fn: function () { var t = new Date(); return [fmtDate(t), fmtDate(t)]; } },
+      { label: "이번 달", fn: function () { var t = new Date(); return [fmtDate(new Date(t.getFullYear(), t.getMonth(), 1)), fmtDate(t)]; } },
+      { label: "최근 3개월", fn: function () { var t = new Date(); return [fmtDate(new Date(t.getFullYear(), t.getMonth() - 2, 1)), fmtDate(t)]; } }
+    ];
+    presets.forEach(function (p) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn btn-sm";
+      b.textContent = p.label;
+      b.addEventListener("click", function () {
+        var r = p.fn();
+        fromEl.value = r[0];
+        toEl.value = r[1];
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
+      box.appendChild(b);
+    });
+    var toField = toEl.closest(".field");
+    if (toField && toField.parentNode === f) {
+      f.insertBefore(box, toField.nextSibling);
+    }
+  });
 
   /* 첫 입력 포커스 — 스캔칸이 없고 다른 것이 포커스를 갖지 않았을 때 본문의 첫 입력칸 */
   if (!scan && (!document.activeElement || document.activeElement === document.body) && !popupOpen()) {

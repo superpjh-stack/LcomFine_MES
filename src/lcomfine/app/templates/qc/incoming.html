@@ -12,6 +12,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("검사 대기 LOT 확인", "원자재 입고(MAT-010)에서 등록된 LOT 확인"),
+  ("합격 · 불합격 판정", "검사 항목 · 측정값 입력 후 「판정」 클릭 (합격 → 가용, 불합격 → 보류)"),
+  ("합격 자재 불출", "합격(가용)된 원자재 LOT 은 자재 불출(MAT-020)에서 즉시 사용 가능")
+], next_screen_id="MAT-020", next_label="자재 불출(MAT-020) 화면으로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
   {% if f.receipt %}<input type="hidden" name="receipt" value="{{ f.receipt }}">{% endif %}

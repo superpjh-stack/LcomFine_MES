@@ -13,6 +13,12 @@
   <a class="btn" href="{{ nav.path_of('INS-020') }}?date={{ f.date or today }}">출력</a>
 {% endcall %}
 
+{{ ui.step_guide([
+  ("일자 · 작업지시 · 검사 수량 입력", "공정 검사 대상 지시와 총 검사 수량 입력"),
+  ("불량유형별 수량 입력", "유형별 수량을 넣으면 상단 「불량 수량」 합계가 자동 계산됩니다"),
+  ("제품검사 판정 연동", "제품 입고 후 제품검사(QC-020)에서 LOT 합격 판정")
+], next_screen_id="QC-020", next_label="제품검사(QC-020) 판정하러 가기") }}
+
 {% call ui.form_details("검사일보 등록", open=true, allowed=can_w) %}
   {% if not work_orders %}{{ ui.empty("검사일보를 쓸 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}{% else %}
   <form method="post" action="{{ nav.path_of('INS-010') }}">
@@ -54,9 +60,9 @@
       <tr><td>{{ r.work_date | dt }}</td><td>{{ r.work_order_no }}</td><td>{{ r.item_code }} {{ r.item_name }}</td>
         <td class="num">{{ u.q(r.inspected_qty) }}</td><td class="num">{{ u.q(r.defect_qty) }}</td>
         <td>{% for k, v in r.defects.items() %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% else %}-{% endfor %}</td><td>{{ r.note | txt }}</td>
-        {% if can_w %}<td><form method="post" action="{{ nav.path_of('INS-010') }}/{{ r.id }}" class="inline">
-          <input name="inspected_qty" value="{{ u.q(r.inspected_qty) }}" size="6" aria-label="검사 수량">
-          <input name="defect_qty" value="{{ u.q(r.defect_qty) }}" size="6" aria-label="불량 수량">
+        {% if can_w %}<td><form method="post" action="{{ nav.path_of('INS-010') }}/{{ r.id }}" class="inline-fields">
+          <label class="inline-field"><span>검사</span><input name="inspected_qty" value="{{ u.q(r.inspected_qty) }}" size="6" aria-label="검사 수량"></label>
+          <label class="inline-field"><span>불량</span><input name="defect_qty" value="{{ u.q(r.defect_qty) }}" size="6" aria-label="불량 수량"></label>
           <button class="btn btn-sm">수정</button></form></td>{% endif %}</tr>
     {% endfor %}
     </tbody>

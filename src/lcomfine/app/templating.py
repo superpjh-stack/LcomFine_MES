@@ -102,6 +102,8 @@ def screen_context(request: Request, screen_id: str | None) -> dict[str, Any]:
         # 상단 바 「대시보드」 · 대시보드 탭 — 볼 수 있는 RPT 화면만(권한 칸) · 첫 화면은 경영 요약(RPT-080)이 있으면 그것
         "dash_screens": (dash := [s for node in bundles for m in node["menus"] if m.code == "RPT" for s in m.screens]),
         "dash_home": next((s for s in dash if s.screen_id == "RPT-080"), dash[0] if dash else None),
+        # 현재 대메뉴 안 형제 화면 탭 — 사이드바를 열지 않고도 같은 업무 묶음(예: 자재·입고, 수금리포트, 영업/작업지시) 안 화면을 1클릭 전환
+        "menu_screens": [s for node in bundles for m in node["menus"] if sc and not sc.common and m.code == sc.menu_code for s in m.screens],
         "usecases_path": usecases.PATH,   # 상단 바 「업무별 유스케이스」 (D-530 · 공통 참고 페이지)
         "top_current": "",
         "flow": flow_steps(user, screen_id) if user else [],

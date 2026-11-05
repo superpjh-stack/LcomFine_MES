@@ -13,6 +13,12 @@
   <a class="btn" href="{{ nav.path_of('PRD-020') }}?date={{ f.date or today }}">출력</a>
 {% endcall %}
 
+{{ ui.step_guide([
+  ("일자 · 설비 · 작업지시 선택", "생산 수량과 완료(양품) 입력 시 로스(생산 − 양품) 자동 계산"),
+  ("가동 · 정지 시간 기록", "목록에서 항목별 라벨을 보고 즉시 수정 가능"),
+  ("제품 입고 진행", "생산 완료된 양품 수량으로 제품 입고(MAT-030) 등록")
+], next_screen_id="MAT-030", next_label="제품 입고(MAT-030) 등록하러 가기") }}
+
 {% call ui.form_details("생산일보 등록", open=true, allowed=can_w) %}
   {% if not work_orders %}{{ ui.empty("일보를 쓸 생산지시가 없습니다 — 생산지시서를 먼저 작성합니다") }}
   {% elif not equipments %}{{ ui.empty("사용 중인 설비가 없습니다 — 공통코드에서 설비를 먼저 등록합니다") }}
@@ -24,7 +30,7 @@
       <label class="field field--wide"><span>작업지시 <b aria-hidden="true">*</b></span><select name="work_order_id" required>{% for w in work_orders %}<option value="{{ w.id }}">{{ w.work_order_no }} · {{ w.item_code }} {{ w.item_name }}</option>{% endfor %}</select></label>
       <label class="field"><span>생산 수량 <b aria-hidden="true">*</b></span><input name="produced_qty" inputmode="decimal" required></label>
       <label class="field"><span>완료(양품) <b aria-hidden="true">*</b></span><input name="good_qty" inputmode="decimal" required></label>
-      <label class="field"><span>로스</span><input name="loss_qty" inputmode="decimal" value="0"></label>
+      <label class="field"><span>로스 <small class="muted">생산 − 양품 자동 계산</small></span><input name="loss_qty" inputmode="decimal" value="0"></label>
       <label class="field"><span>가동(분)</span><input name="run_minutes" inputmode="numeric"></label>
       <label class="field"><span>정지(분)</span><input name="stop_minutes" inputmode="numeric"></label>
       <label class="field"><span>비고</span><input name="note"></label>
@@ -53,14 +59,15 @@
       <tr><td>{{ r.work_date | dt }}</td><td>{{ r.equipment_name or r.equipment_code }}</td><td>{{ r.work_order_no }}</td>
         <td>{{ r.item_code }} {{ r.item_name }}</td>
         {% if can_w %}
-        <td colspan="5"><form method="post" action="{{ nav.path_of('PRD-010') }}/{{ r.id }}" class="inline" id="pd-{{ r.id }}">
-          <input name="produced_qty" value="{{ u.q(r.produced_qty) }}" size="6" aria-label="생산">
-          <input name="good_qty" value="{{ u.q(r.good_qty) }}" size="6" aria-label="양품">
-          <input name="loss_qty" value="{{ u.q(r.loss_qty) }}" size="6" aria-label="로스">
-          <input name="run_minutes" value="{{ r.run_minutes if r.run_minutes is not none else '' }}" size="4" aria-label="가동(분)">
-          <input name="stop_minutes" value="{{ r.stop_minutes if r.stop_minutes is not none else '' }}" size="4" aria-label="정지(분)">
+        <td colspan="5"><form method="post" action="{{ nav.path_of('PRD-010') }}/{{ r.id }}" class="inline-fields" id="pd-{{ r.id }}">
+          <label class="inline-field"><span>생산</span><input name="produced_qty" value="{{ u.q(r.produced_qty) }}" size="6" aria-label="생산"></label>
+          <label class="inline-field"><span>양품</span><input name="good_qty" value="{{ u.q(r.good_qty) }}" size="6" aria-label="양품"></label>
+          <label class="inline-field"><span>로스</span><input name="loss_qty" value="{{ u.q(r.loss_qty) }}" size="6" aria-label="로스"></label>
+          <label class="inline-field"><span>가동(분)</span><input name="run_minutes" value="{{ r.run_minutes if r.run_minutes is not none else '' }}" size="4" aria-label="가동(분)"></label>
+          <label class="inline-field"><span>정지(분)</span><input name="stop_minutes" value="{{ r.stop_minutes if r.stop_minutes is not none else '' }}" size="4" aria-label="정지(분)"></label>
         </form></td>
-        <td>{{ r.note | txt }}</td><td><button class="btn btn-sm" form="pd-{{ r.id }}">수정</button></td>
+        <td>{{ r.note | txt }}</td><td><button class="btn btn-sm" form="pd-{{ r.id }}">수정</button>
+          {% if screen_visible("MAT-030") %}<a class="btn btn-sm" href="{{ nav.path_of('MAT-030') }}?wo={{ r.work_order_no }}">제품 입고 →</a>{% endif %}</td>
         {% else %}
         <td class="num">{{ u.q(r.produced_qty) }}</td><td class="num">{{ u.q(r.good_qty) }}</td><td class="num">{{ u.q(r.loss_qty) }}</td>
         <td class="num">{{ r.run_minutes | txt }}</td><td class="num">{{ r.stop_minutes | txt }}</td><td>{{ r.note | txt }}</td>

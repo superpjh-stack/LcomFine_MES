@@ -14,6 +14,12 @@
 {% block body %}
 {% call ui.screen_head(screen.name) %}{{ c.asof_chip(erp_asof) }} {{ ui.undecided(decision, "매출액 열이 매핑되지 않으면 연령 금액을 계산하지 않음") }}{% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("기준일 선택", "기준일 대비 경과 일수로 30 · 60 · 90일 · 90일 초과 구간 자동 분류"),
+  ("90일 초과 위험 거래처 확인", "장기 미수 거래처는 상단 경고 목록 및 붉은 강조 행으로 표시"),
+  ("수금·미수 리포트 연동", "월별 추이와 종합 현황은 수금·미수 리포트(RPT-060)에서 확인")
+], next_screen_id="RPT-060", next_label="수금·미수 리포트(RPT-060) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.input("asof", "기준일", form.asof, type="date") }}
   <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>

@@ -16,6 +16,12 @@
   {% if fn_allowed.get("F-WO-011") and not edit %}<a class="btn btn-primary" href="#req-form">＋ 의뢰 등록</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("발주 의뢰 등록", "거래처 · 제품 · 수량 · 납기 입력"),
+  ("단가·납기 확인 후 확정", "수정(✎)에서 상태를 「확정」으로 변경"),
+  ("생산지시서 전환", "행 우측 「지시서 작성」 클릭")
+], next_screen_id="WO-020", next_label="생산지시서 화면으로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="의뢰번호 · 거래처 · 제품"></label>
   {{ f.select("status", "상태", st_opts, form.status, blank="전체") }}
@@ -63,6 +69,13 @@
 
 <section class="panel panel--grid">
   <h2>의뢰 목록 <small class="muted">{{ rows | length }}건</small></h2>
+  <div class="status-pills" role="navigation" aria-label="상태별 빠른 필터">
+    <span class="status-pills__label">상태 필터</span>
+    <a class="status-pill{% if not form.status %} is-active{% endif %}" href="{{ nav.path_of('WO-010') }}{% if form.q %}?q={{ form.q | urlencode }}{% endif %}">전체</a>
+    {% for s in statuses %}
+    <a class="status-pill{% if form.status == s %} is-active{% endif %}" href="{{ nav.path_of('WO-010') }}?status={{ s | urlencode }}{% if form.q %}&amp;q={{ form.q | urlencode }}{% endif %}">{{ s }}</a>
+    {% endfor %}
+  </div>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>의뢰번호</th><th>의뢰일</th><th>거래처</th><th>제품</th><th class="num">수량</th><th>납기</th><th class="num">D-day</th>
@@ -75,7 +88,7 @@
       <td>{{ r.due_date | dt }}</td><td class="num">{{ r.d_day }}</td><td>{{ ui.chip(r.status) }}</td>
       <td class="num">{{ r.order_count | num }}</td><td class="num">{{ r.shipped_qty | num(3) }}</td>
       <td><a class="btn btn-sm" href="{{ nav.path_of('TRK-010') }}?request={{ r.request_no }}">진행</a>
-        {% if can_order and r.status in ("확인대기", "확정", "지시완료") %}<a class="btn btn-sm" href="{{ nav.path_of('WO-020') }}?request_no={{ r.request_no }}">지시서 작성</a>{% endif %}
+        {% if can_order and r.status in ("확인대기", "확정", "지시완료") %}<a class="btn btn-sm btn-primary" href="{{ nav.path_of('WO-020') }}?request_no={{ r.request_no }}">지시서 작성</a>{% endif %}
         {{ f.edit_link("F-WO-012", "edit=" ~ r.id) }}</td>
     </tr>
     {% endfor %}
