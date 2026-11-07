@@ -10,6 +10,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("기간 · 판정 · 구분 선택", "입고검사 · 제품검사 판정 이력과 재판정 내역을 한 화면에서 확인"),
+  ("합격 · 불합격 빠른 필터", "판정 알약 탭으로 불합격 · 재판정 건만 즉시 점검"),
+  ("현장 판정 화면 이동", "미판정 LOT 은 입고검사(QC-010) 또는 제품검사(QC-020)에서 판정")
+], next_screen_id="QC-020", next_label="제품검사(QC-020) 화면으로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
   <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
@@ -24,6 +30,13 @@
 
 <section class="panel panel--grid">
   <h2>검사 이력 <small class="muted">{{ rows | length }}건</small></h2>
+  <div class="status-pills" role="navigation" aria-label="판정별 빠른 필터">
+    <span class="status-pills__label">판정 필터</span>
+    <a class="status-pill{% if not f.result %} is-active{% endif %}" href="{{ nav.path_of('QC-030') }}">전체</a>
+    {% for r in results %}
+    <a class="status-pill{% if f.result == r %} is-active{% endif %}" href="{{ nav.path_of('QC-030') }}?result={{ r | urlencode }}">{{ r }}</a>
+    {% endfor %}
+  </div>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

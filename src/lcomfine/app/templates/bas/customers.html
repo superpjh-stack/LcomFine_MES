@@ -13,6 +13,17 @@
   {% if fn_allowed.get("F-BAS-021") and not edit %}<a class="btn btn-primary" href="#cust-form">＋ 거래처 등록</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("① 거래처 등록", "주문·출하·수금의 기준이 되는 거래처와 담당자 연락처를 등록합니다."),
+  ("② 종합 현황 연결", "행 오른쪽 [종합 조회]를 누르면 해당 거래처의 주문·재고·미수를 한눈에 봅니다.")
+], "COL-030", "거래처 코드 매핑으로 이동") }}
+
+<nav class="status-pills" aria-label="사용 여부 빠른 필터">
+  <a class="status-pill {{ 'is-active' if not form.use else '' }}" href="{{ nav.path_of('BAS-020') }}">전체</a>
+  <a class="status-pill {{ 'is-active' if form.use == 'Y' else '' }}" href="{{ nav.path_of('BAS-020') }}?use=Y">사용 중</a>
+  <a class="status-pill {{ 'is-active' if form.use == 'N' else '' }}" href="{{ nav.path_of('BAS-020') }}?use=N">사용 중지</a>
+</nav>
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="거래처 코드 · 거래처명"></label>
   {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use, blank="전체") }}

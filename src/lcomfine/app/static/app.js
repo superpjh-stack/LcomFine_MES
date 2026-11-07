@@ -548,8 +548,8 @@
     return y + "-" + m + "-" + day;
   }
   document.querySelectorAll("form.filters").forEach(function (f) {
-    var fromEl = f.querySelector('input[type="date"][name="date_from"], input[type="date"][name="due_from"]');
-    var toEl = f.querySelector('input[type="date"][name="date_to"], input[type="date"][name="due_to"]');
+    var fromEl = f.querySelector('input[type="date"][name="date_from"], input[type="date"][name="due_from"], input[type="date"][name="from"]');
+    var toEl = f.querySelector('input[type="date"][name="date_to"], input[type="date"][name="due_to"], input[type="date"][name="to"]');
     if (!fromEl || !toEl) return;
     var box = document.createElement("div");
     box.className = "date-presets";

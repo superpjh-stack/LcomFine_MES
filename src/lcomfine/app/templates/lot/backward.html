@@ -11,6 +11,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("출하 번호 또는 제품 LOT 입력", "둘 중 하나만 스캔하거나 입력해 「추적」 클릭"),
+  ("원자재 LOT 목록 즉시 확인", "해당 제품 생산에 투입된 원 입고 원자재 LOT 와 분할 LOT 사슬 확인"),
+  ("정방향 영향 범위 확인", "해당 원자재 LOT 가 쓰인 다른 출하 건은 정방향 추적(LOT-010)에서 확인")
+], next_screen_id="LOT-010", next_label="정방향 추적(LOT-010)으로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="추적 조건">
   <label class="field field--grow"><span>출하 번호</span><input name="shipment_no" value="{{ f.shipment_no }}" data-scan autofocus></label>
   <label class="field field--grow"><span>또는 제품 LOT</span><input name="product_lot_no" value="{{ f.product_lot_no }}"></label>

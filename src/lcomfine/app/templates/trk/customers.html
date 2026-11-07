@@ -13,6 +13,12 @@
 {% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name ~ ("" if c.use_yn == "Y" else " (사용 중지)"))) %}{% endfor %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("거래처 선택 후 조회", "고객 응대 시 거래처 한 곳의 모든 현황을 한 화면에서 브리핑"),
+  ("진행 주문 · 가용 재고 · 최근 출하 확인", "그 거래처 제품의 현재 공정 단계와 즉시 출하 가능한 가용 LOT 확인"),
+  ("ERP 수금 · 미수 잔액 확인", "회계부가 업로드한 최신 ERP 기준일 기준 매출 · 수금 · 미수 잔액 확인")
+], next_screen_id="COL-050", next_label="미수금·어음 관리(COL-050) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.select("customer", "거래처", cust_opts, form.customer, required=true) }}
   <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>

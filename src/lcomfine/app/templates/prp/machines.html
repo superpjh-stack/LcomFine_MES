@@ -12,6 +12,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("조회 기간 선택", "「오늘 · 이번 달 · 최근 3개월」 1클릭 버튼으로 기간 지정"),
+  ("설비별 양품 · 로스 비교", "기계별 지시 건수, 생산 · 양품 · 로스 원 수량 및 가동 시간 비교"),
+  ("생산 완료 수량 집계 연동", "거래처 · 제품별 최종 입고 완료 수량은 생산 완료 집계(PRP-030)에서 확인")
+], next_screen_id="PRP-030", next_label="생산 완료 수량 집계(PRP-030) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건 — 기간 선택">
   {{ f.input("date_from", "시작일", form.date_from, type="date") }}
   {{ f.input("date_to", "종료일", form.date_to, type="date") }}

@@ -12,6 +12,12 @@
 {% set cust_opts = [] %}{% for cu in customers %}{% set _ = cust_opts.append((cu.id, cu.customer_code ~ " · " ~ cu.customer_name)) %}{% endfor %}
 {{ ui.screen_head(screen.name) }}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("기간 · 거래처 선택", "제품 입고(MAT-030) 완료 수량을 기준으로 월별 · 거래처별 실적 집계"),
+  ("월별 추이 및 상위 10개 품목 확인", "차트와 표로 거래처 · 제품별 생산 완료 수량 확인"),
+  ("전사 주문 흐름 리포트 연동", "의뢰부터 출하까지 단계별 소요일은 주문 흐름 리포트(RPT-070)에서 확인")
+], next_screen_id="RPT-070", next_label="주문 흐름 리포트(RPT-070) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처 조건">
   {{ f.input("date_from", "시작일", form.date_from, type="date") }}
   {{ f.input("date_to", "종료일", form.date_to, type="date") }}

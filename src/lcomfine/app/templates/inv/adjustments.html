@@ -12,6 +12,12 @@
   {% if can_w and locations %}<a class="btn btn-primary" href="#adj-form">＋ 재고 조정</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("LOT · 위치 · 실사 수량 입력", "실제 창고에서 센 실사 수량과 차이 사유를 필수 입력"),
+  ("장부 재고 자동 반영", "등록 시 장부 수량 · 실사 수량 · 차이 수량이 변경 불가 이력으로 기록됩니다"),
+  ("조정 후 현재고 확인", "재고 조회(INV-010)에서 조정된 현재고 확인")
+], next_screen_id="INV-010", next_label="재고 조회(INV-010) 보기") }}
+
 {% call ui.form_details("재고 조정 등록", open=(flash and flash.kind == "warn"), allowed=can_w) %}
   {% if not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리에서 먼저 등록합니다") }}{% else %}
   <form method="post" action="{{ nav.path_of('INV-030') }}" id="adj-form">

@@ -37,6 +37,13 @@
 
 <section class="panel panel--grid">
   <h2>{{ bucket or "임박·지연" }} <small class="muted">{{ rows | length }}건</small></h2>
+  <div class="status-pills" role="navigation" aria-label="납기 구분별 빠른 필터">
+    <span class="status-pills__label">구분 필터</span>
+    <a class="status-pill{% if not bucket %} is-active{% endif %}" href="{{ nav.path_of('TRK-020') }}">임박·지연 전체</a>
+    {% for k in buckets %}
+    <a class="status-pill{% if bucket == k %} is-active{% endif %}" href="{{ nav.path_of('TRK-020') }}?bucket={{ k | urlencode }}">{{ k }} ({{ counts[k] | num }})</a>
+    {% endfor %}
+  </div>
   {% if rows %}
   <div class="grid-wrap"><table class="grid">
     <thead><tr><th>의뢰번호</th><th>거래처</th><th>제품</th><th>납기</th><th class="num">D-day</th><th>구분</th><th>멈춘 단계</th><th>단계</th>

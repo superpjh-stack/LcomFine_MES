@@ -9,6 +9,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("기간 · 구분 · 품목 선택", "「오늘 · 이번 달 · 최근 3개월」 1클릭 버튼으로 기간 지정"),
+  ("원자재 입고 · 불출 · 제품 입고 통합 조회", "구분 알약 필터로 원하는 내역만 즉시 분류"),
+  ("엑셀(CSV) 다운로드 및 LOT 추적", "「엑셀(CSV)」로 내려받거나 정방향 추적(LOT-010)으로 이동")
+], next_screen_id="LOT-010", next_label="정방향 LOT 추적(LOT-010) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
   <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>
@@ -22,6 +28,13 @@
 
 <section class="panel panel--grid">
   <h2>입고 · 불출 내역 <small class="muted">{{ rows | length }}건</small></h2>
+  <div class="status-pills" role="navigation" aria-label="구분별 빠른 필터">
+    <span class="status-pills__label">구분 필터</span>
+    <a class="status-pill{% if not f.kind %} is-active{% endif %}" href="{{ nav.path_of('MAT-040') }}">전체</a>
+    {% for k in ("원자재 입고", "불출", "제품 입고") %}
+    <a class="status-pill{% if f.kind == k %} is-active{% endif %}" href="{{ nav.path_of('MAT-040') }}?kind={{ k | urlencode }}">{{ k }}</a>
+    {% endfor %}
+  </div>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

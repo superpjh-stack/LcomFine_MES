@@ -9,6 +9,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("기간 · 제품 선택", "「오늘 · 이번 달 · 최근 3개월」 버튼으로 공정 검사 내역 조회"),
+  ("검사 · 불량 합계 및 유형별 분석", "일자별 검사 수량과 불량유형별 발생 건수 확인"),
+  ("지시별 불량 및 LOT 판정 이력", "지시별 누적은 INS-040, LOT 합격·불합격 이력은 QC-030에서 확인")
+], next_screen_id="INS-040", next_label="지시별 검사·불량(INS-040) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
   <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>

@@ -12,6 +12,12 @@
 {% set cust_opts = [] %}{% for c in customers %}{% set _ = cust_opts.append((c.id, c.customer_code ~ " · " ~ c.customer_name)) %}{% endfor %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("의뢰번호 · 거래처 · 제품 검색", "목록에서 의뢰번호를 클릭하면 상단에 6단계 상세 진행표가 열립니다"),
+  ("현재 공정 및 남은 수량 파악", "의뢰 → 지시 → 생산 → 검사 → 제품 입고 → 출하 단계별 수량 · 일자 확인"),
+  ("납기 지연 · 거래처 종합 점검", "납기 임박·지연은 TRK-020, 거래처별 미수·재고 종합은 TRK-030에서 확인")
+], next_screen_id="TRK-020", next_label="납기 현황(TRK-020) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.input("request", "의뢰번호", form.request) }}
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="의뢰번호 · 거래처 · 제품"></label>

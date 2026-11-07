@@ -8,6 +8,18 @@
   {% if fn_allowed.get("F-BAS-011") and not edit %}<a class="btn btn-primary" href="#item-form">＋ 품목 등록</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("① 품목 등록", "완제품(제품)과 인쇄 원단·부자재(원자재)를 등록합니다."),
+  ("② 규격·단위 관리", "규격·단위·사용 여부를 관리해 입고·생산·출하의 기준이 되게 합니다.")
+], "STD-010", "작업사양서 관리로 이동") }}
+
+<nav class="status-pills" aria-label="품목 구분 빠른 필터">
+  <a class="status-pill {{ 'is-active' if not form.item_type else '' }}" href="{{ nav.path_of('BAS-010') }}">전체</a>
+  {% for val, label in TYPES %}
+  <a class="status-pill {{ 'is-active' if form.item_type == val else '' }}" href="{{ nav.path_of('BAS-010') }}?item_type={{ val }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="품목 코드 · 품목명"></label>
   {{ f.select("item_type", "구분", TYPES, form.item_type, blank="전체") }}

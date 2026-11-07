@@ -9,6 +9,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("기간 · 설비 · 제품 선택", "「오늘 · 이번 달 · 최근 3개월」 1클릭 버튼으로 기간 지정"),
+  ("생산 · 양품 · 로스 합계 확인", "설비별 · 일자별 생산 실적과 가동·정지 시간 확인"),
+  ("지시별 누적 및 생산 리포트 연동", "지시별 누적 수량은 PRD-040, 차트 분석은 생산 리포트(RPT-020)에서 확인")
+], next_screen_id="PRD-040", next_label="지시별 생산·로스(PRD-040) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
   <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>

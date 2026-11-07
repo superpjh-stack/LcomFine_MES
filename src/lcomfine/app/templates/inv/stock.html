@@ -11,6 +11,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("구분 · 상태 · 품목 필터", "LOT 별 현재고, 출하 할당량, 실제 쓸 수 있는 가용 수량(현재고 − 할당) 확인"),
+  ("상태별 빠른 분류", "표 상단 알약 탭으로 「가용」 · 「검사대기」 · 「보류」 · 「할당」 재고만 1클릭 조회"),
+  ("재고 이동 · 분할 또는 실사 조정", "위치 이동·분할은 INV-020, 실사 수량 맞춤은 INV-030에서 처리")
+], next_screen_id="INV-020", next_label="재고 이동·분할(INV-020)로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>품목</span><input type="search" name="item" value="{{ f.item }}" placeholder="코드 · 이름"></label>
   <label class="field"><span>LOT</span><input type="search" name="lot" value="{{ f.lot }}"></label>
@@ -24,6 +30,13 @@
 
 <section class="panel panel--grid">
   <h2>LOT별 재고 <small class="muted">{{ rows | length }}행</small></h2>
+  <div class="status-pills" role="navigation" aria-label="재고 상태별 빠른 필터">
+    <span class="status-pills__label">상태 필터</span>
+    <a class="status-pill{% if not f.status %} is-active{% endif %}" href="{{ nav.path_of('INV-010') }}">전체</a>
+    {% for s in statuses + ("할당",) %}
+    <a class="status-pill{% if f.status == s %} is-active{% endif %}" href="{{ nav.path_of('INV-010') }}?status={{ s | urlencode }}">{{ s }}</a>
+    {% endfor %}
+  </div>
   {% if not rows %}{{ ui.empty() }}{% else %}
   <div class="grid-wrap grid-wrap--tall">
   <table class="grid">

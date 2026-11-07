@@ -16,6 +16,12 @@
   {% if can_w and locations %}<a class="btn btn-primary" href="#move-form">＋ 재고 이동</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("LOT · 출발 위치 · 도착 위치 선택", "가용 수량 안에서 위치 이동 또는 새 LOT 분할(-01, -02…) 등록"),
+  ("이동 내역 확인 및 수정", "목록에서 도착 위치와 이동 수량을 라벨을 보고 바로 수정 가능"),
+  ("현재고 확인", "재고 조회(INV-010)에서 이동 후 위치별 가용 재고 확인")
+], next_screen_id="INV-010", next_label="재고 조회(INV-010) 보기") }}
+
 {% call ui.form_details("재고 이동 등록", open=(flash and flash.kind == "warn"), allowed=can_w) %}
   {% if not locations %}{{ ui.empty("등록된 위치가 없습니다 — 기준정보 창고·위치 관리에서 먼저 등록합니다") }}{% else %}
   <form method="post" action="{{ nav.path_of('INV-020') }}" id="move-form">
@@ -53,9 +59,9 @@
         <td>{{ r.source_lot_no | txt }}</td><td>{{ r.from_code | txt }}</td><td>{{ r.to_code | txt }}</td>
         <td class="num">{{ u.q(r.qty) }}</td><td>{{ r.note | txt }}</td><td>{{ r.created_by | txt }}</td>
         {% if can_w %}<td>{% if r.move_kind == "이동" %}
-          <form method="post" action="{{ nav.path_of('INV-020') }}/{{ r.id }}" class="inline">
-            <select name="to_location_id" aria-label="도착 위치">{{ loc_options(r.to_location_id) }}</select>
-            <input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량">
+          <form method="post" action="{{ nav.path_of('INV-020') }}/{{ r.id }}" class="inline-fields">
+            <label class="inline-field"><span>도착</span><select name="to_location_id" aria-label="도착 위치">{{ loc_options(r.to_location_id) }}</select></label>
+            <label class="inline-field"><span>수량</span><input name="qty" value="{{ u.q(r.qty) }}" size="6" aria-label="수량"></label>
             <button class="btn btn-sm">수정</button>
           </form>{% else %}<span class="muted">-</span>{% endif %}</td>{% endif %}
       </tr>

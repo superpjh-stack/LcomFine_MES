@@ -15,6 +15,12 @@
 {% for r in top %}{% set _ = s_prod.append({"label": r.work_order_no, "value": r.produced_qty}) %}{% set _ = s_loss.append({"label": r.work_order_no, "value": r.loss_qty}) %}{% endfor %}
 {% call ui.screen_head(screen.name) %}{{ ui.undecided_text("로스율 산식 미확정 (D-519)", "생산 로스율 산식이 정해지지 않았습니다") }}{% endcall %}
 
+{{ ui.step_guide([
+  ("기간 · 지시번호 조회", "작업지시별로 누적된 생산 · 양품 · 로스 원 수량 비교"),
+  ("지시별 생산 · 로스 차트 점검", "최근 지시 12건의 생산량과 로스량을 막대 차트로 직관적 비교"),
+  ("공정 검사 불량 비교", "검사일보 기준 불량 수량은 검사 로스율 현황(INS-040)에서 확인")
+], next_screen_id="INS-040", next_label="지시별 검사·불량(INS-040) 보기") }}
+
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field"><span>시작일</span><input type="date" name="from" value="{{ f.from }}"></label>
   <label class="field"><span>종료일</span><input type="date" name="to" value="{{ f.to }}"></label>

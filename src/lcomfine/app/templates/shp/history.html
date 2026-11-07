@@ -12,6 +12,12 @@
 {% set item_opts = [] %}{% for i in items %}{% set _ = item_opts.append((i.id, i.item_code ~ " · " ~ i.item_name)) %}{% endfor %}
 {{ ui.screen_head(screen.name) }}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("확정일 · 거래처 · 품목 조회", "「오늘 · 이번 달 · 최근 3개월」 버튼으로 확정 출하 내역 조회"),
+  ("출하 및 반품·정정 이력 확인", "반품·정정 등록 내역은 해당 출하 행 바로 아래에 함께 표시됩니다"),
+  ("원자재 LOT 역추적 및 수금 대조", "행 우측 「역추적」 클릭 시 그 출하에 쓰인 원자재 LOT 까지 즉시 추적")
+], next_screen_id="COL-070", next_label="출하 대비 수금 대조(COL-070) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건 — 기간·거래처·품목 조건">
   <label class="field field--grow"><span>출하 번호</span><input type="search" name="no" value="{{ form.no }}" placeholder="출하 번호"></label>
   {{ f.input("date_from", "확정일 시작", form.date_from, type="date") }}

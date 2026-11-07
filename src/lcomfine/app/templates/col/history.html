@@ -11,6 +11,12 @@
 {% block body %}
 {% call ui.screen_head(screen.name) %}<a class="btn" href="{{ nav.path_of('COL-010') }}">업로드</a>{% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("업로드 회차 상태 확인", "기준 기간별로 현재 「반영」된 회차와 이전 「교체됨」 회차를 구분해 확인"),
+  ("오류 · 미매핑 행 점검", "회차 행의 「오류 행」을 클릭하면 반영에서 제외된 사유가 아래에 표시됩니다"),
+  ("미매핑 거래처 코드 연결", "미매핑 코드는 거래처 코드 매핑(COL-030)에서 연결하면 반영 회차에 즉시 반영")
+], next_screen_id="COL-030", next_label="거래처 코드 매핑(COL-030)으로 이동") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   {{ f.select("status", "상태", [("반영", "반영"), ("교체", "교체됨")], form.status) }}
   <div class="filters__go"><button type="submit" class="btn btn-primary">조회</button></div>
@@ -22,6 +28,12 @@
 </div>
 <section class="panel">
   <h2>회차 목록 <small class="muted">기간 · 건수 · 오류 건 · 올린 사람</small></h2>
+  <div class="status-pills" role="navigation" aria-label="상태별 빠른 필터">
+    <span class="status-pills__label">상태 필터</span>
+    <a class="status-pill{% if not form.status %} is-active{% endif %}" href="{{ nav.path_of('COL-020') }}">전체</a>
+    <a class="status-pill{% if form.status == '반영' %} is-active{% endif %}" href="{{ nav.path_of('COL-020') }}?status={{ '반영' | urlencode }}">반영</a>
+    <a class="status-pill{% if form.status == '교체' %} is-active{% endif %}" href="{{ nav.path_of('COL-020') }}?status={{ '교체' | urlencode }}">교체됨</a>
+  </div>
   {{ c.batch_table(rows, nav.path_of("COL-020")) }}
 </section>
 {% if shown %}

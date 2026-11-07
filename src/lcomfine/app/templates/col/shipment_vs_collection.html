@@ -15,6 +15,12 @@
 {% set cust_opts = [] %}{% for cu in customers %}{% set _ = cust_opts.append((cu.id, cu.customer_code ~ " · " ~ cu.customer_name)) %}{% endfor %}
 {% call ui.screen_head(screen.name) %}{% if data %}{{ c.asof_chip(data.asof) }}{% endif %}{% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("조회 월 · 거래처 선택", "월 단위로 MES 확정 출하와 ERP 매출 · 수금을 나란히 비교"),
+  ("출하 수량 ↔ 매출·수금액 대조", "월별 추세 차트와 거래처별 상세 표에서 누락 여부 점검"),
+  ("미수 잔액 상세 확인", "미수금·어음 관리(COL-050)에서 거래처별 최종 미수 잔액 확인")
+], next_screen_id="COL-050", next_label="미수금·어음 관리(COL-050) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건 — 월·거래처 선택">
   {{ f.input("ym_from", "시작 월", form.ym_from, type="month") }}
   {{ f.input("ym_to", "끝 월", form.ym_to, type="month") }}

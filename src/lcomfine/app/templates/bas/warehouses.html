@@ -14,6 +14,11 @@
   {% if fn_allowed.get("F-BAS-031") and not edit and not edit_location %}<a class="btn btn-primary" href="#wh-form">＋ 창고 등록</a><a class="btn" href="#loc-form">＋ 위치 등록</a>{% endif %}
 {% endcall %}
 
+{{ ui.step_guide([
+  ("① 창고 등록", "원자재 창고·완제품 창고 등 보관 창고를 먼저 등록합니다."),
+  ("② 랙·구역(위치) 등록", "창고 아래에 세부 위치(랙·구역)를 등록해 LOT별 재고 위치를 관리합니다.")
+], "INV-010", "재고 조회로 이동") }}
+
 {% if edit %}
 {% call f.form_box("창고 수정 — " ~ edit.warehouse_code, "/bas/warehouses/" ~ edit.id, "F-BAS-032", open=true, cancel=nav.path_of("BAS-030"), icon="✎", id="wh-form") %}
   <input type="hidden" name="target" value="warehouse">

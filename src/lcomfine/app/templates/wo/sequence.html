@@ -18,6 +18,12 @@
 {% endblock %}
 {% block body %}
 {{ ui.screen_head(screen.name) }}
+
+{{ ui.step_guide([
+  ("설비별 지시 목록 확인", "생산지시서(WO-020)에서 설비가 배정된 발행 · 진행 지시가 표시됩니다"),
+  ("작업 순서 조정", "행 우측 「위로」 · 「아래로」 버튼으로 설비별 투입 순서 지정"),
+  ("자재 불출 및 생산 진행", "자재 불출(MAT-020) 후 순서대로 생산일보(PRD-010) 입력")
+], next_screen_id="MAT-020", next_label="자재 불출(MAT-020)로 이동") }}
 {% for g in groups %}
 <section class="panel panel--grid">
   <h2>{{ g.code }} · {{ g.name }} <small class="muted">{{ g.rows | length }}건</small></h2>

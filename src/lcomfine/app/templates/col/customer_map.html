@@ -14,6 +14,12 @@
   {% if fn_allowed.get("F-COL-031") and not edit %}<a class="btn btn-primary" href="#map-form">＋ 매핑 등록</a>{% endif %}
 {% endcall %}
 {{ f.notice(notice) }}
+
+{{ ui.step_guide([
+  ("미매핑 ERP 코드 확인", "상단 「미매핑 코드 목록」에서 연결이 안 된 ERP 거래처코드 확인"),
+  ("1클릭 매핑하기", "행 우측 「매핑하기」를 누르면 아래 등록 폼에 코드가 자동 입력됩니다"),
+  ("수금 현황 자동 재반영", "매핑 저장 시 반영 회차의 미매핑 행이 자동으로 정상 수금 데이터에 합산됩니다")
+], next_screen_id="COL-040", next_label="거래처별 수금 현황(COL-040) 보기") }}
 <form class="filters" method="get" role="search" aria-label="조회 조건">
   <label class="field field--grow"><span>검색</span><input type="search" name="q" value="{{ form.q }}" placeholder="ERP 코드 · 이름 · MES 거래처"></label>
   {{ f.select("use", "사용 여부", [("Y", "사용"), ("N", "사용 중지")], form.use) }}

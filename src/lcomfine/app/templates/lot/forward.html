@@ -11,6 +11,12 @@
 {% block body %}
 {{ ui.screen_head(screen.name) }}
 
+{{ ui.step_guide([
+  ("원자재 LOT 스캔 또는 입력", "바코드 스캐너로 찍거나 LOT 번호를 입력해 「추적」 클릭"),
+  ("투입 · 생산 · 출하 경로 확인", "원자재 입고 → 자재 불출 → 생산지시 → 제품 LOT → 출하까지 전 과정 표시"),
+  ("클레임 역방향 추적", "출하 번호나 제품 LOT 로 거슬러 올라가려면 역방향 추적(LOT-020) 이용")
+], next_screen_id="LOT-020", next_label="역방향 추적(LOT-020)으로 이동") }}
+
 <form class="filters" method="get" role="search" aria-label="추적 조건">
   <label class="field field--grow"><span>원자재 LOT</span><input name="lot_no" value="{{ f.lot_no }}" required data-scan autofocus></label>
   <div class="filters__go"><button type="submit" class="btn btn-primary">추적</button>{% if f.lot_no %}<a class="btn btn-ghost" href="{{ nav.path_of('LOT-010') }}">초기화</a>{% endif %}</div>
