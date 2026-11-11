@@ -990,6 +990,9 @@ def e2e(port: int = 8020) -> int:
                         elif account == "ac" and path == "/col/customer-map" and width == E2E_WIDTHS[0]:   # COL-030 매핑 등록
                             action, want_text = "map-create", "매핑을 등록했습니다"
                             form = page.locator("form[method=post]").filter(has=page.locator("input[name=erp_code]"))
+                            # 등록 폼은 접힌 details 안에 있다. 사용자처럼 펼친 뒤 입력한다.
+                            if not form.locator("input[name=erp_code]").is_visible():
+                                form.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
                             form.locator("input[name=erp_code]").fill(code_e)
                             form.locator("input[name=erp_name]").fill(f"{E2E_TAG} ERP 거래처 (예시)")
                             form.locator("select[name=customer_id]").select_option(str(cust["id"]))

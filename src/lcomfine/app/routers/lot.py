@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from .. import nav, rbac, templating, trace
-from .inv import qs
+from ..util.forms import qs
 
 router = APIRouter()
 

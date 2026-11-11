@@ -1,14 +1,11 @@
 """BAS 기준정보 — 품목(BAS-010) · 거래처(BAS-020) · 창고·위치(BAS-030). 담당 개발1.
 
-이 파일 앞부분의 폼 헬퍼(`need` · `pk` · `qty` · `day` · …)는 개발1 의 다른 라우터(home · std · wo · sys · trk)가 같이 쓴다.
+입력 검증은 `app.util.forms`에서 가져온다. 선택 목록·존재 확인은 `app.lookups`, DB 수정 헬퍼는 이 파일에 둔다.
 입력 오류는 사람이 읽는 문장으로 422, 경로의 키가 없거나 숫자가 아니면 404 (api-contract.md §1).
 「참조가 있으면 지우지 않고 사용 중지로 바꾼다」는 `remove_or_disable` 한 곳 — 그 테이블을 가리키는 FK 를 DB 카탈로그에서 읽어 확인한다.
 """
 
 from __future__ import annotations
-
-from datetime import date
-from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
@@ -16,153 +13,17 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, rbac, templating
 from ..util import audit, http
+from ..lookups import (
+    edit_row, exists_or_404, item_choice, items_for_select,
+)
+from ..util.forms import (
+    BAS_QTY_MAX as QTY_MAX, BIGINT_MAX, NUL_REASON,
+    bad, choice, day, integer, kv_lines, kv_text, like, need, pk, qty, ref_id, s, yn,
+)
 
 router = APIRouter()
 
-BIGINT_MAX = 9_223_372_036_854_775_807
-QTY_MAX = Decimal("99999999999.999")      # numeric(14,3)
-
-
-# ── 폼 헬퍼 (개발1 공용) ────────────────────────────────────────────────
-NUL_REASON = "글자에 NUL(0x00)을 넣을 수 없습니다"
-
-
-def s(v: str | None, label: str) -> str | None:
-    """앞뒤 공백을 걷어 낸 글자. 비면 None. NUL(0x00) 이 들어 있으면 422 — 어느 항목인지 `label` 로 짚는다
-    (api-contract §3: DataError 핸들러의 「입력」 한 줄은 마지막 방어선 · DEF-QA3-002)."""
-    if v is None:
-        return None
-    if "\x00" in v:
-        raise bad(label, NUL_REASON)
-    v = v.strip()
-    return v or None
-
-
-def bad(label: str, reason: str, message: str | None = None):
-    return http.validation_error(message or f"{label}: {reason}", fields=[{"name": label, "reason": reason}])
-
-
-def need(v: str | None, label: str) -> str:
-    """필수 글자 — 비면 422 「<label>: 필수 항목입니다」 · NUL 은 s() 가 422."""
-    out = s(v, label)
-    if out is None:
-        raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-    return out
-
-
-def pk(v: str | int | None) -> int:
-    """경로의 키 — 숫자가 아니거나 bigint 를 넘으면 그런 대상이 없다(404)."""
-    t = str(v or "").strip()
-    if not t.isdigit() or int(t) > BIGINT_MAX or int(t) == 0:
-        raise http.not_found()
-    return int(t)
-
-
-def ref_id(v: str | None, label: str, *, required: bool = True) -> int | None:
-    """폼으로 고른 행의 키 — 사용자가 입력한 값이므로 틀리면 422 (경로의 키와 다르다)."""
-    t = s(v, label)
-    if t is None:
-        if required:
-            raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-        return None
-    if not t.isdigit() or int(t) > BIGINT_MAX:
-        raise bad(label, "목록에서 고른 값이 아닙니다")
-    return int(t)
-
-
-def qty(v: str | None, label: str, *, required: bool = True, positive: bool = True) -> Decimal | None:
-    t = s(v, label)
-    if t is None:
-        if required:
-            raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-        return None
-    try:
-        d = Decimal(t.replace(",", ""))
-    except InvalidOperation:
-        raise bad(label, "숫자여야 합니다") from None
-    if not d.is_finite():
-        raise bad(label, "숫자여야 합니다")
-    if positive and d <= 0:
-        raise bad(label, "0 보다 커야 합니다")
-    if abs(d) > QTY_MAX or d.as_tuple().exponent < -3:
-        raise bad(label, "정수 11자리 · 소수 3자리까지 입력할 수 있습니다")
-    return d
-
-
-def integer(v: str | None, label: str, *, required: bool = False, minimum: int | None = None) -> int | None:
-    t = s(v, label)
-    if t is None:
-        if required:
-            raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-        return None
-    if not t.lstrip("-").isdigit() or abs(int(t)) > 2_147_483_647:
-        raise bad(label, "정수여야 합니다")
-    n = int(t)
-    if minimum is not None and n < minimum:
-        raise bad(label, f"{minimum} 이상이어야 합니다")
-    return n
-
-
-def day(v: str | None, label: str, *, required: bool = True) -> date | None:
-    t = s(v, label)
-    if t is None:
-        if required:
-            raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-        return None
-    try:
-        return date.fromisoformat(t)
-    except ValueError:
-        raise bad(label, "날짜 형식(YYYY-MM-DD)이 아닙니다") from None
-
-
-def yn(v: str | None, label: str = "사용 여부") -> str:
-    t = s(v, label) or "Y"
-    if t not in ("Y", "N"):
-        raise bad(label, "Y 또는 N 이어야 합니다")
-    return t
-
-
-def choice(v: str | None, label: str, allowed: tuple[str, ...], *, required: bool = True) -> str | None:
-    t = s(v, label)
-    if t is None:
-        if required:
-            raise bad(label, "필수 항목입니다", f"필수 항목을 입력해 주세요 — {label}")
-        return None
-    if t not in allowed:
-        raise bad(label, f"{' · '.join(allowed)} 중 하나여야 합니다")
-    return t
-
-
-def kv_text(v: str | None, label: str) -> dict[str, str]:
-    """`항목=값` 한 줄에 하나 → dict. 양식을 받은 적이 없어 항목 이름을 정하지 않는다(사람이 적는 그대로)."""
-    out: dict[str, str] = {}
-    if v and "\x00" in v:
-        raise bad(label, NUL_REASON)
-    for n, raw in enumerate((v or "").splitlines(), 1):
-        line = raw.strip()
-        if not line:
-            continue
-        if "=" not in line:
-            raise bad(label, f"{n}번째 줄에 `=` 가 없습니다 — 한 줄에 `항목=값` 하나")
-        k, val = (p.strip() for p in line.split("=", 1))
-        if not k:
-            raise bad(label, f"{n}번째 줄의 항목 이름이 비었습니다")
-        if k in out:
-            raise bad(label, f"항목 `{k}` 이(가) 두 번 나옵니다")
-        out[k] = val
-    return out
-
-
-def kv_lines(d: dict | None) -> str:
-    return "\n".join(f"{k}={v}" for k, v in (d or {}).items())
-
-
-def exists_or_404(cur, table: str, id_: int, cols: str = "*") -> dict:
-    cur.execute(f"select {cols} from {table} where id = %s for update", (id_,))   # table 은 이 파일들의 상수뿐
-    row = cur.fetchone()
-    if row is None:
-        raise http.not_found()
-    return row
+# ── DB 조회·수정 헬퍼 ───────────────────────────────────────────────────
 
 
 def referencing(cur, table: str, id_: int) -> list[str]:
@@ -190,45 +51,6 @@ def remove_or_disable(cur, table: str, id_: int, user, *, extra_refs: list[str] 
         return "사용 중지"
     cur.execute(f"delete from {table} where id = %s", (id_,))
     return "삭제"
-
-
-def item_choice(cur, item_id: int | None, label: str = "제품", *, item_type: str | None = "제품",
-                allow_inactive_id: int | None = None) -> dict | None:
-    """폼에서 고른 품목 — 없으면 422 · 사용 중지 품목은 고를 수 없다(BAS-010). `allow_inactive_id` 는 원래 값 그대로 둘 때."""
-    if item_id is None:
-        return None
-    cur.execute("select id, item_code, item_name, item_type, use_yn from item where id = %s", (item_id,))
-    row = cur.fetchone()
-    if row is None:
-        raise bad(label, "없는 품목입니다")
-    if item_type and row["item_type"] != item_type:
-        raise bad(label, f"{item_type} 품목이 아닙니다 ({row['item_code']})")
-    if row["use_yn"] != "Y" and row["id"] != allow_inactive_id:
-        raise bad(label, f"사용 중지 품목은 고를 수 없습니다 ({row['item_code']})")
-    return row
-
-
-def items_for_select(item_type: str | None = "제품") -> list[dict]:
-    """선택 목록 — 사용 중인 품목만(사용 중지 품목은 고를 수 없다)."""
-    if item_type:
-        return conn.q("select id, item_code, item_name from item where use_yn = 'Y' and item_type = %s "
-                      "order by item_code", (item_type,))
-    return conn.q("select id, item_code, item_name, item_type from item where use_yn = 'Y' order by item_code")
-
-
-def edit_row(table: str, edit: str | None) -> dict | None:
-    """목록 화면의 `?edit=<id>` — 고칠 행. 숫자가 아니거나 없으면 404."""
-    if edit is None or edit == "":
-        return None
-    row = conn.q1(f"select * from {table} where id = %s", (pk(edit),))
-    if row is None:
-        raise http.not_found()
-    return row
-
-
-def like(v: str | None, label: str = "검색어") -> str | None:
-    t = s(v, label)
-    return None if t is None else "%" + t.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
 
 
 # ── BAS-010 품목 관리 ───────────────────────────────────────────────────

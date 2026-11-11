@@ -6,6 +6,7 @@
 {% import "col/_c.html" as c %}
 {% block help %}
 {{ ui.help_item("이 화면에서 볼 것", "각 대시보드의 핵심 수치만 한 화면에 모읍니다. 숫자만 보이고 해설 문장은 없습니다.") }}
+{{ ui.help_next("RPT-070", "수주 한 건 한 건의 진행 단계") }}
 {{ ui.help_item("일일 · 주간 · 월간", "일일 = 기준일 하루의 재고·창고 · 출하. 주간(기준일까지 7일) · 월간(기준일이 속한 달 1일부터)은 수주 · 생산 · 수금을 더합니다.") }}
 {{ ui.help_rule("숫자는 각 대시보드와 같은 계산입니다. 절 제목을 누르면 그 대시보드로 갑니다.") }}
 {{ ui.help_next("RPT-050", "출하 리포트") }}
@@ -37,18 +38,22 @@
     {{ d.executive_risks(data.executive.risks) }}
   </section>
   {{ d.process_flow(data.executive.flow) }}
-  <section class="cockpit-causes">
-    <article class="cockpit-card cockpit-card--wide" data-cause-chart="cumulative">
-      <header><span class="eyebrow">CUMULATIVE GAP</span><h2>수주 · 출하 · 수금 누계</h2></header>
+  <section class="cockpit-causes cockpit-causes--quad">
+    {% if progress %}<article class="cockpit-card" data-progress-donut>
+      <header><div><span class="eyebrow">ORDER PROGRESS</span><h2>수주별 진행현황</h2></div>{% if can_progress %}<a href="{{ nav.path_of('RPT-070') }}{% if form.customer %}?customer={{ form.customer }}{% endif %}">수주별로 보기 →</a>{% endif %}</header>
+      {{ d.progress_donut(progress) }}
+    </article>{% endif %}
+    <article class="cockpit-card" data-cause-chart="cumulative">
+      <header><div><span class="eyebrow">CUMULATIVE GAP</span><h2>수주 · 출하 · 수금 누계</h2></div></header>
       {{ ch.lines(data.executive.causes.cumulative, ["수주", "출하", "수금"], name="executive-cumulative", height=230) }}
     </article>
     <article class="cockpit-card" data-cause-chart="due_forecast">
-      <header><span class="eyebrow">NEXT 7 DAYS</span><h2>납기 위험 예측</h2></header>
+      <header><div><span class="eyebrow">NEXT 7 DAYS</span><h2>납기 위험 예측</h2></div></header>
       {{ ch.columns(data.executive.causes.due_forecast, 230, tone={}) }}
       {{ ch.data_table("executive-due", data.executive.causes.due_forecast, "납기일", "위험 건") }}
     </article>
     <article class="cockpit-card" data-cause-chart="quality_pareto">
-      <header><span class="eyebrow">QUALITY LOSS</span><h2>품질 불량 Pareto</h2></header>
+      <header><div><span class="eyebrow">QUALITY LOSS</span><h2>품질 불량 Pareto</h2></div></header>
       {{ ch.bars_h(data.executive.causes.quality_pareto, sort=true) }}
       {{ ch.data_table("executive-quality", data.executive.causes.quality_pareto, "불량 유형", "수량") }}
     </article>

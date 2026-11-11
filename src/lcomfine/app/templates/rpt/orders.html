@@ -15,7 +15,7 @@
 {{ f.notice(notice) }}
 {{ d.filters(form, customers, with_customer) }}
 {% if data %}
-{{ d.kpis(data.kpis, sparks={"requests": data.series.requests, "qty": data.series.qty}) }}
+{{ d.kpis(data.kpis, sparks={"requests": data.series.requests, "qty": data.series.qty}, lead=4) }}
 {% set top_s = [] %}{% for r in data.tables.top_customers %}{% set _ = top_s.append({"label": r.customer_name, "value": r.requests}) %}{% endfor %}
 {% call ch.grid() %}
 {{ d.chart_table("requests", "기간별 생산의뢰 건수", data.series.requests, "구간", "건수") }}
@@ -23,7 +23,7 @@
 {{ d.chart_table("top_customers_chart", "거래처 상위 (건수)", top_s, "거래처", "건수", 0, "hbar") }}
 {{ d.chart_table("due", "납기 분포", data.series.due, "납기 월", "건수", 0, "bar", sub="납기 월별 건수") }}
 {% endcall %}
-{{ d.table("not_started", "미착수 의뢰", [("request_no", "의뢰번호", none), ("request_date", "의뢰일", none), ("customer_name", "거래처", none), ("item_name", "제품", none), ("qty", "수량", 3), ("due_date", "납기", none), ("status", "상태", none)], data.tables.not_started, "미착수 의뢰 없음") }}
+{{ d.table("not_started", "미착수 의뢰", [("request_no", "의뢰번호", none), ("request_date", "의뢰일", none), ("customer_name", "거래처", none), ("item_name", "제품", none), ("qty", "수량", 3), ("due_date", "납기", none), ("status", "상태", none)], data.tables.not_started, "미착수 의뢰 없음", open=true) }}
 {{ d.table("top_customers", "거래처 상위", [("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("requests", "건수", 0), ("qty", "수량", 3)], data.tables.top_customers) }}
 {% endif %}
 {% endblock %}

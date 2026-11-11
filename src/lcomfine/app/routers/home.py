@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Callable
 
 from fastapi import APIRouter, Form, Request
@@ -15,8 +16,9 @@ from fastapi.responses import HTMLResponse
 
 from ...db import conn
 from .. import nav, notify, rbac, stats, templating
+from . import trk
 from ..util import audit, http, screen
-from .bas import bad, pk
+from ..util.forms import bad, pk
 
 router = APIRouter()
 
@@ -151,6 +153,97 @@ def due_soon() -> list[dict]:
                         from production_request r join customer c on c.id = r.customer_id join item i on i.id = r.item_id
                        where r.status <> '취소' and r.due_date <= current_date + 7 and {_SHIPPED} < r.qty
                        order by r.due_date, r.id limit 50""")
+
+
+def _progress_status(row: dict) -> str:
+    """홈 진행보드 상태 — 납기와 현재 단계만으로 판단한다(쓰기·추정 없음)."""
+    if row.get("remaining", 0) <= 0:
+        return "완료"
+    if row.get("d_day") is not None and row["d_day"] < 0:
+        return "지연"
+    if row.get("d_day") is not None and row["d_day"] <= 7:
+        return "주의"
+    if not row.get("current"):
+        return "대기"
+    return "정상"
+
+
+def _material_progress(rows: list[dict]) -> dict[int, dict]:
+    """수주별 원자재 불출 상태. 발주 데이터가 없으므로 불출된 경우만 완료로 인정한다."""
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return {}
+    issued = conn.q("""select w.request_id, sum(l.qty) as qty, max(h.issued_on) as issued_on
+                         from material_issue_line l
+                         join material_issue h on h.id = l.issue_id and h.canceled_at is null
+                         join work_order w on w.id = l.work_order_id
+                        where w.request_id = any(%s)
+                        group by w.request_id""", (ids,))
+    return {r["request_id"]: {"qty": r["qty"], "on": r["issued_on"]} for r in issued}
+
+
+#: 진행보드 상태 — 화면의 필터 · 도넛 · 정렬이 이 순서를 쓴다
+PROGRESS_STATUSES = ("지연", "주의", "정상", "대기", "완료")
+
+
+def home_progress(limit: int = 10, *, customer_id: int | None = None, status: str | None = None) -> dict:
+    """대시보드 수주 진행보드. 업무 테이블에는 쓰지 않고 현재 상태만 집계한다.
+    customer_id 는 모집단을 줄이고, status 는 요약 · 흐름은 그대로 둔 채 수주 목록만 거른다(D-532)."""
+    where, params = "r.status <> '취소'", {}
+    if customer_id is not None:
+        where, params = where + " and r.customer_id = %(cu)s", {"cu": customer_id}
+    rows = trk.progress(where, params, order="r.request_date desc, r.id desc", limit=500)
+    material = _material_progress(rows)
+    for row in rows:
+        mat = material.get(row["id"])
+        mat_done = bool(mat and mat["qty"] and mat["qty"] > 0)
+        row["material_qty"] = mat["qty"] if mat else None
+        row["material_on"] = mat["on"] if mat else None
+        row["material_state"] = "done" if mat_done else "pending"
+        row["board_status"] = _progress_status(row)
+        stages = [{"key": "request", "label": "수주", "state": "done", "qty": row["request_qty"], "on": row["request_on"]}]
+        stages.append({"key": "material", "label": "자재", "state": row["material_state"], "qty": row["material_qty"], "on": row["material_on"]})
+        for stage in row["stages"][1:]:
+            state = "done" if stage["reached"] else "pending"
+            stages.append({"key": stage["key"], "label": stage["label"], "state": state,
+                           "qty": stage["qty"], "on": stage["on"]})
+        if row.get("current") and row["remaining"] > 0:
+            for stage in stages:
+                if stage["label"] == row["current"]:
+                    stage["state"] = "active"
+        row["board_stages"] = stages
+
+    priority = {"지연": 0, "주의": 1, "정상": 2, "대기": 3, "완료": 4}
+    rows.sort(key=lambda r: (priority.get(r["board_status"], 9),
+                             -(r["request_date"].toordinal() if r.get("request_date") else 0),
+                             r["d_day"] if r["d_day"] is not None else 999999))
+    counts = {key: sum(1 for r in rows if r["board_status"] == key) for key in ("정상", "주의", "지연")}
+    counts["완료"] = sum(1 for r in rows if r["board_status"] == "완료")
+    counts["대기"] = sum(1 for r in rows if r["board_status"] == "대기")
+    counts["진행"] = len(rows) - counts["완료"]
+    flow = []
+    stage_defs = (("request", "수주", "RPT-010"), ("material", "자재 발주/입고", "MAT-010"),
+                  ("production", "생산", "RPT-020"), ("inspection", "검사", "RPT-030"),
+                  ("receipt", "제품 입고", "RPT-040"), ("shipment", "출하", "RPT-050"))
+    for key, label, screen_id in stage_defs:
+        if key == "material":
+            n = sum(1 for r in rows if r["material_state"] == "done")
+        else:
+            n = sum(1 for r in rows if any(s["key"] == key and s["reached"] for s in r["stages"]))
+        flow.append({"key": key, "label": label, "count": n,
+                     "status": "정상" if n else "미수집",
+                     "href": nav.path_of(screen_id) if nav.by_id(screen_id) else nav.path_of("TRK-010")})
+
+    matched = [r for r in rows if r["board_status"] == status] if status else rows
+    visible = matched[:max(1, limit)]
+    for row in visible:
+        row["href"] = f"{nav.path_of('TRK-010')}?request={row['request_no']}"
+    # 실제 0 건은 0 으로 둔다(미수집이 아니다) — 도넛은 0 을 그리지 않고 범례에만 남긴다 · 합계 = 전체 수주
+    series = [{"label": k, "value": counts[k]} for k in PROGRESS_STATUSES]
+    return {"summary": {"total": len(rows), **counts, "asof": date.today(),
+                         "data_status": "MES 실시간 조회", "sources": "수주·생산·검사·재고·출하"},
+            "status_series": series, "status": status or "", "matched": len(matched),
+            "flow": flow, "orders": visible, "truncated": len(matched) > len(visible)}
 
 
 @router.get(nav.path_of("HOME-010"), response_class=HTMLResponse)

@@ -22,7 +22,7 @@
 
 {# KPI 줄 — kpis: [{key, label, value, digits, unit, text, note}] · sparks: {key: series}(선택 · 스파크라인) · 단위 % 는 진행 막대를 단다 #}
 {#   text 가 「미확정 (D-nn)」 이 아닌 글자(기준일 날짜 · 미수집)면 칩 대신 글자 그대로 — 값 글자(.kpi__value)는 같다 #}
-{% macro kpis(items, sparks={}) -%}
+{% macro _kpi_row(items, sparks={}) -%}
 <div class="kpis rpt-kpis">
   {% for k in items %}
   <div class="rpt-kpi-unit" data-kpi-unit="{{ k.key }}">
@@ -42,6 +42,14 @@
 </div>
 {%- endmacro %}
 
+{# lead=n 이면 앞의 n 개만 바로 보이고 나머지는 접는다(D-532 — 숫자는 그대로 화면에 있다) #}
+{% macro kpis(items, sparks={}, lead=none) -%}
+{% if lead and (items | length) > lead %}
+{{ _kpi_row(items[:lead], sparks) }}
+<details class="kpi-more"><summary>지표 {{ (items | length) - lead }}개 더 보기</summary>{{ _kpi_row(items[lead:], sparks) }}</details>
+{% else %}{{ _kpi_row(items, sparks) }}{% endif %}
+{%- endmacro %}
+
 {# 차트 + 같은 숫자의 접힌 표 — series: [{label, value}] · kind: bar | line | hbar | donut | stack (`_charts.html` chart_panel)
    digits 는 받되 쓰지 않는다(SVG 제목 · 표 모두 `num` 소수 0 — 차트와 표가 같은 숫자) #}
 {% macro chart_table(name, title, series, label_hdr, value_hdr, digits=0, kind="bar", sub="", wide=false, sort=false) -%}
@@ -49,9 +57,10 @@
 {%- endmacro %}
 
 {# 표 — cols: [(key, label, digits | none)] · digits none = 글자, 수 = 숫자 열 #}
-{% macro table(name, title, cols, rows, empty_text="미수집") -%}
-<section class="panel panel--grid" data-table="{{ name }}">
-  {% if title %}<h2>{{ title }}</h2>{% endif %}
+{#   접힌 상세 표(D-532) — 그래프가 먼저다. open=true 는 바로 조치할 목록(미착수 · 불합격)에만 쓴다 #}
+{% macro table(name, title, cols, rows, empty_text="미수집", open=false) -%}
+<details class="panel panel--grid panel--fold" data-table="{{ name }}"{% if open and rows %} open{% endif %}>
+  <summary><h2>{{ title or "상세 표" }}</h2><small class="muted">{{ rows | length }}건</small></summary>
   {% if not rows %}
   {{ ui.empty(empty_text) }}
   {% else %}
@@ -69,7 +78,13 @@
     </tbody>
   </table></div>
   {% endif %}
-</section>
+</details>
+{%- endmacro %}
+
+{# 수주 진행 상태 구성 — 도넛 + 범례(상태색은 상태에만). RPT-080 요약 카드와 RPT-070 보드가 같이 쓴다 #}
+{% set PROGRESS_TONE = {"지연": "bad", "주의": "warn", "정상": "ok", "대기": "muted"} %}
+{% macro progress_donut(progress) -%}
+{% if progress.summary.total %}{{ ch.donut(progress.status_series, total_label="전체 수주", tone=PROGRESS_TONE) }}{% else %}{{ ui.empty("진행 중인 수주가 없습니다") }}{% endif %}
 {%- endmacro %}
 
 {# 화면 머리(대시보드) — 제목 한 줄 + 오른쪽에 기간 · 구간(· ERP 업로드 기준일 칩). 설명 문단 없음(설명은 {% block help %})

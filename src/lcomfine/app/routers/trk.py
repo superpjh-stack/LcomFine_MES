@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse
 
 from ...db import conn
 from .. import nav, rbac, stats, templating
-from .bas import bad, choice, like, ref_id, s
+from ..util.forms import bad, choice, like, ref_id, s
 
 router = APIRouter()
 

@@ -68,7 +68,7 @@
 | RPT-040 | 재고·창고 리포트 | 리포트 | `/rpt/inventory` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | RPT-050 | 출하 리포트 | 리포트 | `/rpt/shipment` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | RPT-060 | 수금 리포트 | 리포트 | `/rpt/collection` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
-| RPT-070 | 주문 흐름 리포트 | 리포트 | `/rpt/order-flow` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
+| RPT-070 | 수주별 진행현황 | 리포트 | `/rpt/order-flow` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | RPT-080 | 경영 요약 | 리포트 | `/rpt/summary` | RPT 대시보드 | ⑥ 추적·분석 | 개발3 |
 | MGT-010 | 경영목표 | 목록·등록 | `/mgt/targets` | MGT 경영관리 | ⑥ 추적·분석 | 아키텍트 |
 | MGT-020 | 경보기준 | 목록·등록 | `/mgt/thresholds` | MGT 경영관리 | ⑥ 추적·분석 | 아키텍트 |

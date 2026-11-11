@@ -16,7 +16,7 @@
 {{ f.notice(notice) }}
 {{ d.filters(form, customers, with_customer) }}
 {% if data %}
-{{ d.kpis(data.kpis, sparks={"material_receipt_qty": data.series.receipt_qty, "issue_qty": data.series.issue_qty}) }}
+{{ d.kpis(data.kpis, sparks={"material_receipt_qty": data.series.receipt_qty, "issue_qty": data.series.issue_qty}, lead=4) }}
 {% set mv_s = [] %}{% for r in data.tables.top_moves %}{% set _ = mv_s.append({"label": r.lot_no, "value": r.qty}) %}{% endfor %}
 {% set ls_s = [] %}{% for r in data.tables.long_stay %}{% set _ = ls_s.append({"label": r.lot_no, "value": r.days}) %}{% endfor %}
 {% set it_s = [] %}{% for r in data.tables.receipts_by_item[:10] %}{% set _ = it_s.append({"label": r.item_name, "value": r.qty}) %}{% endfor %}

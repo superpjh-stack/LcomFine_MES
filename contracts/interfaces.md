@@ -127,6 +127,57 @@ screen.NOT_COLLECTED == "미수집" · screen.undecided("D-509") == "미확정 (
 screen.txt(v) · screen.num(v, digits) · screen.dt(v)                 # 템플릿 필터로도 있다: {{ v|num(1) }}
 ```
 
+### 6.1 공용 입력 검증 — `app.util.forms` (2026-10-31 분리)
+
+DB 조회가 없는 입력 검증은 업무 라우터 대신 이 모듈에서 가져온다.
+
+| 기존 계열 | 함수 | 보존하는 동작 |
+|---|---|---|
+| BAS | `s`, `bad`, `need`, `pk`, `ref_id`, `qty`, `integer`, `day`, `yn`, `choice`, `kv_text`, `kv_lines`, `like` | 기존 필수값·범위·422/404·오류 문구 |
+| INV | `_bad`, `text_in`, `num_in`, `int_in`, `date_in`, `id_in`, `path_id`, `qs` | 기존 필수값·길이·범위·422/404·오류 문구 |
+
+- 함수 인자와 반환값은 기존과 같다. `bas`·`inv`의 기존 이름도 import 별칭으로 유지한다.
+- `qty` 상한은 `BAS_QTY_MAX=99999999999.999`, `num_in` 상한은 `INV_QTY_MAX=99999999999`다. 이번 분리는 두 정책을 통합하지 않는다.
+- `pk("0")`는 404지만 `path_id("0")`는 0을 반환한다. `day`와 `date_in`의 필수값 기본 설정도 그대로 유지한다.
+- DB를 조회하거나 잠그는 검증은 `app.lookups` 등 §6.2의 조회 모듈을 사용한다. 트랜잭션·SQL·권한 경계는 변경하지 않는다.
+- 검증 근거: `tests/test_form_validation.py`의 경계값·오류 계약 테스트.
+
+### 6.2 공용 DB 조회와 출하 잠금 — `app.lookups` · `app.shipment_queries` (2026-10-31 분리)
+
+업무 라우터끼리 공통 조회 함수를 가져오는 의존성을 줄이기 위해 기존 함수를 분리했다.
+함수 인자·반환값·SQL·오류 문구는 그대로이며, 두 모듈은 업무 라우터를 import하지 않는다.
+
+| 모듈 | 함수 | 연결·잠금 계약 |
+|---|---|---|
+| `lookups` | `exists_or_404`, `item_choice` | 받은 커서 사용. `exists_or_404`의 `FOR UPDATE` 유지 |
+| `lookups` | `items_for_select`, `edit_row`, `locations`, `location_in`, `open_work_orders`, `work_order_in`, `equipments`, `lot_by_no` | 기존 `conn.q/q1` 사용. 필수값·사용 중지·취소·완료 거부 정책 유지 |
+| `shipment_queries` | `_lock_stock`, `_lock_order`, `_request`, `_customer` | 받은 커서 사용. 재고 ID 중복 제거·오름차순 잠금 유지 |
+| `shipment_queries` | `_judgements` | 커서가 있으면 그 트랜잭션에서 조회, 없으면 `conn.q`. 가장 가까운 부모 LOT의 최신 판정 조회 유지 |
+| `shipment_queries` | `_customers`, `_available_stock`, `_order_lines` | 기존 출하 조회 SQL·정렬·수정 중 할당 포함 조건 유지 |
+
+- 두 모듈은 INSERT/UPDATE/DELETE, 트랜잭션 시작·커밋, 알림 발생을 수행하지 않는다.
+- 쓰기·할당량 검증·트랜잭션 경계는 기존 라우터가 담당한다. 품질 판정·재판정 쓰기도 기존 QC 라우터에 유지한다.
+- BAS의 참조 확인·삭제/사용 중지 함수는 쓰기 경계 보존을 위해 이동하지 않는다.
+- 기존 `bas`·`inv`·`shp` 함수 이름은 호환 import로 유지한다. 신규 사용처는 조회 모듈에서 직접 가져온다.
+- 검증 근거: `tests/test_lookup_contracts.py`와 기존 업무·동시 할당·LOT·품질 회귀 테스트.
+
+### 6.3 경영 계산·대시보드 화면 모델 (2026-10-31 분리)
+
+| 모듈 | 역할 | 유지하는 호출·계약 |
+|---|---|---|
+| `management_rules` | DB 없는 목표 방향 비교·경보 임계치 비교 | `compare`, `_triggered`; 기존 `management.compare` 등은 호환 import 유지 |
+| `management` | 목표·임계치 조회, 위험 평가, 목표 버전·위험·조치 저장 | 기존 커서·잠금·쓰기 경계 그대로 |
+| `dashboard_models` | 구간·시리즈·KPI 구성, 목표 종합 달성률, 경영 요약 화면 데이터·전기 증감 | `target_attainment(rows, actuals)`, `build_executive(data, attainment, money, risks, due_forecast)`, `enrich_executive(data, previous=None)` |
+| `dashboard` | 업무 집계, 목표·재무·위험·납기 조회와 모델 호출 | 기존 8개 집계 함수·`summary`·`enrich`·`enrich_executive` 호출 유지 |
+| `routers/rpt` · 템플릿 | 요청 검증·권한·렌더링 | 화면·경로·권한·템플릿 변경 없음 |
+
+- 계산 모듈은 DB·업무 라우터를 import하지 않고 SQL·트랜잭션·렌더링을 수행하지 않는다.
+- 0/미수집, 목표 없음/재무 연계 전, 반올림, 누적값, KPI 키·표시 순서·링크를 보존한다.
+- 낮을수록 좋은 지표의 개별 판정과 종합 달성률은 기존 계산 규칙이 다르므로 임의로 통합하지 않는다.
+- `enrich_executive`는 기존처럼 입력 객체에 전기·증감을 붙이고 같은 객체를 반환한다.
+- 읽기 전용 검사(`tools/check_data.py`)에 새 두 모듈을 포함한다. 산식 근거는 D-531과 기존 RPT 계약을 따른다.
+- 검증: `tests/test_dashboard_model_contracts.py`, 기존 MGT·RPT·Cockpit 회귀 테스트.
+
 ## 7. 채번 — `app.numbering` (D-509)
 
 ```python

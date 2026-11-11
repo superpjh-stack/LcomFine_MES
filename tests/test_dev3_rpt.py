@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from lcomfine.app import dashboard, erp_upload
+from lcomfine.app.routers.home import PROGRESS_STATUSES, home_progress
 from lcomfine.db import conn
 from test_dev3_world import World, login
 
@@ -390,6 +391,26 @@ def test_order_flow_report(c, w):
     titles, cells = _series_numbers(r.text, "avg_days")
     assert titles == cells and "10" in cells
     assert c["pr"].get("/rpt/order-flow").status_code == 403
+    # D-532 — 화면 위쪽은 수주 진행보드: 상태 구성 · 단계별 도달 · 수주별 트랙 · 상태 필터. 단계 소요일 분석은 접힌 절(기간을 내면 펼침)
+    assert "수주별 진행현황" in r.text and "data-order-progress" in r.text and "data-progress-donut" in r.text and "data-progress-stages" in r.text
+    assert r.text.index("data-order-progress") < r.text.index("data-lead-time") and "data-lead-time open" in r.text
+    # 상태를 안 내면 「지연」 부터 연다 — 목록은 지연뿐이고 지연 단추가 선택돼 있다
+    first = c["ex"].get("/rpt/order-flow", params={"customer": str(w.customer_id)})
+    assert first.status_code == 200 and "data-lead-time open" not in first.text
+    assert 'aria-current="true" data-status-filter="지연"' in first.text
+    assert all('data-order-status="지연"' in seg.split(">", 1)[0] for seg in first.text.split('class="home-order ')[1:])
+    plain = c["ex"].get("/rpt/order-flow", params={"customer": str(w.customer_id), "status": "전체"})
+    assert plain.status_code == 200 and 'aria-current="true" data-status-filter="전체"' in plain.text
+    assert f'data-order="{w.request_no}"' in plain.text and f'data-order="{w.req2_no}"' in plain.text
+    board = {o["request_no"]: o["board_status"] for o in home_progress(limit=500, customer_id=w.customer_id)["orders"]}
+    st1 = board[w.request_no]
+    only = c["ex"].get("/rpt/order-flow", params={"customer": str(w.customer_id), "status": st1})
+    assert only.status_code == 200 and f'data-order="{w.request_no}"' in only.text
+    assert all(f'data-order-status="{st1}"' in seg.split(">", 1)[0] for seg in only.text.split('class="home-order ')[1:])
+    other = next(x for x in PROGRESS_STATUSES if x not in board.values())
+    assert 'data-order="' not in c["ex"].get("/rpt/order-flow", params={"customer": str(w.customer_id), "status": other}).text
+    bad = c["ex"].get("/rpt/order-flow", params={"status": "아무거나"})
+    assert bad.status_code == 422 and bad.json()["fields"][0]["name"] == "상태"
     assert _counts() == before
 
 
@@ -401,7 +422,10 @@ def test_summary_tabs(c, w):
     w.ship(date(Y, M, 15), lot, 10, request_id=w.request_id)
     before = _counts()
     daily = c["ex"].get("/rpt/summary", params={"tab": "daily", "asof": date(Y, M, 15).isoformat()})
-    assert daily.status_code == 200 and 'data-section="RPT-040"' in daily.text and 'data-section="RPT-050"' in daily.text
+    # D-532 — 요약에는 상태 구성 카드만(수주 목록 · 자동 갱신 보드는 RPT-070) · 카드가 RPT-070 으로 잇는다
+    assert daily.status_code == 200 and "수주별 진행현황" in daily.text and "data-progress-donut" in daily.text
+    assert "data-order-progress" not in daily.text and "data-order=" not in daily.text and 'href="/rpt/order-flow"' in daily.text
+    assert 'data-section="RPT-040"' in daily.text and 'data-section="RPT-050"' in daily.text
     assert 'data-section="RPT-010"' not in daily.text and "일일" in daily.text
     assert "10.000" in _kpi_html(daily.text, "qty")
     monthly = c["st"].get("/rpt/summary", params={"tab": "monthly", "asof": T.isoformat(), "customer": str(w.customer_id)})

@@ -13,6 +13,7 @@
 할당의 동시성: 할당할 `lot_stock` 행을 **`select … for update` 로 잠근 뒤** 가용(qty − allocated_qty)을 다시 읽어 판정한다 —
 같은 LOT 에 두 지시가 동시에 들어오면 뒤의 것은 앞의 것이 커밋할 때까지 기다렸다가 줄어든 가용으로 판정받는다(422).
 잠금 순서는 lot_stock.id 오름차순(교착 방지).
+조회·행 잠금은 `app.shipment_queries`에서 가져온다. 쓰기·할당 판정·트랜잭션은 이 라우터가 담당한다.
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, notify, numbering, rbac, stats, templating
 from ..util import audit, http
+from ..shipment_queries import (
+    _available_stock, _customer, _customers, _judgements, _lock_order, _lock_stock, _order_lines, _request,
+)
 
 router = APIRouter()
 
@@ -137,23 +141,6 @@ def _lines(stock_ids: list[str], qtys: list[str], *, allow_empty: bool = False) 
 
 # ── 재고 잠금 · 할당 판정 ────────────────────────────────────────────────────
 
-_LOCK_SQL = """
-select s.id, s.lot_kind, s.lot_id, s.location_id, s.qty, s.allocated_qty, s.status,
-       p.lot_no, p.item_id, i.item_code, i.item_name, i.use_yn, l.location_code
-  from lot_stock s
-  left join product_lot p on s.lot_kind = '제품' and p.id = s.lot_id
-  left join item i on i.id = p.item_id
-  left join location l on l.id = s.location_id
- where s.id = any(%s)
- order by s.id
-   for update of s"""
-
-
-def _lock_stock(cur, ids: list[int]) -> dict[int, dict]:
-    """재고 행을 id 오름차순으로 잠그고(`for update`) 잠근 뒤의 값을 돌려준다."""
-    cur.execute(_LOCK_SQL, (sorted(set(ids)),))
-    return {r["id"]: dict(r) for r in cur.fetchall()}
-
 
 def _check_allocation(stock: dict[int, dict], lines: list[tuple[int, Decimal]]) -> None:
     """잠근 재고 값(이 지시의 이전 할당을 이미 뺀 값)으로 판정한다 — 없는 LOT · 제품 아님 · 가용 아님 · 사용 중지 · 가용 초과는 422."""
@@ -184,61 +171,7 @@ def _ordered_link(shipment_no: str) -> str:
     return f"{P_CONFIRM}?no={shipment_no}"
 
 
-def _request(cur, request_no: str | None) -> dict | None:
-    if not request_no:
-        return None
-    cur.execute("""select q.id, q.request_no, q.customer_id, q.item_id, q.qty, q.due_date, q.status
-                     from production_request q where q.request_no = %s""", (request_no,))
-    req = cur.fetchone()
-    if req is None:   # 사용자가 입력한 번호 — 422 (api-contract §1)
-        raise http.validation_error("없는 생산의뢰 번호입니다", fields=[{"name": "생산의뢰 번호", "reason": request_no}])
-    if req["status"] == "취소":
-        raise http.validation_error("취소된 생산의뢰입니다", fields=[{"name": "생산의뢰 번호", "reason": request_no}])
-    return req
-
-
-def _customer(cur, customer_id: int | None) -> dict:
-    if customer_id is None:
-        raise http.validation_error("거래처를 골라 주세요", fields=[{"name": "거래처", "reason": "필수 항목입니다"}])
-    cur.execute("select id, customer_code, use_yn from customer where id = %s", (customer_id,))
-    c = cur.fetchone()
-    if c is None:
-        raise http.validation_error("없는 거래처입니다", fields=[{"name": "거래처", "reason": str(customer_id)}])
-    return c
-
-
-def _lock_order(cur, oid: int) -> dict:
-    cur.execute("select * from shipment_order where id = %s for update", (oid,))
-    o = cur.fetchone()
-    if o is None:
-        raise http.not_found()
-    return o
-
-
 # ── 판정 (D-515: LOT 의 판정 = 그 LOT 의 가장 최근 차수 · 분할 LOT 는 판정이 있는 가장 가까운 원 LOT) ───────
-
-_JUDGE_SQL = """
-with recursive up as (
-    select p.id as start_id, p.id, p.parent_lot_id, 0 as depth from product_lot p where p.id = any(%s)
-    union all
-    select up.start_id, p.id, p.parent_lot_id, up.depth + 1
-      from up join product_lot p on p.id = up.parent_lot_id
-)
-select distinct on (up.start_id) up.start_id as lot_id, q.result, q.seq, q.inspected_at
-  from up join product_inspection q on q.product_lot_id = up.id
- order by up.start_id, up.depth, q.seq desc"""
-
-
-def _judgements(lot_ids: list[int], cur=None) -> dict[int, dict]:
-    """{제품 LOT id: 현재 판정 행}. 판정이 없는 LOT 는 빠진다(= 미판정)."""
-    if not lot_ids:
-        return {}
-    if cur is not None:
-        cur.execute(_JUDGE_SQL, (list(set(lot_ids)),))
-        rows = cur.fetchall()
-    else:
-        rows = conn.q(_JUDGE_SQL, (list(set(lot_ids)),))
-    return {r["lot_id"]: dict(r) for r in rows}
 
 
 def _judge_label(j: dict | None) -> str:
@@ -248,44 +181,6 @@ def _judge_label(j: dict | None) -> str:
 
 
 # ── 화면 공용 조회 ──────────────────────────────────────────────────────────
-
-def _customers() -> list[dict]:
-    return conn.q("select id, customer_code, customer_name, use_yn from customer order by customer_code")
-
-
-def _available_stock(item_id: int | None = None, include_ids: list[int] | None = None) -> list[dict]:
-    """할당할 수 있는 제품 재고 — 가용 · 남은 가용 > 0 · 사용 중인 품목 (+ 수정 중인 지시가 이미 잡은 행)."""
-    return conn.q(
-        """select s.id, p.lot_no, i.item_code, i.item_name, l.location_code, s.qty, s.allocated_qty,
-                  s.qty - s.allocated_qty as available, s.status
-             from lot_stock s
-             join product_lot p on s.lot_kind = '제품' and p.id = s.lot_id
-             join item i on i.id = p.item_id
-             join location l on l.id = s.location_id
-            where (s.status = '가용' and s.qty - s.allocated_qty > 0 and i.use_yn = 'Y'
-                   and (%(item)s::bigint is null or p.item_id = %(item)s::bigint))
-               or s.id = any(%(inc)s::bigint[])
-            order by p.lot_no, l.location_code""",
-        {"item": item_id, "inc": include_ids or []})
-
-
-def _order_lines(order_ids: list[int]) -> dict[int, list[dict]]:
-    if not order_ids:
-        return {}
-    rows = conn.q(
-        """select l.shipment_order_id, l.id, l.product_lot_id, l.location_id, l.qty, p.lot_no, i.item_code, i.item_name,
-                  loc.location_code, s.id as stock_id, s.status as stock_status
-             from shipment_line l
-             join product_lot p on p.id = l.product_lot_id
-             join item i on i.id = p.item_id
-             join location loc on loc.id = l.location_id
-             left join lot_stock s on s.lot_kind = '제품' and s.lot_id = l.product_lot_id and s.location_id = l.location_id
-            where l.shipment_order_id = any(%s)
-            order by l.id""", (order_ids,))
-    out: dict[int, list[dict]] = {}
-    for r in rows:
-        out.setdefault(r["shipment_order_id"], []).append(r)
-    return out
 
 
 def _bad_request_screen(request: Request, template: str, ctx: dict, screen_id: str, exc) -> HTMLResponse:

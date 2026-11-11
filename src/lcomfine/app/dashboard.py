@@ -30,6 +30,10 @@ from decimal import Decimal
 
 from ..db import conn
 from . import financial, stats
+from .dashboard_models import (
+    DAY_BUCKET_MAX_DAYS, _avg_days, _base, _bucket, _kpi, _labels, _n, _series,
+    build_executive, enrich_executive, target_attainment,
+)
 
 #: 산식이 정해지지 않은 것 (decisions.md)
 LOSS_RATE_DECISION = stats.LOSS_RATE_DECISION          # D-519 — 생산 · 검사 로스율
@@ -38,8 +42,6 @@ UNDECIDED_LOSS = f"미확정 ({LOSS_RATE_DECISION})"
 UNDECIDED_BOTTLENECK = f"미확정 ({BOTTLENECK_DECISION})"
 #: 상위 N (거래처 상위 · 재고 변동 상위 · 장기 체류) — 가설 D-805
 TOP_N = 10
-#: 기간이 31일 이하면 일 단위, 넘으면 월 단위 구간 (가설 D-805)
-DAY_BUCKET_MAX_DAYS = 31
 #: 주문 흐름의 단계 (앞 단계 → 뒤 단계) — 정본 RPT-070 「의뢰 → 지시 → 생산 완료 → 제품 입고 → 출하」
 FLOW_STAGES: tuple[tuple[str, str, str], ...] = (
     ("의뢰 → 지시", "request_date", "ordered_on"),
@@ -55,52 +57,6 @@ FLOW_STAGES: tuple[tuple[str, str, str], ...] = (
 def period_bounds(period) -> tuple[date, date]:
     """`"YYYY-MM"` 또는 `(시작일, 종료일)`(양끝 포함) → (시작일, 종료일). 그 밖 ValueError (`stats.period_bounds` 와 같다)."""
     return stats.period_bounds(period)
-
-
-def _bucket(f: date, t: date) -> tuple[str, str]:
-    """(구간 종류, to_char 형식). 31일 이하 = 일 · 그 밖 = 월 (D-805)."""
-    return ("day", "YYYY-MM-DD") if (t - f).days < DAY_BUCKET_MAX_DAYS else ("month", "YYYY-MM")
-
-
-def _labels(f: date, t: date, bucket: str) -> list[str]:
-    out: list[str] = []
-    if bucket == "day":
-        d = f
-        while d <= t:
-            out.append(d.isoformat())
-            d += timedelta(days=1)
-        return out
-    y, m = f.year, f.month
-    while date(y, m, 1) <= t:
-        out.append(f"{y:04d}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
-
-
-def _series(labels: list[str], rows: list[dict], key: str, value: str) -> list[dict]:
-    """구간 라벨 전부에 값을 붙인다 — 행이 없는 구간은 None(미수집 · 0 으로 지어내지 않는다)."""
-    got = {r[key]: r[value] for r in rows}
-    return [{"label": lb, "value": got.get(lb)} for lb in labels]
-
-
-def _kpi(key: str, label: str, value, *, digits: int = 0, unit: str = "", text: str | None = None, note: str = "") -> dict:
-    return {"key": key, "label": label, "value": value, "digits": digits, "unit": unit, "text": text, "note": note}
-
-
-def _n(v):
-    """0 · None → None(미수집). 그 밖 그대로."""
-    return None if v is None or v == 0 else v
-
-
-def _avg_days(vals: list[int]) -> Decimal | None:
-    if not vals:
-        return None
-    return (Decimal(sum(vals)) / Decimal(len(vals))).quantize(Decimal("0.1"))
-
-
-def _base(f: date, t: date, bucket: str, customer_id: int | None) -> dict:
-    return {"kpis": [], "series": {}, "tables": {}, "asof": None, "period": (f, t), "bucket": bucket,
-            "customer_id": customer_id, "notes": []}
 
 
 def enrich(data: dict, metric_keys: dict[str, str], previous: dict | None = None) -> dict:
@@ -131,18 +87,6 @@ def enrich(data: dict, metric_keys: dict[str, str], previous: dict | None = None
     return data
 
 
-def enrich_executive(data: dict, previous: dict | None = None) -> dict:
-    """Cockpit Hero KPI에 전기·증감을 붙인다. 원 데이터와 재무 가용 상태는 바꾸지 않는다."""
-    current = data.get("executive", {}).get("hero_kpis", [])
-    before = {k["key"]: k for k in (previous or {}).get("executive", {}).get("hero_kpis", [])}
-    for kpi in current:
-        old = before.get(kpi["key"], {}).get("value")
-        value = kpi.get("value")
-        kpi["previous"] = old
-        kpi["delta"] = value - old if value is not None and old is not None else None
-    return data
-
-
 def _target_attainment(f: date, t: date, actuals: dict[str, Decimal | None]) -> dict:
     """전사 사용 목표 중 달성률을 계산할 수 있는 지표만 평균한다."""
     rows = conn.q(
@@ -151,28 +95,7 @@ def _target_attainment(f: date, t: date, actuals: dict[str, Decimal | None]) -> 
              join lateral(select * from management_target_version where target_id=t.id order by version_no desc limit 1)v on true
             where t.status='사용' and t.scope_kind='company' and t.period_from<=%s and t.period_to>=%s
             order by t.metric_key,t.period_from desc,t.id desc""", (t, f))
-    seen: set[str] = set()
-    contributors = []
-    for row in rows:
-        key = row["metric_key"]
-        if key in seen or actuals.get(key) is None:
-            continue
-        seen.add(key)
-        actual = actuals[key]
-        target = row["target_value"]
-        attainment = None
-        if row["direction"] == "높을수록 좋음" and target not in (None, 0):
-            attainment = actual / target * Decimal("100")
-        elif row["direction"] == "낮을수록 좋음" and actual not in (None, 0):
-            attainment = target / actual * Decimal("100")
-        elif row["direction"] == "범위 내 정상" and row["range_min"] is not None and row["range_max"] is not None:
-            attainment = Decimal("100") if row["range_min"] <= actual <= row["range_max"] else Decimal("0")
-        if attainment is not None:
-            contributors.append({"key": key, "label": row["metric_name"], "value": actual, "target": target,
-                                 "attainment": attainment.quantize(Decimal("0.1"))})
-    value = None if not contributors else (sum((c["attainment"] for c in contributors), Decimal(0)) /
-                                            Decimal(len(contributors))).quantize(Decimal("0.1"))
-    return {"value": value, "available": bool(contributors), "contributors": contributors}
+    return target_attainment(rows, actuals)
 
 
 def _due_forecast(t: date, customer_id: int | None) -> list[dict]:
@@ -191,91 +114,30 @@ def _due_forecast(t: date, customer_id: int | None) -> list[dict]:
              "total": got.get(t + timedelta(days=n), {}).get("requests")} for n in range(7)]
 
 
-def _executive_model(f: date, t: date, customer_id: int | None, data: dict[str, dict]) -> dict:
-    def value(screen: str, key: str):
-        return next((k["value"] for k in data[screen]["kpis"] if k["key"] == key), None)
-
-    order_qty = value("RPT-010", "qty")
-    production_orders = value("RPT-020", "work_orders")
-    order_count = value("RPT-010", "requests")
-    queue_count = value("RPT-010", "not_started")
-    inspections = value("RPT-030", "judgements")
-    finished = value("RPT-040", "product_receipts")
-    shipments = value("RPT-050", "shipments")
-    collected = value("RPT-060", "collected")
-    actuals = {"orders.qty": order_qty, "production.utilization": value("RPT-020", "utilization"),
-               "shipment.qty": value("RPT-050", "qty"), "shipment.on_time": value("RPT-050", "due_rate"),
-               "collection.amount": collected}
-    attainment = _target_attainment(f, t, actuals)
-    money = financial.totals(f, t, customer_id)
-    order_amount, shipment_amount, actual_cost = money.get("order_amount"), money.get("shipment_amount"), money.get("actual_cost")
-    profit = shipment_amount - actual_cost if shipment_amount is not None and actual_cost is not None else None
-
-    hero = [
-        {**_kpi("overall_attainment", "목표 종합 달성률", attainment["value"], digits=1, unit="%"),
-         "availability": "수집" if attainment["available"] else "목표 없음",
-         "status": "정상" if attainment["value"] is not None and attainment["value"] >= 100 else ("주의" if attainment["value"] is not None else "목표 없음")},
-        {**_kpi("order_amount", "수주 매출", order_amount, unit="원"), "availability": "수집" if order_amount is not None else "연계 전", "status": "연계 전" if order_amount is None else "정상"},
-        {**_kpi("shipment_amount", "출하 매출", shipment_amount, unit="원"), "availability": "수집" if shipment_amount is not None else "연계 전", "status": "연계 전" if shipment_amount is None else "정상"},
-        {**_kpi("profit", "예상 이익", profit, unit="원"), "availability": "수집" if profit is not None else "연계 전", "status": "연계 전" if profit is None else ("정상" if profit >= 0 else "위험")},
-    ]
-
-    risks = conn.q(
+def _executive_risks() -> list[dict]:
+    """미해결 위험 상위 5건을 기존 정렬로 읽는다."""
+    return conn.q(
         """select i.id,i.issue_key,i.severity,i.title,i.observed_value,i.source_screen,i.owner_role,i.status,i.last_seen_at,
                   min(a.due_date) filter(where a.status not in ('완료','취소')) as due_date
              from management_issue i left join management_action a on a.issue_id=i.id
             where i.status<>'해결' group by i.id order by case i.severity when '위험' then 1 else 2 end,i.last_seen_at desc limit 5""")
-    risk_by_screen: dict[str, int] = {}
-    for r in risks:
-        risk_by_screen[r["source_screen"]] = risk_by_screen.get(r["source_screen"], 0) + 1
 
-    flow_specs = [
-        ("orders", "수주", order_count, order_qty, "RPT-010", "/rpt/orders"),
-        ("production_queue", "생산대기", queue_count, None, "RPT-010", "/rpt/orders"),
-        ("production", "생산", production_orders, value("RPT-020", "good_qty"), "RPT-020", "/rpt/production"),
-        ("inspection", "검사", inspections, value("RPT-030", "inspected_qty"), "RPT-030", "/rpt/quality"),
-        ("finished_stock", "제품재고", finished, value("RPT-040", "product_receipt_qty"), "RPT-040", "/rpt/inventory"),
-        ("shipment", "출하", shipments, value("RPT-050", "qty"), "RPT-050", "/rpt/shipment"),
-        ("collection", "수금", collected, None, "RPT-060", "/rpt/collection"),
-    ]
-    dwell_map = {s["stage"]: s["avg_days"] for s in data["RPT-070"]["tables"].get("stages", [])}
-    dwell_keys = [None, "의뢰 → 지시", "지시 → 생산 완료", None, "생산 완료 → 제품 입고", "제품 입고 → 출하", None]
-    conversion_values = [
-        None,
-        None,
-        (Decimal(value("RPT-020", "good_qty")) / Decimal(order_qty) * 100).quantize(Decimal("0.1")) if order_qty not in (None, 0) and value("RPT-020", "good_qty") is not None else None,
-        (Decimal(value("RPT-030", "inspected_qty")) / Decimal(value("RPT-020", "good_qty")) * 100).quantize(Decimal("0.1")) if value("RPT-020", "good_qty") not in (None, 0) and value("RPT-030", "inspected_qty") is not None else None,
-        (Decimal(value("RPT-040", "product_receipt_qty")) / Decimal(value("RPT-030", "inspected_qty")) * 100).quantize(Decimal("0.1")) if value("RPT-030", "inspected_qty") not in (None, 0) and value("RPT-040", "product_receipt_qty") is not None else None,
-        (Decimal(value("RPT-050", "qty")) / Decimal(value("RPT-040", "product_receipt_qty")) * 100).quantize(Decimal("0.1")) if value("RPT-040", "product_receipt_qty") not in (None, 0) and value("RPT-050", "qty") is not None else None,
-        (Decimal(collected) / Decimal(shipment_amount) * 100).quantize(Decimal("0.1")) if shipment_amount not in (None, 0) and collected is not None else None,
-    ]
-    flow = []
-    for idx, (key, label, stage_value, secondary, screen, href) in enumerate(flow_specs):
-        conversion = conversion_values[idx]
-        count = risk_by_screen.get(screen, 0)
-        status = "위험" if any(r["severity"] == "위험" and r["source_screen"] == screen for r in risks) else ("주의" if count else ("미수집" if stage_value is None else "정상"))
-        flow.append({"key": key, "label": label, "value": stage_value, "secondary": secondary, "conversion": conversion,
-                     "dwell": dwell_map.get(dwell_keys[idx]) if dwell_keys[idx] else None, "risk_count": count,
-                     "status": status, "href": href})
 
-    raw_cumulative = {"수주": data["RPT-010"]["series"].get("qty", []),
-                      "출하": data["RPT-050"]["series"].get("qty", []),
-                      "수금": data["RPT-060"]["series"].get("collected", [])}
-    labels = list(dict.fromkeys(p["label"] for rows in raw_cumulative.values() for p in rows))
-    running = {key: Decimal(0) for key in raw_cumulative}
-    lookup = {key: {p["label"]: p.get("value") for p in rows} for key, rows in raw_cumulative.items()}
-    cumulative = []
-    for label in labels:
-        parts = []
-        for key in raw_cumulative:
-            point = lookup[key].get(label)
-            if point is not None:
-                running[key] += Decimal(point)
-            parts.append({"label": key, "value": running[key] if point is not None or running[key] else None})
-        cumulative.append({"label": label, "parts": parts})
-    return {"hero_kpis": hero, "attainment": attainment, "risks": risks, "flow": flow,
-            "causes": {"cumulative": cumulative, "due_forecast": _due_forecast(t, customer_id),
-                       "quality_pareto": data["RPT-030"]["series"].get("defects", [])}}
+def _executive_model(f: date, t: date, customer_id: int | None, data: dict[str, dict]) -> dict:
+    """목표·재무·위험·납기 원천을 조회한 뒤 순수 화면 모델에 전달한다."""
+    def value(screen: str, key: str):
+        return next((k["value"] for k in data[screen]["kpis"] if k["key"] == key), None)
+
+    actuals = {"orders.qty": value("RPT-010", "qty"),
+               "production.utilization": value("RPT-020", "utilization"),
+               "shipment.qty": value("RPT-050", "qty"),
+               "shipment.on_time": value("RPT-050", "due_rate"),
+               "collection.amount": value("RPT-060", "collected")}
+    attainment = _target_attainment(f, t, actuals)
+    money = financial.totals(f, t, customer_id)
+    risks = _executive_risks()
+    forecast = _due_forecast(t, customer_id)
+    return build_executive(data, attainment, money, risks, forecast)
 
 
 def _customer_code(customer_id: int | None) -> str | None:

@@ -112,7 +112,7 @@ def overrides() -> dict:
 
 
 def effective(d: dict | None = None) -> dict:
-    """정본 위에 ia-overrides.json(화면 제거 · 대메뉴 이름 변경 · 승인된 신규 메뉴)을 얹은 것."""
+    """정본 위에 ia-overrides.json(화면 제거 · 대메뉴 · 화면 이름 변경 · 승인된 신규 메뉴)을 얹은 것."""
     e = copy.deepcopy(d if d is not None else load())
     ov = overrides()
     codes = {m["code"] for m in e["menus"]}
@@ -121,6 +121,9 @@ def effective(d: dict | None = None) -> dict:
         if code not in codes:
             raise SystemExit(f"ia-overrides: 없는 대메뉴 {code}")
     for sid in ov.get("remove_screens", {}):
+        if sid not in ids:
+            raise SystemExit(f"ia-overrides: 없는 화면 {sid}")
+    for sid in ov.get("rename_screens", {}):
         if sid not in ids:
             raise SystemExit(f"ia-overrides: 없는 화면 {sid}")
     added_codes = [m["code"] for m in ov.get("add_menus", [])]
@@ -133,6 +136,8 @@ def effective(d: dict | None = None) -> dict:
         m["screens"] = [s for s in m["screens"] if s["id"] not in removed]
         for s in m["screens"]:
             s["links"] = [x for x in s["links"] if x not in removed]
+            if s["id"] in ov.get("rename_screens", {}):
+                s["name"] = ov["rename_screens"][s["id"]]["name"]
     e["flow"] = [f for f in e["flow"] if f["id"] not in removed]
     e["self_grants"] = [g for g in e["self_grants"] if g[0] not in removed]
     for added in ov.get("add_menus", []):

@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, notify, rbac, templating
 from ..util import audit, http
-from .inv import _bad, date_in, id_in, path_id, qs, text_in
+from ..util.forms import _bad, date_in, id_in, path_id, qs, text_in
 
 router = APIRouter()
 

@@ -5,15 +5,13 @@
 분할 이동은 새 LOT 행(원 번호 + `-01` 순번 · `parent_lot_id` = 원 LOT · D-509)과 `stock_move` 분할 행을 남긴다.
 조정 이력(`stock_adjust`)은 수정 · 삭제하지 않는다(트리거).
 
-이 파일 위쪽의 입력 헬퍼(`num_in` · `date_in` · `text_in` · `id_in` · `path_id` · 선택 목록)는 개발2 의 다른 라우터(mat · prd · ins · qc)도 쓴다.
+입력 검증은 `app.util.forms`에서 가져온다. 공통 선택 목록·업무 검증은 `app.lookups`에서 가져온다.
 헬퍼는 읽기만 한다 — 쓰기 SQL 은 그 기능의 라우터 파일에 있다(쓰기 경계 정적 스캔이 라우터마다 센다).
 """
 
 from __future__ import annotations
 
-import re
-from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
@@ -21,165 +19,21 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import nav, rbac, templating
 from ..util import audit, http
+from ..lookups import (
+    equipments, location_in, locations, lot_by_no, open_work_orders, work_order_in,
+)
+from ..util.forms import (
+    INV_QTY_MAX as QTY_MAX,
+    _bad, date_in, id_in, int_in, num_in, path_id, qs, text_in,
+)
 
 router = APIRouter()
 
 LOT_KINDS = ("원자재", "제품")
 STATUSES = ("가용", "검사대기", "보류")
-QTY_MAX = Decimal("99999999999")          # numeric(14,3) 의 정수부 11 자리
 
 
-# ── 입력 헬퍼 (개발2 공용 · 읽기만) ─────────────────────────────────────────
-def _bad(name: str, reason: str, message: str | None = None):
-    return http.validation_error(message or f"{name}: {reason}", fields=[{"name": name, "reason": reason}])
-
-
-def text_in(value: str | None, name: str, *, required: bool = False, max_len: int = 500) -> str | None:
-    v = (value or "").strip()
-    if "\x00" in v:
-        raise _bad(name, "글자에 NUL(0x00)을 넣을 수 없습니다")
-    if not v:
-        if required:
-            raise _bad(name, "필수 입력입니다", f"{name}을(를) 입력하세요")
-        return None
-    if len(v) > max_len:
-        raise _bad(name, f"{max_len}자를 넘을 수 없습니다")
-    return v
-
-
-def num_in(value: str | None, name: str, *, required: bool = True, positive: bool = True,
-           allow_zero: bool = False) -> Decimal | None:
-    """수량 — numeric(14,3). positive: > 0 (allow_zero 면 >= 0)."""
-    v = (value or "").strip().replace(",", "")
-    if not v:
-        if required:
-            raise _bad(name, "필수 입력입니다", f"{name}을(를) 입력하세요")
-        return None
-    try:
-        d = Decimal(v)
-    except InvalidOperation:
-        raise _bad(name, f"숫자가 아닙니다: {v[:30]}") from None
-    if not d.is_finite():
-        raise _bad(name, f"숫자가 아닙니다: {v[:30]}")
-    if abs(d) > QTY_MAX:
-        raise _bad(name, "숫자가 저장할 수 있는 범위를 넘었습니다")
-    if d.as_tuple().exponent < -3:
-        raise _bad(name, "소수점 아래 세 자리까지 입력할 수 있습니다")
-    if positive and (d < 0 or (d == 0 and not allow_zero)):
-        raise _bad(name, "0 보다 커야 합니다" if not allow_zero else "0 이상이어야 합니다")
-    return d
-
-
-def int_in(value: str | None, name: str, *, required: bool = False) -> int | None:
-    v = (value or "").strip()
-    if not v:
-        if required:
-            raise _bad(name, "필수 입력입니다", f"{name}을(를) 입력하세요")
-        return None
-    if not re.fullmatch(r"\d{1,9}", v):
-        raise _bad(name, f"0 이상의 정수가 아닙니다: {v[:30]}")
-    return int(v)
-
-
-def date_in(value: str | None, name: str, *, required: bool = False) -> date | None:
-    v = (value or "").strip()
-    if not v:
-        if required:
-            raise _bad(name, "필수 입력입니다", f"{name}을(를) 입력하세요")
-        return None
-    try:
-        return date.fromisoformat(v)
-    except ValueError:
-        raise _bad(name, f"날짜 형식(YYYY-MM-DD)이 아닙니다: {v[:30]}") from None
-
-
-def id_in(value: str | None, name: str, *, required: bool = True) -> int | None:
-    """폼으로 고른 ID — 숫자가 아니면 422 (사용자 입력)."""
-    v = (value or "").strip()
-    if not v:
-        if required:
-            raise _bad(name, "필수 선택입니다", f"{name}을(를) 고르세요")
-        return None
-    if not re.fullmatch(r"\d{1,18}", v):
-        raise _bad(name, f"올바른 선택이 아닙니다: {v[:30]}")
-    return int(v)
-
-
-def path_id(value: str) -> int:
-    """경로의 키 — 숫자가 아니면 「그런 대상이 없다」 404 (api-contract §1)."""
-    if not re.fullmatch(r"\d{1,18}", value or ""):
-        raise http.not_found()
-    return int(value)
-
-
-def qs(request: Request, key: str) -> str:
-    """조회 조건 한 칸 (없으면 빈 글자)."""
-    return (request.query_params.get(key) or "").strip()
-
-
-def locations() -> list[dict]:
-    """사용 중인 위치 (선택 목록)."""
-    return conn.q("""select l.id, l.location_code, l.location_name, w.warehouse_code, w.warehouse_name
-                       from location l join warehouse w on w.id = l.warehouse_id
-                      where l.use_yn = 'Y' and w.use_yn = 'Y'
-                      order by w.warehouse_code, l.location_code""")
-
-
-def location_in(value: str | None, name: str = "위치", *, required: bool = True) -> dict | None:
-    lid = id_in(value, name, required=required)
-    if lid is None:
-        return None
-    row = conn.q1("""select l.id, l.location_code, l.use_yn, w.use_yn as wh_use
-                       from location l join warehouse w on w.id = l.warehouse_id where l.id = %s""", (lid,))
-    if row is None:
-        raise _bad(name, f"없는 위치입니다: {lid}")
-    if row["use_yn"] != "Y" or row["wh_use"] != "Y":
-        raise _bad(name, f"사용 중지된 위치입니다: {row['location_code']}")
-    return row
-
-
-def open_work_orders() -> list[dict]:
-    """불출 · 제품 입고 · 일보에서 고르는 지시 (취소 · 완료 제외)."""
-    return conn.q("""select w.id, w.work_order_no, w.qty, w.status, w.equipment_code, i.item_code, i.item_name,
-                            r.request_no
-                       from work_order w join item i on i.id = w.item_id
-                       join production_request r on r.id = w.request_id
-                      where w.status in ('발행', '진행')
-                      order by w.work_order_no desc""")
-
-
-def work_order_in(wo_id: str | None, wo_no: str | None = None, name: str = "작업지시") -> dict:
-    """지시 — 목록에서 고른 id 또는 직접 입력한 번호. 없거나 취소 · 완료면 422."""
-    wid = id_in(wo_id, name, required=False)
-    no = text_in(wo_no, f"{name} 번호")
-    if wid is None and no is None:
-        raise _bad(name, "필수 선택입니다", "작업지시를 고르세요")
-    if wid is not None:
-        row = conn.q1("select id, work_order_no, item_id, qty, status from work_order where id = %s", (wid,))
-    else:
-        row = conn.q1("select id, work_order_no, item_id, qty, status from work_order where work_order_no = %s", (no,))
-    if row is None:
-        raise _bad(name, f"없는 작업지시입니다: {wid if wid is not None else no}")
-    if row["status"] in ("취소", "완료"):
-        raise _bad(name, f"{row['status']}된 지시입니다: {row['work_order_no']}")
-    return row
-
-
-def equipments() -> list[dict]:
-    return conn.q("""select code, code_name from sys_common_code where group_code = '설비' and use_yn = 'Y'
-                      order by sort_no, code""")
-
-
-def lot_by_no(kind: str, lot_no: str | None, name: str = "LOT 번호") -> dict:
-    """입력한 LOT 번호 — 없으면 422 (사용자 입력). kind = 원자재 | 제품."""
-    no = text_in(lot_no, name, required=True)
-    table = "material_lot" if kind == "원자재" else "product_lot"
-    row = conn.q1(f"select * from {table} where lot_no = %s", (no,))
-    if row is None:
-        raise _bad(name, f"없는 {kind} LOT 번호입니다: {no}")
-    if row.get("canceled_at"):
-        raise _bad(name, f"취소된 LOT 입니다: {no}")
-    return row
+# ── 재고 전용 입력·화면 헬퍼 ───────────────────────────────────────────
 
 
 def kind_in(value: str | None) -> str:

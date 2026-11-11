@@ -123,7 +123,7 @@ HELPERS = {"notify": "notify.py", "numbering": "numbering.py", "audit": "util/au
 ALWAYS = {"notification", "sys_change_log", "sys_access_log"}
 #: 읽기만 하는 모듈 (db-schema §2.1 규칙 4 · CLAUDE.md)
 READ_ONLY = {"trk.py": "TRK", "lot.py": "LOT", "prp.py": "PRP"}
-READ_ONLY_HELPERS = ("trace.py", "stats.py", "dashboard.py")
+READ_ONLY_HELPERS = ("trace.py", "stats.py", "dashboard.py", "dashboard_models.py", "management_rules.py")
 
 
 def _sql_writes(text: str) -> list[str]:

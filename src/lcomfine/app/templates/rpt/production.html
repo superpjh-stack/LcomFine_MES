@@ -18,7 +18,7 @@
 {{ f.notice(notice) }}
 {{ d.filters(form, customers, with_customer) }}
 {% if data %}
-{{ d.kpis(data.kpis, sparks={"produced_qty": data.series.produced_qty, "good_qty": data.series.good_qty}) }}
+{{ d.kpis(data.kpis, sparks={"produced_qty": data.series.produced_qty, "good_qty": data.series.good_qty}, lead=4) }}
 {% call ch.grid() %}
 {{ d.chart_table("produced_qty", "기간별 생산 수량", data.series.produced_qty, "구간", "생산 수량", 3, "line", wide=true) }}
 {{ d.chart_table("good_qty", "기간별 양품 수량", data.series.good_qty, "구간", "양품 수량", 3) }}

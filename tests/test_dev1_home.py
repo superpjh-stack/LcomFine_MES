@@ -42,6 +42,12 @@ def test_my_work_cards_due_and_today(p):
     assert c.post(f"/bas/customers/{cu['id']}", data={"customer_name": f"{p} 거래처 (예시)"}).status_code == 200
     r = c.get("/")
     assert r.status_code == 200 and "미구현" not in r.text
+    assert 'data-order-progress' not in r.text
+    # D-532 — 수주별 진행현황은 RPT-070 한 장. 그 칸이 있는 부서(영업부 R)만 단추가 보이고, 없는 부서(생산부)는 안 보인다
+    assert '수주별 진행현황 보기' in r.text and 'href="/rpt/order-flow"' in r.text
+    assert '수주별 진행현황 보기' not in client("pr").get("/").text
+    admin_page = client("admin").get("/")
+    assert '수주별 진행현황 보기' in admin_page.text and 'href="/rpt/order-flow"' in admin_page.text
     for card in CARDS["SL"]:
         assert f'data-card="{card.title}"' in r.text
     assert 'data-card="지시 대기 의뢰"' not in r.text                     # 다른 부서의 카드는 없다

@@ -98,7 +98,8 @@ def test_topnav_link_for_every_department(pages):
         assert nav_html, f"{code}: 상단 바 없음"
         links = re.findall(r'<a href="([^"]+)"[^>]*>([^<]+)</a>', nav_html.group(0))
         names = [n for _, n in links]
-        assert names[0] == "내 할 일" and names[-1] == "업무별 유스케이스", (code, names)
+        expected_first = "대시보드" if any(name == "대시보드" for name in names) else "내 할 일"
+        assert names[0] == expected_first and names[-1] == "업무별 유스케이스", (code, names)
         assert ("/guide/usecases", "업무별 유스케이스") in links
         page_nav = re.search(r'<nav class="topnav".*?</nav>', pages[code], re.S).group(0)
         assert f'href="{usecases.PATH}" aria-current="page"' in page_nav, code

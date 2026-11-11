@@ -1,10 +1,10 @@
-"""RPT 대시보드(D-505) — RPT-010 수주 · RPT-020 생산 · RPT-030 품질 · RPT-040 재고·창고 · RPT-050 출하 · RPT-060 수금 · RPT-070 주문 흐름 ·
+"""RPT 대시보드(D-505) — RPT-010 수주 · RPT-020 생산 · RPT-030 품질 · RPT-040 재고·창고 · RPT-050 출하 · RPT-060 수금 · RPT-070 수주별 진행현황(D-532) ·
 RPT-080 경영 요약 (개발3 · W3). 데이터 질의는 D-529 로 없앴다.
 
 기능 8 (contracts/function-list.md):
   F-RPT-011 GET /rpt/orders        수주 리포트     F-RPT-051 GET /rpt/shipment     출하 리포트
   F-RPT-021 GET /rpt/production    생산 리포트     F-RPT-061 GET /rpt/collection   수금 리포트 (최근 업로드 기준일 명시)
-  F-RPT-031 GET /rpt/quality       품질 리포트     F-RPT-071 GET /rpt/order-flow   주문 흐름 리포트 (병목 미확정 D-520)
+  F-RPT-031 GET /rpt/quality       품질 리포트     F-RPT-071 GET /rpt/order-flow   수주별 진행현황 (병목 미확정 D-520)
   F-RPT-041 GET /rpt/inventory     재고·창고 리포트 F-RPT-081 GET /rpt/summary      경영 요약 (일일 · 주간 · 월간 탭 · 해설 없음)
 
 대시보드 8 은 화면을 열 때 `dashboard` 가 집계한다(캐시 없음 · D-512) — 라우터는 조회 조건만 검사한다. 차트는 인라인 SVG + 같은 숫자의 표.
@@ -21,6 +21,7 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import dashboard, nav, rbac, templating
 from ..util import http
+from .home import PROGRESS_STATUSES, home_progress
 
 router = APIRouter()
 
@@ -90,19 +91,35 @@ def _customers() -> list[dict]:
     return conn.q("select id, customer_code, customer_name from customer order by customer_code")
 
 
+PROGRESS_ALL, PROGRESS_DEFAULT = "전체", "지연"
+
+
+def _progress_ctx(user: rbac.User, status: str | None, cid: int | None) -> dict:
+    """RPT-070 수주 진행보드 문맥 — 상태를 안 내면 「지연」 부터 연다(D-532 · 사용자 2026-11-12). 「전체」 는 직접 고른다.
+    상태 필터는 전체 + 정해진 다섯 값뿐(그 밖은 422)."""
+    st = (status or "").strip() or PROGRESS_DEFAULT
+    if st != PROGRESS_ALL and st not in PROGRESS_STATUSES:
+        raise _bad("상태", st[:40], "상태는 " + " · ".join((PROGRESS_ALL, *PROGRESS_STATUSES)) + " 중 하나입니다")
+    return {"progress": home_progress(limit=500, customer_id=cid, status=None if st == PROGRESS_ALL else st),
+            "progress_statuses": PROGRESS_STATUSES, "can_trk": rbac.can(user, "TRK-010")}
+
+
 def _dashboard(request: Request, screen_id: str, tpl: str, fn, *, date_from: str | None, date_to: str | None,
-               customer: str | None, with_customer: bool) -> HTMLResponse:
-    """대시보드 화면 하나 — 조건 검사(422 는 화면으로) → `dashboard.<fn>` → 렌더. 어디에도 쓰지 않는다."""
+               customer: str | None, with_customer: bool, extra=None) -> HTMLResponse:
+    """대시보드 화면 하나 — 조건 검사(422 는 화면으로) → `dashboard.<fn>` → 렌더. 어디에도 쓰지 않는다.
+    extra(cid) 는 그 화면만의 추가 문맥(조건 오류면 422 를 올린다 — 기간 오류와 같은 길)."""
     form = {"date_from": date_from or "", "date_to": date_to or "", "customer": customer or ""}
     ctx: dict = {"form": form, "data": None, "notice": None, "with_customer": with_customer,
                  "customers": _customers() if with_customer else []}
     try:
         f, t = _period(date_from, date_to)
         cid = _customer(customer) if with_customer else None
+        more = extra(cid) if extra else {}
     except HTTPException as exc:
         if exc.status_code != 422:
             raise
         return _render(request, tpl, ctx, screen_id, exc)
+    ctx.update(more)
     form.update(date_from=f.isoformat(), date_to=t.isoformat())
     data = fn((f, t), cid) if with_customer else fn((f, t))
     span=(t-f).days+1; pf=f-timedelta(days=span); pt=f-timedelta(days=1)
@@ -161,10 +178,10 @@ def collection(request: Request, date_from: str | None = None, date_to: str | No
 
 @router.get(nav.path_of("RPT-070"), response_class=HTMLResponse)
 def order_flow(request: Request, date_from: str | None = None, date_to: str | None = None, customer: str | None = None,
-               user: rbac.User = rbac.require_screen("RPT-070")) -> HTMLResponse:
-    """F-RPT-071 주문 흐름 리포트 — 단계 소요일 · 병목 미확정 (D-520)."""
+               status: str | None = None, user: rbac.User = rbac.require_screen("RPT-070")) -> HTMLResponse:
+    """F-RPT-071 수주별 진행현황(D-532) — 위: 수주 진행보드(상태 필터) · 아래 접힌 절: 단계 소요일 · 병목 미확정 (D-520)."""
     return _dashboard(request, "RPT-070", "rpt/order_flow.html", dashboard.order_flow, date_from=date_from, date_to=date_to,
-                      customer=customer, with_customer=True)
+                      customer=customer, with_customer=True, extra=lambda cid: _progress_ctx(user, status, cid))
 
 
 @router.get(nav.path_of("RPT-080"), response_class=HTMLResponse)
@@ -189,5 +206,7 @@ def summary(request: Request, tab: str | None = None, asof: str | None = None, c
     current=dashboard.summary((f,t),cid); span=(t-f).days+1
     previous = dashboard.summary((f-timedelta(days=span),f-timedelta(days=1)),cid)
     ctx["data"] = dashboard.enrich_executive(dashboard.enrich(current,{},previous), previous)
+    ctx["progress"] = home_progress(limit=1, customer_id=cid)      # 요약 카드만 — 수주 목록은 RPT-070 (D-532)
+    ctx["can_progress"] = rbac.can(user, "RPT-070")
     return _render(request, "rpt/summary.html", ctx, "RPT-080")
 

@@ -15,7 +15,7 @@
 {{ f.notice(notice) }}
 {{ d.filters(form, customers, with_customer) }}
 {% if data %}
-{{ d.kpis(data.kpis, sparks={"shipments": data.series.shipments, "qty": data.series.qty}) }}
+{{ d.kpis(data.kpis, sparks={"shipments": data.series.shipments, "qty": data.series.qty}, lead=4) }}
 {% set due_s = [] %}{% for b in ["납기 안 완료", "지연 완료", "지연", "진행"] %}{% set n = data.tables.due_rows | selectattr("bucket", "equalto", b) | list | length %}{% set _ = due_s.append({"label": b, "value": (n or none)}) %}{% endfor %}
 {% call ch.grid() %}
 {{ d.chart_table("qty", "기간별 출하 수량", data.series.qty, "구간", "출하 수량", 3) }}

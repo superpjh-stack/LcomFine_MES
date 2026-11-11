@@ -14,7 +14,8 @@ from fastapi.responses import HTMLResponse
 from ...db import conn
 from .. import auth, contracts, nav, rbac, templating
 from ..util import audit, http
-from .bas import bad, choice, day, edit_row, integer, like, need, pk, ref_id, s, yn
+from ..util.forms import bad, choice, day, integer, like, need, pk, ref_id, s, yn
+from ..lookups import edit_row
 
 router = APIRouter()
 

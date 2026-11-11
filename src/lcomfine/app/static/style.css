@@ -2273,6 +2273,18 @@ svg.swim { display: block; width: 100%; height: auto; font-family: var(--f); }
 .equipment-tile strong { font-size: 13px; }
 .equipment-tile small { color: var(--muted); font-size: 10px; }
 .equipment-tile em { align-self: end; color: var(--brand); font: 600 10px var(--mono); font-style: normal; }
+.equipment-sample { display: grid; gap: 12px; padding: 15px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.equipment-sample__head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.equipment-sample__head h3 { margin: 3px 0 4px; font-size: 15px; }
+.equipment-sample__head p { margin: 0; color: var(--muted); font-size: 10px; }
+.equipment-sample__values { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; background: var(--line); }
+.equipment-sample__values div { display: grid; gap: 5px; padding: 12px; background: var(--surface); }
+.equipment-sample__values span, .equipment-sample__values small { color: var(--muted); font-size: 10px; }
+.equipment-sample__values strong { font-size: 22px; }
+.equipment-sample__stations { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+.equipment-sample__stations b { color: var(--ink); }
+.equipment-sample__stations span { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.equipment-sample__missing { margin: 0; color: var(--muted); font-size: 10px; }
 @keyframes home-progress-pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--brand) 0%, transparent); } }
 @media (max-width: 1100px) {
   .home-order { grid-template-columns: minmax(150px, .8fr) minmax(330px, 1.8fr) minmax(100px, .6fr) auto; gap: 10px; }
@@ -2293,6 +2305,7 @@ svg.swim { display: block; width: 100%; height: auto; font-family: var(--f); }
   .equipment-monitor__head { flex-direction: column; }
   .equipment-monitor__summary { white-space: normal; }
   .equipment-monitor__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .equipment-sample__values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid { grid-template-columns: 1fr; }
   .actions .btn { min-height: 44px; }
   .home-progress__total { grid-column: 1 / -1; min-height: 76px; }
@@ -2306,4 +2319,32 @@ svg.swim { display: block; width: 100%; height: auto; font-family: var(--f); }
 @media (prefers-reduced-motion: reduce) {
   .home-order__step--active i { animation: none; }
   .home-order { transition: none; }
+}
+
+/* ── D-532 대시보드: 그래프 먼저 · 접는 상세 · 수주별 진행현황(RPT-070) ─────────────────── */
+.panel--fold > summary { display: flex; align-items: center; gap: 10px; padding: 12px 20px; cursor: pointer; list-style: none; transition: background-color .14s var(--ease); }
+.panel--fold > summary::-webkit-details-marker { display: none; }
+.panel--fold > summary::before { content: "▸"; color: var(--muted); font-size: 12px; transition: transform .14s var(--ease); }
+.panel--fold[open] > summary::before { transform: rotate(90deg); }
+.panel--fold > summary:hover { background: var(--surface-subtle); }
+.panel--fold > summary h2 { margin: 0; font-size: 14px; }
+.panel--fold > summary small { margin-left: auto; font-size: 11px; }
+.panel--fold[open] > summary { border-bottom: 1px solid var(--line-subtle); }
+.kpi-more { margin: 0; }
+.kpi-more > summary { display: inline-block; padding: 4px 2px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; }
+.kpi-more > summary:hover, .kpi-more[open] > summary { color: var(--brand); }
+.kpi-more[open] > summary { margin-bottom: 8px; }
+.progress-overview { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.5fr); gap: 12px; }
+.progress-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.progress-card h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 13px; }
+.progress-card h3 small { font-size: 11px; font-weight: 500; }
+.home-progress__section-head h3 small { margin-left: 6px; font-size: 11px; font-weight: 500; }
+.home-progress .seg { flex-wrap: wrap; }
+div.home-order:hover { border-color: var(--line); background: var(--surface); transform: none; }
+.lead-time > summary small { margin-left: 8px; font-size: 11px; font-weight: 500; }
+.lead-time__period { margin: 0; }
+.cockpit-causes--quad { grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr); }
+.cockpit-causes--quad .cockpit-card > header a { color: var(--brand); font-size: 12px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 900px) {
+  .progress-overview, .cockpit-causes--quad { grid-template-columns: 1fr; }
 }

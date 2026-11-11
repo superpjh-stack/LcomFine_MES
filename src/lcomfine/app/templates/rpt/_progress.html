@@ -1,0 +1,38 @@
+{# RPT-070 수주 진행보드(D-532) — 상태 구성 · 단계별 도달 · 수주별 단계 트랙. 읽기만 한다.
+   data-order-progress 는 app.js 의 30초 자동 갱신 표식(같은 주소를 다시 읽어 이 조각만 바꾼다). #}
+{% set qs = "date_from=" ~ form.date_from ~ "&date_to=" ~ form.date_to ~ "&customer=" ~ form.customer %}
+<section class="home-progress" data-order-progress data-progress-refresh="30" aria-labelledby="home-progress-title">
+  <header class="home-progress__head">
+    <div><h2 id="home-progress-title">지금 수주는 어디까지 왔나</h2><p>{{ progress.summary.asof | dt }} 기준 · {{ progress.summary.data_status }} · 취소 제외</p></div>
+    <span class="home-progress__live" data-progress-live aria-live="polite">자동 갱신 30초</span>
+  </header>
+  <div class="progress-overview">
+    <article class="progress-card" data-progress-donut>
+      <h3>상태 구성</h3>
+      {{ d.progress_donut(progress) }}
+    </article>
+    <article class="progress-card" data-progress-stages>
+      <h3>단계별 도달 수주 <small class="muted">그 단계까지 간 수주 건수</small></h3>
+      {% set stage_s = [] %}{% for st in progress.flow %}{% set _ = stage_s.append({"label": st.label, "value": st.count or none}) %}{% endfor %}
+      {{ ch.bars_h(stage_s) }}
+    </article>
+  </div>
+  <section class="home-progress__orders" aria-labelledby="home-orders-title">
+    <div class="home-progress__section-head">
+      <h3 id="home-orders-title">수주별 진행 <small class="muted">지연 → 납기 임박 → 진행 중 순 · {{ progress.matched | num }}건</small></h3>
+      <nav class="seg" aria-label="상태 필터">
+        <a class="btn btn-sm{% if not progress.status %} btn-primary{% endif %}" href="?{{ qs }}&amp;status=전체"{% if not progress.status %} aria-current="true"{% endif %} data-status-filter="전체">전체 {{ progress.summary.total | num }}</a>
+        {% for st in progress_statuses %}<a class="btn btn-sm{% if progress.status == st %} btn-primary{% endif %}" href="?{{ qs }}&amp;status={{ st }}"{% if progress.status == st %} aria-current="true"{% endif %} data-status-filter="{{ st }}">{{ st }} {{ progress.summary[st] | num }}</a>{% endfor %}
+      </nav>
+    </div>
+    {% if progress.orders %}<div class="home-order-list">
+      {% for order in progress.orders %}<{{ "a" if can_trk else "div" }} class="home-order home-order--{{ order.board_status | lower }}"{% if can_trk %} href="{{ order.href }}"{% endif %} data-order-status="{{ order.board_status }}" data-order="{{ order.request_no }}">
+        <span class="home-order__identity"><code>{{ order.request_no }}</code><strong>{{ order.customer_name }}</strong><small><code>{{ order.item_code }}</code> {{ order.item_name }}</small></span>
+        <span class="home-order__track" aria-label="{{ order.request_no }} 단계 진행">{% for stage in order.board_stages %}<span class="home-order__step home-order__step--{{ stage.state }}"{% if stage.state == 'active' %} aria-current="step"{% endif %} title="{{ stage.label }}{% if stage.on %} · {{ stage.on | dt }}{% endif %}"><i aria-hidden="true"></i><b>{{ stage.label }}</b></span>{% endfor %}</span>
+        <span class="home-order__current"><b>{{ order.current or '자재 대기' }}</b><small>{% if order.d_day < 0 %}{{ -order.d_day }}일 지연{% else %}D-{{ order.d_day }}{% endif %} · 잔량 {{ order.remaining | num(3) }}</small></span>
+        <span class="chip chip--{{ 'bad' if order.board_status == '지연' else ('warn' if order.board_status == '주의' else ('ok' if order.board_status in ('정상', '완료') else 'muted')) }}">{{ order.board_status }}</span>
+      </{{ "a" if can_trk else "div" }}>{% endfor %}
+    </div>{% else %}{{ ui.empty("이 조건의 수주가 없습니다") }}{% endif %}
+    {% if progress.truncated %}<p class="home-progress__more">앞의 {{ progress.orders | length | num }}건만 보입니다 — 상태 · 거래처로 좁혀 보세요.</p>{% endif %}
+  </section>
+</section>

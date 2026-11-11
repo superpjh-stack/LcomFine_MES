@@ -13,3 +13,6 @@ backups/
 .gstack/
 # 시연 영상 중간 산출물(원본 webm · 카드) — 최종 mp4 만 둔다
 outputs/video/_work/
+
+# 사용자별 시나리오 작업 폴더 (make-user-scenario)
+_user_scenario/

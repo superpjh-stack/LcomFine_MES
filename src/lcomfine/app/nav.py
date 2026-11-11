@@ -143,7 +143,7 @@ _SPEC: list[tuple[str, str, str, str, list[tuple[str, str, str, str]]]] = [
         ('RPT-040', '재고·창고 리포트', '리포트', 'inventory'),
         ('RPT-050', '출하 리포트', '리포트', 'shipment'),
         ('RPT-060', '수금 리포트', '리포트', 'collection'),
-        ('RPT-070', '주문 흐름 리포트', '리포트', 'order-flow'),
+        ('RPT-070', '수주별 진행현황', '리포트', 'order-flow'),
         ('RPT-080', '경영 요약', '리포트', 'summary'),
     ]),
     ('s6', 'MGT', '경영관리', '아키텍트', [

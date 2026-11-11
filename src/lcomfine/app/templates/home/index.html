@@ -11,6 +11,7 @@
 {% set seen = [] %}{% for node in bundles %}{% for m in node.menus %}{% for x in m.screens %}{% set _ = seen.append(x.screen_id) %}{% endfor %}{% endfor %}{% endfor %}
 {% call ui.screen_head(screen.name, sub=user.role_name) %}
   <a class="btn" href="{{ nav.path_of('HOME-020') }}">알림함</a>
+  {% set prog = dash_screens | selectattr("screen_id", "equalto", "RPT-070") | first %}{% if prog %}<a class="btn btn-primary" href="{{ prog.path }}">수주별 진행현황 보기 →</a>{% endif %}
 {% endcall %}
 
 {% for g in groups %}

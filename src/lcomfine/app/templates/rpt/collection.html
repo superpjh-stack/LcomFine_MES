@@ -17,7 +17,7 @@
 {{ f.notice(notice) }}
 {{ d.filters(form, customers, with_customer) }}
 {% if data %}
-{{ d.kpis(data.kpis, sparks={"collected": data.series.collected, "shipped_qty": data.series.shipped_qty}) }}
+{{ d.kpis(data.kpis, sparks={"collected": data.series.collected, "shipped_qty": data.series.shipped_qty}, lead=4) }}
 {% set sc_rows = [] %}{% for m in data.tables.monthly %}{% set _ = sc_rows.append({"label": m.ym, "parts": [{"label": "ERP 매출", "value": m.sales_amount}, {"label": "ERP 수금", "value": m.collected_amount}]}) %}{% endfor %}
 {% set buckets = data.tables.aging_buckets %}
 {% set has_aging = (data.series.aging | rejectattr("value", "none") | list | length) > 0 %}
@@ -35,13 +35,13 @@
   {% if ag_rows %}{{ ch.stacked(ag_rows, buckets, "거래처", "aging_by_customer") }}{% else %}{{ ui.empty() }}{% endif %}
 </section>
 {% endcall %}
-<section class="panel panel--grid" data-table="over90">
-  <h2>90일 초과 거래처 <small class="muted">{{ data.tables.over90 | length }}곳</small></h2>
+<details class="panel panel--grid panel--fold" data-table="over90"{% if data.tables.over90 %} open{% endif %}>
+  <summary><h2>90일 초과 거래처</h2><small class="muted">{{ data.tables.over90 | length }}곳</small></summary>
   {% if data.tables.over90 %}
   <div class="grid-wrap"><table class="grid"><thead><tr><th>거래처 코드</th><th>거래처</th><th class="num">90일 초과 순액</th><th class="num">미수 합</th></tr></thead>
   <tbody>{% for r in data.tables.over90 %}<tr><td>{{ r.customer_code }}</td><td>{{ r.customer_name }}</td><td class="num">{{ r.cells[data.tables.aging_buckets[-1]].net | num }}</td><td class="num">{{ r.total_net | num }}</td></tr>{% endfor %}</tbody></table></div>
   {% else %}{{ ui.empty("90일 초과 거래처 없음" if data.asof else "미수집") }}{% endif %}
-</section>
+</details>
 {{ d.table("monthly", "출하 대비 수금 (월)", [("ym", "월", none), ("shipments", "확정 출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "ERP 매출", 0), ("collected_amount", "ERP 수금", 0)], data.tables.monthly) }}
 {{ d.table("by_customer", "출하 대비 수금 (월 · 거래처)", [("ym", "월", none), ("customer_code", "거래처 코드", none), ("customer_name", "거래처", none), ("shipments", "출하 건", 0), ("shipped_qty", "출하 수량", 3), ("sales_amount", "매출", 0), ("collected_amount", "수금", 0)], data.tables.by_customer) }}
 {% endif %}
